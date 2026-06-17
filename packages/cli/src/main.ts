@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 import { inspect } from "node:util";
 import * as core from "@actions/core";
+import type { RegistryEntry, ResolvedConfig, RuntimeRegistry } from "@pipr/runtime";
 import {
   createBuiltinRegistry,
+  createRuntimeRegistry,
   loadConfig,
   loadPullRequestEventContext,
   renderRegistryGraph,
@@ -26,9 +28,10 @@ Commands:
                                    Validate resolved config
   dry-run --event event.json [--config-dir .pipr]
                                    Load config and event without publishing
-  graph                            Print builtin workflow graph
-  explain-config                   Print resolved config and source
-  list-blocks|list-tools|list-agents|list-presets
+  graph [--config-dir .pipr]       Print resolved workflow graph
+  explain-config [--config-dir .pipr]
+                                   Print resolved config and source
+  list-blocks|list-tools|list-agents|list-presets [--config-dir .pipr]
 `;
 
 const commandHandlers: Record<string, CommandHandler> = {
@@ -54,7 +57,7 @@ const optionHandlers: Record<string, OptionHandler> = {
 
 async function main(): Promise<void> {
   const [command = "help", ...args] = process.argv.slice(2);
-  const handler = commandHandlers[command];
+  const handler = getCommandHandler(command);
   if (!handler) {
     throw new Error(`Unknown pipr command '${command}'`);
   }
@@ -74,6 +77,7 @@ async function runAction(options: CliOptions): Promise<void> {
     env: process.env,
     requireProviderEnv: !dryRun,
   });
+  createRuntimeRegistry(resolved);
   logActionEvent(event);
   core.info(`pipr config source: ${resolved.source}`);
   if (dryRun) {
@@ -84,6 +88,7 @@ async function runAction(options: CliOptions): Promise<void> {
     workspace: actionWorkspace(),
     config: resolved.config,
     event,
+    registry: createBuiltinRegistry(),
     piExecutable: process.env.PIPR_PI_EXECUTABLE,
   });
   core.info(
@@ -99,12 +104,8 @@ async function runAction(options: CliOptions): Promise<void> {
 }
 
 async function runValidate(options: CliOptions): Promise<void> {
-  const resolved = await loadConfig({
-    rootDir: process.cwd(),
-    configDir: options.configDir,
-    env: process.env,
-    requireProviderEnv: options.requireEnv,
-  });
+  const resolved = await loadResolvedConfig(options);
+  createRuntimeRegistry(resolved);
   console.log(`valid: ${resolved.source}`);
   for (const warning of resolved.warnings) {
     console.log(`warning: ${warning}`);
@@ -131,20 +132,29 @@ async function runDryRun(options: CliOptions): Promise<void> {
       {
         configSource: resolved.source,
         event,
-        registry: createBuiltinRegistry(),
+        registry: createRuntimeRegistry(resolved),
       },
       { depth: 6, colors: false },
     ),
   );
 }
 
-async function runExplainConfig(options: CliOptions): Promise<void> {
-  const resolved = await loadConfig({
+function loadResolvedConfig(options: CliOptions): Promise<ResolvedConfig> {
+  return loadConfig({
     rootDir: process.cwd(),
     configDir: options.configDir,
     env: process.env,
-    requireProviderEnv: false,
+    requireProviderEnv: options.requireEnv,
   });
+}
+
+async function loadRuntimeRegistry(options: CliOptions): Promise<RuntimeRegistry> {
+  const resolved = await loadResolvedConfig({ ...options, requireEnv: false });
+  return createRuntimeRegistry(resolved);
+}
+
+async function runExplainConfig(options: CliOptions): Promise<void> {
+  const resolved = await loadResolvedConfig({ ...options, requireEnv: false });
   console.log(inspect(resolved, { depth: 8, colors: false }));
 }
 
@@ -162,11 +172,19 @@ function parseOptions(args: string[]): CliOptions {
 
 function applyOption(options: CliOptions, args: string[], index: number): number {
   const arg = args[index] ?? "";
-  const handler = optionHandlers[arg];
+  const handler = getOptionHandler(arg);
   if (!handler) {
     throw new Error(`Unknown option '${arg}'`);
   }
   return handler(options, args, index);
+}
+
+function getCommandHandler(command: string): CommandHandler | undefined {
+  return hasOwn(commandHandlers, command) ? commandHandlers[command] : undefined;
+}
+
+function getOptionHandler(option: string): OptionHandler | undefined {
+  return hasOwn(optionHandlers, option) ? optionHandlers[option] : undefined;
 }
 
 function isHelpOption(arg: string): boolean {
@@ -220,34 +238,38 @@ function logActionEvent(event: Awaited<ReturnType<typeof loadActionEvent>>): voi
   core.info(`pipr loaded PR #${event.pullRequestNumber} for ${event.repo}`);
 }
 
-function printGraph(): void {
-  console.log(renderRegistryGraph(createBuiltinRegistry()));
+async function printGraph(options: CliOptions): Promise<void> {
+  console.log(renderRegistryGraph(await loadRuntimeRegistry(options)));
 }
 
 function printHelp(): void {
   console.log(help);
 }
 
-function listBlocks(): void {
-  listEntries(createBuiltinRegistry().blocks);
+async function listBlocks(options: CliOptions): Promise<void> {
+  listEntries((await loadRuntimeRegistry(options)).blocks);
 }
 
-function listTools(): void {
-  listEntries(createBuiltinRegistry().tools);
+async function listTools(options: CliOptions): Promise<void> {
+  listEntries((await loadRuntimeRegistry(options)).tools);
 }
 
-function listAgents(): void {
-  listEntries(createBuiltinRegistry().agents);
+async function listAgents(options: CliOptions): Promise<void> {
+  listEntries((await loadRuntimeRegistry(options)).agents);
 }
 
-function listPresets(): void {
-  listEntries(createBuiltinRegistry().presets);
+async function listPresets(options: CliOptions): Promise<void> {
+  listEntries((await loadRuntimeRegistry(options)).presets);
 }
 
-function listEntries(entries: Array<{ id: string; description: string }>): void {
+function listEntries(entries: RegistryEntry[]): void {
   for (const entry of entries) {
     console.log(`${entry.id}\t${entry.description}`);
   }
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.hasOwn(value, key);
 }
 
 main().catch((error: unknown) => {

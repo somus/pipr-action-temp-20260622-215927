@@ -1,6 +1,6 @@
 # pipr
 
-pipr is a Pi-powered GitHub PR automation runtime. The current scaffold validates configuration, GitHub pull request event loading, Docker Action packaging, and local `act` execution. The full review runtime still fails explicitly until Diff Manifest, Pi review, schema validation, and comment publishing are wired end to end.
+pipr is a Pi-powered GitHub PR automation runtime. The current runtime validates `.pipr/` configuration, loads GitHub pull request events, builds a local Diff Manifest, runs Pi for schema-first review JSON, validates findings against commentable ranges, renders the Main Review Comment, and prepares Inline Review Comment drafts. GitHub publishing is still not wired in the Core MVP scaffold.
 
 ## Development
 
@@ -20,7 +20,7 @@ The local Action fixture runs with `PIPR_DRY_RUN=1`; it proves Docker Action pac
 
 ## GitHub Action shape
 
-The non-dry-run Action currently exits with `pipr action review runtime is not implemented yet`. Once review execution is wired, repositories should use this workflow shape:
+The Docker Action runs `pipr action`. Repositories should use this workflow shape:
 
 ```yaml
 name: pipr
@@ -70,3 +70,9 @@ review:
   max_inline_comments: 5
   min_confidence: 0.75
 ```
+
+## Registry modules
+
+pipr can also read `.pipr/registry.yaml` for presets, workflows, blocks, agents, schemas, comments, and tools. Entries override by `id` for CLI graph/list commands and explicit runtime registry construction; duplicate IDs in the same source, unknown block references, unsafe workflow refs, and declarative block cycles fail validation.
+
+The GitHub Action validates `.pipr/registry.yaml`, but it executes the trusted built-in review workflow for Core MVP so pull requests cannot replace the review workflow that evaluates them.

@@ -21,9 +21,17 @@ export type PiprConfig = {
   };
 };
 
+export type SourceMap = {
+  config: string;
+  fields: Record<string, string>;
+  modules: Partial<Record<RegistryCollectionName, Record<string, string>>>;
+};
+
 export type ResolvedConfig = {
   config: PiprConfig;
   source: "builtin:minimal" | string;
+  sources: SourceMap;
+  modules: RuntimeModuleSet;
   warnings: string[];
 };
 
@@ -118,18 +126,53 @@ export type ValidatedReview = {
   droppedFindings: DroppedFinding[];
 };
 
+export type RegistryCollectionName =
+  | "presets"
+  | "workflows"
+  | "blocks"
+  | "agents"
+  | "schemas"
+  | "comments"
+  | "tools";
+
 export type RegistryEntry = {
   id: string;
   description: string;
   source: string;
+  sourceLocation?: string;
+};
+
+export type WorkflowStep = {
+  block: string;
+  with?: unknown;
+  output?: string;
+};
+
+export type WorkflowRegistryEntry = RegistryEntry & {
+  events: string[];
+  steps: WorkflowStep[];
+};
+
+export type BlockRegistryEntry = RegistryEntry & {
+  steps?: WorkflowStep[];
 };
 
 export type RuntimeRegistry = {
   presets: RegistryEntry[];
-  workflows: RegistryEntry[];
-  blocks: RegistryEntry[];
+  workflows: WorkflowRegistryEntry[];
+  blocks: BlockRegistryEntry[];
   agents: RegistryEntry[];
   schemas: RegistryEntry[];
   comments: RegistryEntry[];
   tools: RegistryEntry[];
 };
+
+export type RuntimeModuleSet = Partial<{
+  presets: RegistryEntry[];
+  workflows: WorkflowRegistryEntry[];
+  blocks: BlockRegistryEntry[];
+  agents: RegistryEntry[];
+  schemas: RegistryEntry[];
+  comments: RegistryEntry[];
+  tools: RegistryEntry[];
+}>;

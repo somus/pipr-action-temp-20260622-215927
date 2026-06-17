@@ -2,7 +2,16 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import type { PiprConfig, ResolvedConfig } from "./types.js";
+import type {
+  BlockRegistryEntry,
+  PiprConfig,
+  RegistryCollectionName,
+  RegistryEntry,
+  ResolvedConfig,
+  RuntimeModuleSet,
+  SourceMap,
+  WorkflowRegistryEntry,
+} from "./types.js";
 
 const providerSchema = z
   .object({
@@ -24,6 +33,38 @@ const configSchema = z.object({
     min_confidence: z.number().min(0).max(1),
   }),
 });
+
+const workflowStepSchema = z.object({
+  block: z.string().min(1),
+  with: z.unknown().optional(),
+  output: z.string().min(1).optional(),
+});
+
+const registryEntrySchema = z.object({
+  id: z.string().min(1),
+  description: z.string().min(1),
+});
+
+const workflowEntrySchema = registryEntrySchema.extend({
+  events: z.array(z.string().min(1)).default([]),
+  steps: z.array(workflowStepSchema).default([]),
+});
+
+const blockEntrySchema = registryEntrySchema.extend({
+  steps: z.array(workflowStepSchema).optional(),
+});
+
+const registryModulesSchema = z
+  .object({
+    presets: z.array(registryEntrySchema).default([]),
+    workflows: z.array(workflowEntrySchema).default([]),
+    blocks: z.array(blockEntrySchema).default([]),
+    agents: z.array(registryEntrySchema).default([]),
+    schemas: z.array(registryEntrySchema).default([]),
+    comments: z.array(registryEntrySchema).default([]),
+    tools: z.array(registryEntrySchema).default([]),
+  })
+  .partial();
 
 const rawSecretPattern = /(sk-|api[_-]?key|secret|token)[a-z0-9_-]{8,}/i;
 
@@ -56,13 +97,17 @@ export type LoadConfigOptions = {
 export async function loadConfig(options: LoadConfigOptions): Promise<ResolvedConfig> {
   const configDir = options.configDir ?? ".pipr";
   const configPath = path.join(options.rootDir, configDir, "config.yaml");
+  const registryPath = path.join(options.rootDir, configDir, "registry.yaml");
   const exists = await fileExists(configPath);
+  const modules = await loadRegistryModules(registryPath);
 
   if (!exists) {
     return validateResolvedConfig(
       {
         config: builtinMinimalConfig,
         source: "builtin:minimal",
+        sources: defaultSources("builtin:minimal", modules.sources),
+        modules: modules.modules,
         warnings: [`${configDir}/config.yaml not found; using builtin:minimal`],
       },
       options,
@@ -70,7 +115,7 @@ export async function loadConfig(options: LoadConfigOptions): Promise<ResolvedCo
   }
 
   const raw = await readFile(configPath, "utf8");
-  const parsed = parse(raw) as Partial<PiprConfig> | null;
+  const parsed = parseYamlObject<Partial<PiprConfig>>(configPath, raw);
   if (parsed === null || typeof parsed !== "object") {
     throw new Error(`${configPath}: expected a YAML object`);
   }
@@ -96,7 +141,16 @@ export async function loadConfig(options: LoadConfigOptions): Promise<ResolvedCo
     },
   };
 
-  return validateResolvedConfig({ config: merged, source: configPath, warnings: [] }, options);
+  return validateResolvedConfig(
+    {
+      config: merged,
+      source: configPath,
+      sources: configSources(configPath, parsed, modules.sources, extendsBuiltin),
+      modules: modules.modules,
+      warnings: [],
+    },
+    options,
+  );
 }
 
 export function validateResolvedConfig(
@@ -145,6 +199,108 @@ function emptyConfig(): PiprConfig {
       min_confidence: 0.75,
     },
   };
+}
+
+function defaultSources(
+  source: "builtin:minimal" | "runtime:defaults",
+  moduleSources: SourceMap["modules"] = {},
+): SourceMap {
+  return {
+    config: source,
+    fields: {
+      version: `${source}#version`,
+      extends: `${source}#extends`,
+      default_provider: `${source}#default_provider`,
+      providers: `${source}#providers`,
+      review: `${source}#review`,
+    },
+    modules: moduleSources,
+  };
+}
+
+function configSources(
+  configPath: string,
+  parsed: Partial<PiprConfig>,
+  moduleSources: SourceMap["modules"],
+  extendsBuiltin: boolean,
+): SourceMap {
+  const sources = defaultSources(
+    extendsBuiltin ? "builtin:minimal" : "runtime:defaults",
+    moduleSources,
+  );
+  sources.config = configPath;
+  for (const field of ["version", "extends", "default_provider", "providers", "review"] as const) {
+    if (field in parsed) {
+      sources.fields[field] = `${configPath}#${field}`;
+    }
+  }
+  return sources;
+}
+
+type LoadedRegistryModules = {
+  modules: RuntimeModuleSet;
+  sources: SourceMap["modules"];
+};
+
+async function loadRegistryModules(registryPath: string): Promise<LoadedRegistryModules> {
+  if (!(await fileExists(registryPath))) {
+    return { modules: {}, sources: {} };
+  }
+
+  const raw = await readFile(registryPath, "utf8");
+  const parsed = parseYamlObject<RuntimeModuleSet>(registryPath, raw);
+  if (parsed === null || typeof parsed !== "object") {
+    throw new Error(`${registryPath}: expected a YAML object`);
+  }
+
+  const parsedModules = registryModulesSchema.parse(parsed) as RuntimeModuleSet;
+  const sources: SourceMap["modules"] = {};
+  const modules: RuntimeModuleSet = {
+    presets: sourceEntries("presets", parsedModules.presets, registryPath, sources),
+    workflows: sourceEntries("workflows", parsedModules.workflows, registryPath, sources),
+    blocks: sourceEntries("blocks", parsedModules.blocks, registryPath, sources),
+    agents: sourceEntries("agents", parsedModules.agents, registryPath, sources),
+    schemas: sourceEntries("schemas", parsedModules.schemas, registryPath, sources),
+    comments: sourceEntries("comments", parsedModules.comments, registryPath, sources),
+    tools: sourceEntries("tools", parsedModules.tools, registryPath, sources),
+  };
+  return { modules, sources };
+}
+
+function sourceEntries<T extends RegistryEntry>(
+  collection: RegistryCollectionName,
+  entries: T[] | undefined,
+  registryPath: string,
+  sources: SourceMap["modules"],
+): T[] | undefined {
+  if (!entries) {
+    return undefined;
+  }
+  sources[collection] = {};
+  return entries.map((entry) => withSource(collection, entry, registryPath, sources));
+}
+
+function withSource<T extends RegistryEntry | WorkflowRegistryEntry | BlockRegistryEntry>(
+  collection: RegistryCollectionName,
+  entry: T,
+  registryPath: string,
+  sources: SourceMap["modules"],
+): T {
+  const sourceLocation = `${registryPath}#${collection}.${entry.id}`;
+  sources[collection] = {
+    ...(sources[collection] ?? {}),
+    [entry.id]: sourceLocation,
+  };
+  return { ...entry, source: registryPath, sourceLocation };
+}
+
+function parseYamlObject<T>(filePath: string, raw: string): T | null {
+  try {
+    return parse(raw) as T | null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${filePath}: ${message}`);
+  }
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

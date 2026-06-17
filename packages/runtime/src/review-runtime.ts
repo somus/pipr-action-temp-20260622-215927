@@ -5,6 +5,7 @@ import {
 } from "./comment.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "./diff.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "./pi.js";
+import { createRuntimeRegistry } from "./registry.js";
 import { parsePrReview, validatePrReview } from "./review.js";
 import type {
   DiffManifest,
@@ -12,8 +13,10 @@ import type {
   ProviderConfig,
   PrReview,
   PullRequestEventContext,
+  RuntimeRegistry,
   ValidatedReview,
 } from "./types.js";
+import { executeWorkflow, type WorkflowBlockHandlers } from "./workflow.js";
 
 export type PiRunner = (options: PiRunOptions) => Promise<PiRunResult>;
 export type DiffManifestBuilder = (options: BuildDiffManifestOptions) => DiffManifest;
@@ -22,6 +25,7 @@ export type RunReviewRuntimeOptions = {
   workspace: string;
   config: PiprConfig;
   event: PullRequestEventContext;
+  registry?: RuntimeRegistry;
   piExecutable?: string;
   piRunner?: PiRunner;
   diffManifestBuilder?: DiffManifestBuilder;
@@ -43,40 +47,127 @@ export async function runReviewRuntime(
   options: RunReviewRuntimeOptions,
 ): Promise<ReviewRuntimeResult> {
   const provider = resolveDefaultProvider(options.config);
-  const diffManifest = (options.diffManifestBuilder ?? buildDiffManifest)({
-    cwd: options.workspace,
-    baseSha: options.event.baseSha,
-    headSha: options.event.headSha,
-  });
-  const agentResult = await runReviewerAgent({
-    provider,
-    diffManifest,
+  let repairAttempted = false;
+  let diffManifest: DiffManifest | undefined;
+  const workflow = await executeWorkflow({
+    registry: options.registry ?? createRuntimeRegistry(),
     event: options.event,
-    workspace: options.workspace,
-    piExecutable: options.piExecutable,
-    piRunner: options.piRunner,
+    blocks: reviewWorkflowHandlers({
+      options,
+      provider,
+      markRepairAttempted: () => {
+        repairAttempted = true;
+      },
+      setDiffManifest: (manifest) => {
+        diffManifest = manifest;
+      },
+    }),
   });
-  const validated = validatePrReview(agentResult.review, diffManifest, {
-    maxInlineComments: options.config.review.max_inline_comments,
-    minConfidence: options.config.review.min_confidence,
-  });
-  const mainComment = renderMainComment({
-    event: options.event,
-    review: agentResult.review,
-    validFindings: validated.validFindings,
-    droppedCount: validated.droppedFindings.length,
-    providerModel: provider.model,
-  });
+  const validated = requireContextValue<ValidatedReview>(workflow.context, "validated_review");
+  const mainComment = requireContextValue<string>(workflow.context, "main_comment");
+  const inlineCommentDrafts = requireContextValue<InlineCommentDraft[]>(
+    workflow.context,
+    "inline_comments",
+  );
 
   return {
     provider,
-    diffManifest,
-    review: agentResult.review,
+    diffManifest: requireWorkflowValue(diffManifest, "diff_manifest"),
+    review: validated.review,
     validated,
     mainComment,
-    inlineCommentDrafts: prepareInlineCommentDrafts(validated),
-    repairAttempted: agentResult.repairAttempted,
+    inlineCommentDrafts,
+    repairAttempted,
   };
+}
+
+function reviewWorkflowHandlers(options: {
+  options: RunReviewRuntimeOptions;
+  provider: ProviderConfig;
+  markRepairAttempted: () => void;
+  setDiffManifest: (manifest: DiffManifest) => void;
+}): WorkflowBlockHandlers {
+  const runtime = options.options;
+  return {
+    "context.diff_manifest": () => {
+      const manifest = (runtime.diffManifestBuilder ?? buildDiffManifest)({
+        cwd: runtime.workspace,
+        baseSha: runtime.event.baseSha,
+        headSha: runtime.event.headSha,
+      });
+      options.setDiffManifest(manifest);
+      return manifest;
+    },
+    "agent.run": async (input) => {
+      const diffManifest = readAgentInput(input);
+      const result = await runReviewerAgent({
+        provider: options.provider,
+        diffManifest,
+        event: runtime.event,
+        workspace: runtime.workspace,
+        piExecutable: runtime.piExecutable,
+        piRunner: runtime.piRunner,
+      });
+      if (result.repairAttempted) {
+        options.markRepairAttempted();
+      }
+      return result.review;
+    },
+    "validate.pr_review": (input) => {
+      const value = requireRecord(input, "validate.pr_review input");
+      return validatePrReview(value.review as PrReview, value.manifest as DiffManifest, {
+        maxInlineComments: runtime.config.review.max_inline_comments,
+        minConfidence: runtime.config.review.min_confidence,
+      });
+    },
+    "publish.main_comment": (input) => {
+      const validated = readValidatedReview(input, "publish.main_comment input");
+      return renderMainComment({
+        event: runtime.event,
+        review: validated.review,
+        validFindings: validated.validFindings,
+        droppedCount: validated.droppedFindings.length,
+        providerModel: options.provider.model,
+      });
+    },
+    "publish.inline_comments": (input) =>
+      prepareInlineCommentDrafts(readValidatedReview(input, "publish.inline_comments input")),
+  };
+}
+
+function readAgentInput(input: unknown): DiffManifest {
+  const value = requireRecord(input, "agent.run input");
+  return value.input as DiffManifest;
+}
+
+function readValidatedReview(input: unknown, label: string): ValidatedReview {
+  const value = requireRecord(input, label);
+  return value.review as ValidatedReview;
+}
+
+function requireContextValue<T>(context: Record<string, unknown>, key: string): T {
+  if (!hasOwn(context, key)) {
+    throw new Error(`Review workflow did not produce '${key}'`);
+  }
+  return context[key] as T;
+}
+
+function requireWorkflowValue<T>(value: T | undefined, key: string): T {
+  if (value === undefined) {
+    throw new Error(`Review workflow did not produce '${key}'`);
+  }
+  return value;
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.hasOwn(value, key);
 }
 
 export async function runReviewerAgent(options: {

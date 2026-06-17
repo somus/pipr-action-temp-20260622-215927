@@ -35,8 +35,7 @@ describe("diff manifest parsing", () => {
   });
 
   it("uses the merge base when the base branch has advanced", async () => {
-    const repo = await createGitRepo();
-    try {
+    await withGitRepo(async (repo) => {
       await writeFile(path.join(repo, "shared.txt"), "base\n");
       commitAll(repo, "base");
       const mergeBaseSha = git(repo, "rev-parse", "HEAD");
@@ -61,73 +60,50 @@ describe("diff manifest parsing", () => {
           deletions: 0,
         },
       ]);
-    } finally {
-      await rm(repo, { recursive: true, force: true });
-    }
+    });
   });
 
   it("excludes oversized changed-line spans", async () => {
-    const repo = await createGitRepo();
-    try {
-      await writeFile(path.join(repo, "seed.txt"), "base\n");
-      commitAll(repo, "base");
-      const baseSha = git(repo, "rev-parse", "HEAD");
-
+    await withGitRepo(async (repo) => {
+      const baseSha = await commitFile(repo, "seed.txt", "base\n", "base");
       const largeFile = Array.from(
         { length: 1200 },
         (_, index) => `line ${index} ${"x".repeat(2000)}`,
       ).join("\n");
-      await writeFile(path.join(repo, "large.ts"), `${largeFile}\n`);
-      commitAll(repo, "large file");
-      const headSha = git(repo, "rev-parse", "HEAD");
-
-      const manifest = buildDiffManifest({ cwd: repo, baseSha, headSha });
-      const file = manifest.files.find((entry) => entry.path === "large.ts");
+      const headSha = await commitFile(repo, "large.ts", `${largeFile}\n`, "large file");
+      const file = changedFile(buildDiffManifest({ cwd: repo, baseSha, headSha }), "large.ts");
 
       expect(file?.excludedReason).toBe("oversized diff");
       expect(file?.additions).toBe(1200);
       expect(file?.deletions).toBe(0);
       expect(file?.commentableRanges).toEqual([]);
-    } finally {
-      await rm(repo, { recursive: true, force: true });
-    }
+    });
   });
 
   it("excludes binary diffs before parsing inline ranges", async () => {
-    const repo = await createGitRepo();
-    try {
-      await writeFile(path.join(repo, "asset.bin"), Buffer.from([0, 1, 2, 3, 4]));
-      commitAll(repo, "base");
-      const baseSha = git(repo, "rev-parse", "HEAD");
-
-      await writeFile(path.join(repo, "asset.bin"), Buffer.from([0, 1, 2, 9, 10]));
-      commitAll(repo, "binary change");
-      const headSha = git(repo, "rev-parse", "HEAD");
-
-      const manifest = buildDiffManifest({ cwd: repo, baseSha, headSha });
-      const file = manifest.files.find((entry) => entry.path === "asset.bin");
+    await withGitRepo(async (repo) => {
+      const baseSha = await commitFile(repo, "asset.bin", Buffer.from([0, 1, 2, 3, 4]), "base");
+      const headSha = await commitFile(
+        repo,
+        "asset.bin",
+        Buffer.from([0, 1, 2, 9, 10]),
+        "binary change",
+      );
+      const file = changedFile(buildDiffManifest({ cwd: repo, baseSha, headSha }), "asset.bin");
 
       expect(file?.excludedReason).toBe("binary diff");
       expect(file?.additions).toBe(0);
       expect(file?.deletions).toBe(0);
       expect(file?.commentableRanges).toEqual([]);
-    } finally {
-      await rm(repo, { recursive: true, force: true });
-    }
+    });
   });
 
   it("keeps additions and deletions for renamed files", async () => {
-    const repo = await createGitRepo();
-    try {
-      await mkdir(path.join(repo, "src"), { recursive: true });
-      await writeFile(path.join(repo, "src", "old.ts"), "line 1\nline 2\n");
-      commitAll(repo, "base");
-      const baseSha = git(repo, "rev-parse", "HEAD");
+    await withGitRepo(async (repo) => {
+      const baseSha = await commitFile(repo, "src/old.ts", "line 1\nline 2\n", "base");
 
       await rm(path.join(repo, "src", "old.ts"), { force: true });
-      await writeFile(path.join(repo, "src", "new.ts"), "line 1\nline 2\nline 3\n");
-      commitAll(repo, "rename");
-      const headSha = git(repo, "rev-parse", "HEAD");
+      const headSha = await commitFile(repo, "src/new.ts", "line 1\nline 2\nline 3\n", "rename");
 
       const manifest = buildDiffManifest({ cwd: repo, baseSha, headSha });
 
@@ -140,26 +116,22 @@ describe("diff manifest parsing", () => {
           deletions: 0,
         },
       ]);
-    } finally {
-      await rm(repo, { recursive: true, force: true });
-    }
+    });
   });
 
   it("pre-excludes oversized renamed files while preserving target stats", async () => {
-    const repo = await createGitRepo();
-    try {
-      await mkdir(path.join(repo, "src"), { recursive: true });
-      await writeFile(path.join(repo, "src", "old.ts"), makeNumberedLines("base", 3000));
-      commitAll(repo, "base");
-      const baseSha = git(repo, "rev-parse", "HEAD");
+    await withGitRepo(async (repo) => {
+      const baseSha = await commitFile(repo, "src/old.ts", makeNumberedLines("base", 3000), "base");
 
       await rm(path.join(repo, "src", "old.ts"), { force: true });
-      await writeFile(path.join(repo, "src", "new.ts"), makePartiallyChangedLines(1200, 3000));
-      commitAll(repo, "oversized rename");
-      const headSha = git(repo, "rev-parse", "HEAD");
+      const headSha = await commitFile(
+        repo,
+        "src/new.ts",
+        makePartiallyChangedLines(1200, 3000),
+        "oversized rename",
+      );
 
-      const manifest = buildDiffManifest({ cwd: repo, baseSha, headSha });
-      const file = manifest.files.find((entry) => entry.path === "src/new.ts");
+      const file = changedFile(buildDiffManifest({ cwd: repo, baseSha, headSha }), "src/new.ts");
 
       expect(file).toMatchObject({
         previousPath: "src/old.ts",
@@ -169,15 +141,23 @@ describe("diff manifest parsing", () => {
         excludedReason: "oversized diff",
       });
       expect(file?.commentableRanges).toEqual([]);
-    } finally {
-      await rm(repo, { recursive: true, force: true });
-    }
+    });
   });
 });
+
+async function withGitRepo<T>(run: (repo: string) => Promise<T>): Promise<T> {
+  const repo = await createGitRepo();
+  try {
+    return await run(repo);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+}
 
 async function createGitRepo(): Promise<string> {
   const repo = await mkdtemp(path.join(os.tmpdir(), "pipr-diff-"));
   git(repo, "init", "-b", "main");
+  git(repo, "config", "core.hooksPath", "/dev/null");
   git(repo, "config", "commit.gpgsign", "false");
   git(repo, "config", "user.email", "test@example.com");
   git(repo, "config", "user.name", "pipr test");
@@ -186,7 +166,24 @@ async function createGitRepo(): Promise<string> {
 
 function commitAll(repo: string, message: string): void {
   git(repo, "add", ".");
-  git(repo, "commit", "-m", message);
+  git(repo, "commit", "--no-verify", "-m", message);
+}
+
+async function commitFile(
+  repo: string,
+  filePath: string,
+  contents: string | Buffer,
+  message: string,
+): Promise<string> {
+  const target = path.join(repo, filePath);
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, contents);
+  commitAll(repo, message);
+  return git(repo, "rev-parse", "HEAD");
+}
+
+function changedFile(manifest: ReturnType<typeof buildDiffManifest>, filePath: string) {
+  return manifest.files.find((entry) => entry.path === filePath);
 }
 
 function git(repo: string, ...args: string[]): string {
