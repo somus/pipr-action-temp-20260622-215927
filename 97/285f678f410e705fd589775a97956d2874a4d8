@@ -1,0 +1,111 @@
+packages/cli/tsconfig.json
+  s_e3682c1e6e7dd6::t_372862cc7d8468 8
+packages/runtime/src/comment.ts
+  s_e3682c1e6e7dd6::t_d566d14a19bb09 61-68
+packages/runtime/src/pi.ts
+  s_e3682c1e6e7dd6::t_ee988811ce52ba 43-44,50-58,68-71
+  s_e3682c1e6e7dd6::t_296e76f63dd189 2-31,35-41,59,61-67,76,80-83,86-87,89,94-107,112-118,121
+  s_e3682c1e6e7dd6::t_c60933e4423af3 33
+  s_e3682c1e6e7dd6::t_a8582a21cc5456 60
+  s_e3682c1e6e7dd6::t_a7eef1b4a40313 45-49
+  s_e3682c1e6e7dd6::t_bcc3e7ceda1f8d 143-144,148-153
+  s_e3682c1e6e7dd6::t_16555fa3ba9560 74
+  s_e3682c1e6e7dd6::t_0ab47d04f47ab6 131,139
+  s_e3682c1e6e7dd6::t_26eb5b0cc0b4ae 75,77-79,84-85,88,90-93,108-109,120,126-130,132-138,145-146
+test/fixtures/act/pull_request.json
+  s_e3682c1e6e7dd6::t_3f06207b9584c4 1-24
+turbo.json
+  s_e3682c1e6e7dd6::t_eb24ac69958e76 29
+  s_e3682c1e6e7dd6::t_a958097fc286a1 13
+  s_e3682c1e6e7dd6::t_633a3f9676ebd0 22-27
+hk.pkl
+  s_e3682c1e6e7dd6::t_0d560a12e45ec1 1-33
+.fallowrc.json
+  s_e3682c1e6e7dd6::t_4d8184c6d4d638 4-6
+  s_e3682c1e6e7dd6::t_335e15e0f20fb3 8-13
+packages/cli/package.json
+  s_e3682c1e6e7dd6::t_fddfa90880f451 12-14
+packages/runtime/test/config.test.ts
+  s_e3682c1e6e7dd6::t_9f159d930ffe97 19-59
+Dockerfile
+  s_e3682c1e6e7dd6::t_038cde1ba4e8e3 9-14
+  s_e3682c1e6e7dd6::t_50bd0438d79df3 19-22
+  s_e3682c1e6e7dd6::t_391a452187b601 1,15
+packages/cli/test/main.test.ts
+  s_e3682c1e6e7dd6::t_d755d7517ee8c8 2-4,6-18,22,26-28,32,37-38,57-61,63,65-68,72-73,108-130
+  s_e3682c1e6e7dd6::t_00deed2b1fd130 64,74-84
+  s_e3682c1e6e7dd6::t_b593dc30103f2a 1,5,62,69-71,85-107
+  s_e3682c1e6e7dd6::t_4fb2f488306f39 19-21,23-25,29-31,33-36,39-56
+README.md
+  s_e3682c1e6e7dd6::t_d34ea6f2f46eb6 3-42,44-47
+  s_e3682c1e6e7dd6::t_a23da6897e6482 43
+packages/runtime/src/event.ts
+  s_e3682c1e6e7dd6::t_38e0a35cd2bfc1 28-29,40-52,90-101
+  s_e3682c1e6e7dd6::t_01bbce4a75011e 32-38,53-60,66-89
+  s_e3682c1e6e7dd6::t_83273683dd36ea 61-65
+scripts/act-pr-fixture.sh
+  s_e3682c1e6e7dd6::t_3f06207b9584c4 11
+  s_e3682c1e6e7dd6::t_bfd2006a561878 12
+  s_e3682c1e6e7dd6::t_2b4d2b947ba22a 4-8,13
+.github/workflows/ci.yml
+  s_e3682c1e6e7dd6::t_391a452187b601 13-14
+  s_e3682c1e6e7dd6::t_6d7c50f1cb127c 18-19
+packages/runtime/src/diff.ts
+  s_e3682c1e6e7dd6::t_a8dc159ff8e260 163-166
+  s_e3682c1e6e7dd6::t_929403dcb2653e 27,214-221
+  s_e3682c1e6e7dd6::t_2235a587850efb 33,44,46,82-88,90,92-97,115-128,135-138,143-150,153-155,159-162,167
+  s_e3682c1e6e7dd6::t_a1c631d97147e0 45,47-49
+  s_e3682c1e6e7dd6::t_96f6d487c19720 7-11,30-31,40-43,89,91,98-114,139-142,151-152,156-158
+  s_e3682c1e6e7dd6::t_3a1066f02d9d0c 129-134
+  s_e3682c1e6e7dd6::t_2e71d14c543449 66-77,180-201,244-377
+packages/cli/src/main.ts
+  s_e3682c1e6e7dd6::t_da030412e90bf5 24-27,60-63,78-81,153-156
+  s_e3682c1e6e7dd6::t_88d2ada220464c 17-19,32-58,64-77,139-152,157-224
+AGENTS.md
+  s_e3682c1e6e7dd6::t_cac1908f27d703 1-73
+.dockerignore
+  s_e3682c1e6e7dd6::t_0bd782773d4c92 9-11
+packages/runtime/test/comment.test.ts
+  s_e3682c1e6e7dd6::t_eea1e10892b42a 54-55,60-61,63-66
+  s_e3682c1e6e7dd6::t_fe3057690981a4 56-59,62
+packages/runtime/test/diff.test.ts
+  s_e3682c1e6e7dd6::t_c419f3eb1b014e 2,122-123,127-128,136-137
+  s_e3682c1e6e7dd6::t_c123640731b363 181
+  s_e3682c1e6e7dd6::t_7d9fa02631232c 76-79
+  s_e3682c1e6e7dd6::t_adaf1868ea1a8f 57-63,88-89
+  s_e3682c1e6e7dd6::t_b90fdf0ad875da 96-118,143-171,194-203
+  s_e3682c1e6e7dd6::t_6a04fb036faf0d 95,119-121,124-126,129-135,138-142,172-175
+  s_e3682c1e6e7dd6::t_66f5c3aab12fbf 1,3-56,64-75,80-87,90-94,177-180,182-193,204
+packages/runtime/test/pi.test.ts
+  s_e3682c1e6e7dd6::t_0d79302b1b6550 1,59,111-122
+  s_e3682c1e6e7dd6::t_5f2e0702db75d2 2-3,5,44-58,60-89,91,95,97-103,105-110,123-124
+  s_e3682c1e6e7dd6::t_6234ef448ccae1 4,6-7,9-17,19-29,39-43,104
+  s_e3682c1e6e7dd6::t_7302f133958046 8,18,30-38,90,92-94,96
+packages/runtime/src/config.ts
+  s_e3682c1e6e7dd6::t_69cb0bce1ba530 161-201
+packages/runtime/test/review.test.ts
+  s_e3682c1e6e7dd6::t_4d0cecda4e8274 92-103
+.github/workflows/pipr-local.yml
+  s_e3682c1e6e7dd6::t_391a452187b601 15
+packages/runtime/src/review.ts
+  s_e3682c1e6e7dd6::t_98f8c5653b0505 92-99
+package.json
+  s_e3682c1e6e7dd6::t_0d560a12e45ec1 1-14,17-29
+  s_e3682c1e6e7dd6::t_633a3f9676ebd0 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "97285f678f410e705fd589775a97956d2874a4d8",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
