@@ -6,6 +6,7 @@ import {
   loadConfig,
   loadPullRequestEventContext,
   renderRegistryGraph,
+  runReviewRuntime,
 } from "@pipr/runtime";
 
 type CliOptions = {
@@ -66,19 +67,35 @@ async function main(): Promise<void> {
 
 async function runAction(options: CliOptions): Promise<void> {
   const dryRun = isActionDryRun();
+  const event = await loadActionEvent();
   const resolved = await loadConfig({
     rootDir: actionWorkspace(),
     configDir: actionConfigDir(options),
     env: process.env,
     requireProviderEnv: !dryRun,
   });
-  await logActionEvent();
+  logActionEvent(event);
   core.info(`pipr config source: ${resolved.source}`);
   if (dryRun) {
     core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
     return;
   }
-  throw new Error("pipr action review runtime is not implemented yet");
+  const result = await runReviewRuntime({
+    workspace: actionWorkspace(),
+    config: resolved.config,
+    event,
+    piExecutable: process.env.PIPR_PI_EXECUTABLE,
+  });
+  core.info(
+    `pipr review produced ${result.validated.validFindings.length} inline draft(s), ` +
+      `${result.validated.droppedFindings.length} dropped finding(s)`,
+  );
+  if (result.repairAttempted) {
+    core.info("pipr repaired reviewer JSON once before validation");
+  }
+  core.setOutput("main-comment", result.mainComment);
+  core.setOutput("inline-comments", JSON.stringify(result.inlineCommentDrafts));
+  core.setOutput("dropped-findings", JSON.stringify(result.validated.droppedFindings));
 }
 
 async function runValidate(options: CliOptions): Promise<void> {
@@ -191,12 +208,15 @@ function isActionDryRun(): boolean {
   return process.env.PIPR_DRY_RUN === "1";
 }
 
-async function logActionEvent(): Promise<void> {
+async function loadActionEvent() {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) {
-    return;
+    throw new Error("GITHUB_EVENT_PATH is required for pipr action");
   }
-  const event = await loadPullRequestEventContext(eventPath, process.env);
+  return await loadPullRequestEventContext(eventPath, process.env);
+}
+
+function logActionEvent(event: Awaited<ReturnType<typeof loadActionEvent>>): void {
   core.info(`pipr loaded PR #${event.pullRequestNumber} for ${event.repo}`);
 }
 

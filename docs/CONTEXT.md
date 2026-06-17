@@ -6,11 +6,15 @@ pipr is a Pi-powered pull request automation context. Its language describes the
 
 **pipr**:
 The GitHub pull request automation product that reviews pull requests through Pi-powered agents.
-_Avoid_: pi-pr-agent
+_Avoid_: legacy product names
 
 **pipr Configuration**:
 The repository-local product control plane under `.pipr/`.
-_Avoid_: `.pi-pr/`, `.pi/`
+_Avoid_: legacy configuration roots, `.pi/`
+
+**@pipr**:
+The GitHub pull request command mention used to request pipr review, summaries, or help from a pull request conversation.
+_Avoid_: bot aliases
 
 **Pi Agent Runner**:
 The agent execution boundary where Pi runs reviewer prompts and returns structured output to pipr.

@@ -5,6 +5,13 @@ inputs:
     description: pipr configuration directory
     required: false
     default: .pipr
+outputs:
+  main-comment:
+    description: Rendered main PR review comment body
+  inline-comments:
+    description: JSON array of inline review comment drafts
+  dropped-findings:
+    description: JSON array of findings dropped during validation
 runs:
   using: docker
   image: Dockerfile
