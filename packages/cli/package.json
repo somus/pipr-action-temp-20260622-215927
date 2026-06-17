@@ -1,0 +1,21 @@
+{
+  "name": "@pipr/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "pipr": "./src/main.ts"
+  },
+  "scripts": {
+    "build": "tsdown src/main.ts --dts --format esm --out-dir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check src test",
+    "format:check": "biome check src test",
+    "check": "bun run lint && bun run typecheck && bun run test && bun run build"
+  },
+  "dependencies": {
+    "@actions/core": "3.0.1",
+    "@pipr/runtime": "workspace:*"
+  }
+}

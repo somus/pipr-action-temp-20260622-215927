@@ -1,0 +1,14 @@
+name: pipr
+description: Pi-powered pull request automation runtime
+inputs:
+  config-dir:
+    description: pipr configuration directory
+    required: false
+    default: .pipr
+runs:
+  using: docker
+  image: Dockerfile
+  args:
+    - action
+    - --config-dir
+    - ${{ inputs.config-dir }}

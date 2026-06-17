@@ -1,0 +1,24 @@
+{
+  "action": "opened",
+  "number": 1,
+  "pull_request": {
+    "number": 1,
+    "base": {
+      "sha": "0000000000000000000000000000000000000000",
+      "ref": "main",
+      "repo": {
+        "full_name": "local/pipr"
+      }
+    },
+    "head": {
+      "sha": "1111111111111111111111111111111111111111",
+      "ref": "feature",
+      "repo": {
+        "full_name": "local/pipr"
+      }
+    }
+  },
+  "repository": {
+    "full_name": "local/pipr"
+  }
+}
