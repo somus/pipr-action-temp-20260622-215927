@@ -1,0 +1,35 @@
+packages/cli/src/main.ts
+  s_e3682c1e6e7dd6::t_ec185820718a4f 9,70,77,83-98,211,214,216-219
+packages/cli/test/main.test.ts
+  s_e3682c1e6e7dd6::t_c06e9213c363f8 81
+  s_e3682c1e6e7dd6::t_f19897161682f7 2,28-29,31-33,55-80,82-97,150-165,181
+  s_e3682c1e6e7dd6::t_ca20e002e69586 175
+packages/runtime/src/review-runtime.ts
+  s_e3682c1e6e7dd6::t_5474f1b6b1cb65 1,3-5,8-12,14-39,41-224
+  s_e3682c1e6e7dd6::t_c06e9213c363f8 2,6-7,13,40
+action.yml
+  s_e3682c1e6e7dd6::t_ffa07f5e3f5b5b 8-14
+packages/runtime/test/review-runtime.test.ts
+  s_e3682c1e6e7dd6::t_c06e9213c363f8 3
+  s_e3682c1e6e7dd6::t_a644ffb703daf5 1-2,4-128
+packages/runtime/src/index.ts
+  s_e3682c1e6e7dd6::t_503589b8021c9d 8
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_8f8b32c4481d6f 9,13-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "350f9160b528a2373a4643cda9bbc4a2e168ffc9",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
