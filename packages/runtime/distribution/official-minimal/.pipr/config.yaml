@@ -1,0 +1,12 @@
+apiVersion: pipr.dev/v1
+kind: Config
+providers:
+  - id: deepseek
+    provider: deepseek
+    model: deepseek-v4-pro
+    apiKeyEnv: DEEPSEEK_API_KEY
+    thinking: high
+workflows:
+  - pipr/review
+limits:
+  timeoutSeconds: 300

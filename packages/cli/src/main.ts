@@ -1,19 +1,27 @@
 #!/usr/bin/env bun
 import { inspect } from "node:util";
 import * as core from "@actions/core";
-import type { RegistryEntry, ResolvedConfig, RuntimeRegistry } from "@pipr/runtime";
+import type { RegistryEntry } from "@pipr/runtime";
 import {
-  createBuiltinRegistry,
-  createRuntimeRegistry,
-  loadConfig,
-  loadPullRequestEventContext,
-  renderRegistryGraph,
-  runReviewRuntime,
+  runActionCommand,
+  runDryRunCommand,
+  runExplainConfigCommand,
+  runGraphCommand,
+  runInitCommand,
+  runListCommand,
+  runValidateCommand,
 } from "@pipr/runtime";
 
 type CliOptions = {
   configDir: string;
   event?: string;
+  force: boolean;
+  trustedProvider?: {
+    providerId?: string;
+    provider?: string;
+    model?: string;
+    apiKeyEnv?: string;
+  };
   requireEnv: boolean;
 };
 
@@ -23,7 +31,10 @@ type OptionHandler = (options: CliOptions, args: string[], index: number) => num
 const help = `pipr
 
 Commands:
-  action [--config-dir .pipr]      Run inside GitHub Docker Action
+  init [--config-dir .pipr] [--force]
+                                   Create editable official minimal config
+  action [--config-dir .pipr] [--provider-id id] [--provider name] [--model model] [--api-key-env ENV]
+                                   Run inside GitHub Docker Action
   validate [--config-dir .pipr] [--require-env]
                                    Validate resolved config
   dry-run --event event.json [--config-dir .pipr]
@@ -35,6 +46,7 @@ Commands:
 `;
 
 const commandHandlers: Record<string, CommandHandler> = {
+  init: runInit,
   action: runAction,
   validate: runValidate,
   "dry-run": runDryRun,
@@ -52,6 +64,11 @@ const commandHandlers: Record<string, CommandHandler> = {
 const optionHandlers: Record<string, OptionHandler> = {
   "--config-dir": readConfigDirOption,
   "--event": readEventOption,
+  "--force": readForceOption,
+  "--provider-id": readProviderIdOption,
+  "--provider": readProviderOption,
+  "--model": readModelOption,
+  "--api-key-env": readApiKeyEnvOption,
   "--require-env": readRequireEnvOption,
 };
 
@@ -69,43 +86,52 @@ async function main(): Promise<void> {
 }
 
 async function runAction(options: CliOptions): Promise<void> {
-  const dryRun = isActionDryRun();
-  const event = await loadActionEvent();
-  const resolved = await loadConfig({
+  const result = await runActionCommand({
     rootDir: actionWorkspace(),
     configDir: actionConfigDir(options),
     env: process.env,
-    requireProviderEnv: !dryRun,
+    eventPath: actionEventPath(),
+    dryRun: isActionDryRun(),
+    piExecutable: process.env.PIPR_PI_EXECUTABLE,
+    trustedProvider: options.trustedProvider,
   });
-  createRuntimeRegistry(resolved);
-  logActionEvent(event);
-  core.info(`pipr config source: ${resolved.source}`);
-  if (dryRun) {
+  logActionEvent(result.event);
+  core.info(`pipr config source: ${result.configSource}`);
+  if (result.kind === "dry-run") {
     core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
     return;
   }
-  const result = await runReviewRuntime({
-    workspace: actionWorkspace(),
-    config: resolved.config,
-    event,
-    registry: createBuiltinRegistry(),
-    piExecutable: process.env.PIPR_PI_EXECUTABLE,
-  });
   core.info(
-    `pipr review produced ${result.validated.validFindings.length} inline draft(s), ` +
-      `${result.validated.droppedFindings.length} dropped finding(s)`,
+    `pipr review produced ${result.review.validated.validFindings.length} inline draft(s), ` +
+      `${result.review.validated.droppedFindings.length} dropped finding(s)`,
   );
-  if (result.repairAttempted) {
+  if (result.review.repairAttempted) {
     core.info("pipr repaired reviewer JSON once before validation");
   }
-  core.setOutput("main-comment", result.mainComment);
-  core.setOutput("inline-comments", JSON.stringify(result.inlineCommentDrafts));
-  core.setOutput("dropped-findings", JSON.stringify(result.validated.droppedFindings));
+  core.setOutput("main-comment", result.review.mainComment);
+  core.setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
+  core.setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
+}
+
+async function runInit(options: CliOptions): Promise<void> {
+  const result = await runInitCommand({
+    rootDir: process.cwd(),
+    configDir: options.configDir,
+    force: options.force,
+  });
+  console.log(
+    `created ${result.created.length} file(s) in ${result.configDir}` +
+      (result.overwritten.length > 0 ? `; overwrote ${result.overwritten.length}` : ""),
+  );
 }
 
 async function runValidate(options: CliOptions): Promise<void> {
-  const resolved = await loadResolvedConfig(options);
-  createRuntimeRegistry(resolved);
+  const resolved = await runValidateCommand({
+    rootDir: process.cwd(),
+    configDir: options.configDir,
+    env: process.env,
+    requireProviderEnv: options.requireEnv,
+  });
   console.log(`valid: ${resolved.source}`);
   for (const warning of resolved.warnings) {
     console.log(`warning: ${warning}`);
@@ -116,51 +142,37 @@ async function runDryRun(options: CliOptions): Promise<void> {
   if (!options.event) {
     throw new Error("dry-run requires --event <path>");
   }
-  const resolved = await loadConfig({
+  const result = await runDryRunCommand({
     rootDir: process.cwd(),
     configDir: options.configDir,
     env: process.env,
-    requireProviderEnv: false,
-  });
-  const event = await loadPullRequestEventContext(options.event, {
-    ...process.env,
-    GITHUB_WORKSPACE: process.cwd(),
-    GITHUB_EVENT_NAME: "pull_request",
+    eventPath: options.event,
   });
   console.log(
     inspect(
       {
-        configSource: resolved.source,
-        event,
-        registry: createRuntimeRegistry(resolved),
+        configSource: result.configSource,
+        event: result.event,
+        registry: result.registry,
       },
       { depth: 6, colors: false },
     ),
   );
 }
 
-function loadResolvedConfig(options: CliOptions): Promise<ResolvedConfig> {
-  return loadConfig({
+async function runExplainConfig(options: CliOptions): Promise<void> {
+  const resolved = await runExplainConfigCommand({
     rootDir: process.cwd(),
     configDir: options.configDir,
     env: process.env,
-    requireProviderEnv: options.requireEnv,
   });
-}
-
-async function loadRuntimeRegistry(options: CliOptions): Promise<RuntimeRegistry> {
-  const resolved = await loadResolvedConfig({ ...options, requireEnv: false });
-  return createRuntimeRegistry(resolved);
-}
-
-async function runExplainConfig(options: CliOptions): Promise<void> {
-  const resolved = await loadResolvedConfig({ ...options, requireEnv: false });
   console.log(inspect(resolved, { depth: 8, colors: false }));
 }
 
 function parseOptions(args: string[]): CliOptions {
   const options: CliOptions = {
     configDir: ".pipr",
+    force: false,
     requireEnv: false,
   };
   let index = 0;
@@ -201,9 +213,39 @@ function readEventOption(options: CliOptions, args: string[], index: number): nu
   return index + 2;
 }
 
+function readForceOption(options: CliOptions, _args: string[], index: number): number {
+  options.force = true;
+  return index + 1;
+}
+
 function readRequireEnvOption(options: CliOptions, _args: string[], index: number): number {
   options.requireEnv = true;
   return index + 1;
+}
+
+function readProviderIdOption(options: CliOptions, args: string[], index: number): number {
+  trustedProviderOptions(options).providerId = readOptionValue(args, index);
+  return index + 2;
+}
+
+function readProviderOption(options: CliOptions, args: string[], index: number): number {
+  trustedProviderOptions(options).provider = readOptionValue(args, index);
+  return index + 2;
+}
+
+function readModelOption(options: CliOptions, args: string[], index: number): number {
+  trustedProviderOptions(options).model = readOptionValue(args, index);
+  return index + 2;
+}
+
+function readApiKeyEnvOption(options: CliOptions, args: string[], index: number): number {
+  trustedProviderOptions(options).apiKeyEnv = readOptionValue(args, index);
+  return index + 2;
+}
+
+function trustedProviderOptions(options: CliOptions): NonNullable<CliOptions["trustedProvider"]> {
+  options.trustedProvider ??= {};
+  return options.trustedProvider;
 }
 
 function readOptionValue(args: string[], index: number): string {
@@ -218,28 +260,34 @@ function actionWorkspace(): string {
   return process.env.GITHUB_WORKSPACE ?? process.cwd();
 }
 
-function actionConfigDir(options: CliOptions): string {
-  return process.env["INPUT_CONFIG-DIR"] || options.configDir;
-}
-
 function isActionDryRun(): boolean {
   return process.env.PIPR_DRY_RUN === "1";
 }
 
-async function loadActionEvent() {
+function actionConfigDir(options: CliOptions): string {
+  return process.env["INPUT_CONFIG-DIR"] || options.configDir;
+}
+
+function actionEventPath(): string {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) {
     throw new Error("GITHUB_EVENT_PATH is required for pipr action");
   }
-  return await loadPullRequestEventContext(eventPath, process.env);
+  return eventPath;
 }
 
-function logActionEvent(event: Awaited<ReturnType<typeof loadActionEvent>>): void {
+function logActionEvent(event: { pullRequestNumber: number; repo: string }): void {
   core.info(`pipr loaded PR #${event.pullRequestNumber} for ${event.repo}`);
 }
 
 async function printGraph(options: CliOptions): Promise<void> {
-  console.log(renderRegistryGraph(await loadRuntimeRegistry(options)));
+  console.log(
+    await runGraphCommand({
+      rootDir: process.cwd(),
+      configDir: options.configDir,
+      env: process.env,
+    }),
+  );
 }
 
 function printHelp(): void {
@@ -247,19 +295,33 @@ function printHelp(): void {
 }
 
 async function listBlocks(options: CliOptions): Promise<void> {
-  listEntries((await loadRuntimeRegistry(options)).blocks);
+  listEntries(await loadEntries(options, "blocks"));
 }
 
 async function listTools(options: CliOptions): Promise<void> {
-  listEntries((await loadRuntimeRegistry(options)).tools);
+  listEntries(await loadEntries(options, "tools"));
 }
 
 async function listAgents(options: CliOptions): Promise<void> {
-  listEntries((await loadRuntimeRegistry(options)).agents);
+  listEntries(await loadEntries(options, "agents"));
 }
 
 async function listPresets(options: CliOptions): Promise<void> {
-  listEntries((await loadRuntimeRegistry(options)).presets);
+  listEntries(await loadEntries(options, "presets"));
+}
+
+function loadEntries(
+  options: CliOptions,
+  collection: "blocks" | "tools" | "agents" | "presets",
+): Promise<RegistryEntry[]> {
+  return runListCommand(
+    {
+      rootDir: process.cwd(),
+      configDir: options.configDir,
+      env: process.env,
+    },
+    collection,
+  );
 }
 
 function listEntries(entries: RegistryEntry[]): void {

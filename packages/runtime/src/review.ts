@@ -1,49 +1,28 @@
 import crypto from "node:crypto";
-import { z } from "zod";
-import type { DiffManifest, PrReview, ReviewFinding, ValidatedReview } from "./types.js";
+import {
+  type PrReview,
+  parsePrReview,
+  prReviewJsonSchema,
+  prReviewSchema,
+  type ReviewFinding,
+  reviewFindingSchema,
+  reviewSchemaExample,
+} from "./review-contract.js";
+import type { DiffManifest, ValidatedReview } from "./types.js";
+import { parseValidatedReview } from "./types.js";
 
-const findingSchema = z.object({
-  title: z.string().min(1),
-  body: z.string().min(1),
-  path: z.string().min(1),
-  rangeId: z.string().min(1),
-  side: z.enum(["RIGHT", "LEFT"]),
-  startLine: z.number().int().positive(),
-  endLine: z.number().int().positive(),
-  severity: z.enum(["critical", "high", "medium", "low", "nit"]),
-  category: z.enum([
-    "correctness",
-    "security",
-    "tests",
-    "performance",
-    "maintainability",
-    "docs",
-    "architecture",
-    "other",
-  ]),
-  confidence: z.number().min(0).max(1),
-  evidenceSnippet: z.string().min(1),
-  suggestedFix: z.string().optional(),
-  semanticAnchor: z.string().optional(),
-  fingerprintHint: z.string().optional(),
-});
-
-export const prReviewSchema = z.object({
-  summary: z.object({
-    body: z.string().min(1),
-  }),
-  inlineFindings: z.array(findingSchema).default([]),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
+export {
+  parsePrReview,
+  prReviewJsonSchema,
+  prReviewSchema,
+  reviewFindingSchema,
+  reviewSchemaExample,
+};
 
 export type ValidateReviewOptions = {
   maxInlineComments: number;
   minConfidence: number;
 };
-
-export function parsePrReview(value: unknown): PrReview {
-  return prReviewSchema.parse(value) as PrReview;
-}
 
 export function validatePrReview(
   review: PrReview,
@@ -99,11 +78,11 @@ export function validatePrReview(
     validFindings.push(finding);
   }
 
-  return {
+  return parseValidatedReview({
     review,
     validFindings,
     droppedFindings,
-  };
+  });
 }
 
 export function findingFingerprint(finding: ReviewFinding): string {

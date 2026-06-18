@@ -1,0 +1,23 @@
+apiVersion: pipr.dev/v1
+kind: Block
+id: pipr/review-default
+description: Build diff context, run the reviewer, and validate output.
+steps:
+  - id: diff
+    uses: core/diff-manifest
+    output: diff_manifest
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/reviewer
+      input:
+        from: diff_manifest
+    output: review_result
+  - id: validate
+    uses: core/validate-pr-review
+    with:
+      review:
+        from: review_result
+      manifest:
+        from: diff_manifest
+    output: validated_review

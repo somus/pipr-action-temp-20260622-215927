@@ -1,9 +1,16 @@
-import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import path from "node:path";
-import type { CommentableRange, DiffManifest, FileStatus, ReviewSide } from "./types.js";
+import { runGit } from "./git.js";
+import type {
+  CommentableRange,
+  DiffManifest,
+  DiffManifestFile,
+  FileStatus,
+  ReviewSide,
+} from "./types.js";
+import { parseDiffManifest } from "./types.js";
 
-type DiffFile = DiffManifest["files"][number];
+type DiffFile = DiffManifestFile;
 type DiffStat = {
   additions: number;
   deletions: number;
@@ -50,12 +57,12 @@ export function buildDiffManifest(options: BuildDiffManifestOptions): DiffManife
     file.excludedReason = excludedReason;
   }
 
-  return {
+  return parseDiffManifest({
     baseSha: options.baseSha,
     headSha: options.headSha,
     mergeBaseSha,
     files,
-  };
+  });
 }
 
 export function parseNameStatus(output: string): DiffFile[] {
@@ -75,15 +82,6 @@ export function parseUnifiedDiff(diff: string): Map<string, CommentableRange[]> 
 
   flushPendingRange(state);
   return state.rangesByPath;
-}
-
-function runGit(args: string[], cwd: string): string {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (result.error || result.status !== 0) {
-    const reason = result.stderr.trim() || result.error?.message || "unknown error";
-    throw new Error(`git ${args.join(" ")} failed: ${reason}`);
-  }
-  return result.stdout;
 }
 
 function getDiffStats(cwd: string, baseSha: string, headSha: string): Map<string, DiffStat> {

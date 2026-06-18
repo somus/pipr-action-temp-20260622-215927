@@ -2,13 +2,16 @@ import { spawn } from "node:child_process";
 import { chmod, cp, lstat, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { toPiProviderInvocation } from "./pi-provider.js";
 import type { ProviderConfig } from "./types.js";
 
 export type PiRunOptions = {
   workspace: string;
   provider: ProviderConfig;
   prompt: string;
+  env?: NodeJS.ProcessEnv;
   piExecutable?: string;
+  timeoutSeconds?: number;
 };
 
 export type PiRunResult = {
@@ -33,8 +36,9 @@ export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
     const args = buildPiArgs(options.provider, options.prompt, sandbox.sessionDir);
     return await runProcess(options.piExecutable ?? "pi", args, {
       cwd: sandbox.workspace,
-      env: buildPiEnv(options.provider, sandbox),
+      env: buildPiEnv(options.provider, sandbox, options.env),
       started,
+      timeoutSeconds: options.timeoutSeconds,
     });
   } finally {
     await chmodRecursive(sandbox.root, 0o755);
@@ -47,26 +51,28 @@ export function buildPiArgs(
   prompt: string,
   sessionDir = ".pipr/pi-sessions",
 ): string[] {
+  const invocation = toPiProviderInvocation(provider);
   return [
     "--provider",
-    provider.id,
+    invocation.provider,
     "--model",
-    provider.model,
+    invocation.model,
     "--mode",
     "json",
     "--print",
     "--no-session",
     "--session-dir",
     sessionDir,
+    "--tools",
+    invocation.tools.join(","),
     "--no-context-files",
     "--no-approve",
     "--no-extensions",
     "--no-skills",
     "--no-prompt-templates",
     "--no-themes",
-    "--no-tools",
     "--thinking",
-    provider.thinking === "disabled" ? "off" : (provider.reasoning_effort ?? "high"),
+    invocation.thinking,
     prompt,
   ];
 }
@@ -82,14 +88,14 @@ function buildPiEnv(
     PI_CODING_AGENT_SESSION_DIR: sandbox.sessionDir,
     PI_TELEMETRY: "0",
     PIPR_PROVIDER_ID: provider.id,
-    PIPR_PROVIDER_API_KEY_ENV: provider.api_key_env,
+    PIPR_PROVIDER_API_KEY_ENV: provider.apiKeyEnv,
     TMPDIR: sandbox.tmp,
     USER: "pipr",
   };
   for (const key of ["BUN_INSTALL", "LANG", "PATH"]) {
     copyEnvValue(env, sourceEnv, key);
   }
-  copyEnvValue(env, sourceEnv, provider.api_key_env);
+  copyEnvValue(env, sourceEnv, provider.apiKeyEnv);
   return env;
 }
 
@@ -157,11 +163,15 @@ async function chmodRecursive(target: string, mode: number): Promise<void> {
 function runProcess(
   command: string,
   args: string[],
-  options: { cwd: string; env: NodeJS.ProcessEnv; started: number },
+  options: { cwd: string; env: NodeJS.ProcessEnv; started: number; timeoutSeconds?: number },
 ): Promise<PiRunResult> {
   return new Promise((resolve, reject) => {
+    let timedOut = false;
+    let timeout: NodeJS.Timeout | undefined;
+    const detached = process.platform !== "win32";
     const child = spawn(command, args, {
       cwd: options.cwd,
+      detached,
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -175,14 +185,41 @@ function runProcess(
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
     });
+    if (options.timeoutSeconds !== undefined) {
+      timeout = setTimeout(() => {
+        timedOut = true;
+        killProcessGroup(child, "SIGTERM");
+      }, options.timeoutSeconds * 1000);
+    }
     child.on("error", reject);
     child.on("close", (exitCode) => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      if (timedOut) {
+        stderr += `${stderr ? "\n" : ""}Pi timed out after ${options.timeoutSeconds}s`;
+      }
       resolve({
         stdout,
         stderr,
-        exitCode: exitCode ?? 1,
+        exitCode: timedOut ? 124 : (exitCode ?? 1),
         durationMs: Date.now() - options.started,
       });
     });
   });
+}
+
+function killProcessGroup(child: ReturnType<typeof spawn>, signal: NodeJS.Signals): void {
+  try {
+    if (process.platform !== "win32" && child.pid) {
+      process.kill(-child.pid, signal);
+      return;
+    }
+    child.kill(signal);
+  } catch (error) {
+    const code = typeof error === "object" && error !== null ? Reflect.get(error, "code") : "";
+    if (code === "ESRCH") {
+      return;
+    }
+  }
 }

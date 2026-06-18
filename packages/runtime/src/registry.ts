@@ -8,6 +8,7 @@ import type {
   WorkflowRegistryEntry,
   WorkflowStep,
 } from "./types.js";
+import { parseRuntimeRegistry } from "./types.js";
 import { isRefValue, validateWorkflowPath } from "./workflow.js";
 
 const registryCollections: RegistryCollectionName[] = [
@@ -20,74 +21,29 @@ const registryCollections: RegistryCollectionName[] = [
   "tools",
 ];
 
-export function createBuiltinRegistry(): RuntimeRegistry {
-  const source = "builtin:minimal";
+export function createCoreRegistry(): RuntimeRegistry {
+  const source = "runtime:core";
   return {
-    presets: [
-      { id: "builtin:minimal", description: "Default single-reviewer PR workflow", source },
-    ],
-    workflows: [
-      {
-        id: "review",
-        description: "Run default review and publish comments",
-        source,
-        events: ["pull_request.opened", "pull_request.synchronize", "pull_request.reopened"],
-        steps: [
-          { block: "review.default", output: "validated_review" },
-          {
-            block: "publish.main_comment",
-            with: { review: { from: "validated_review" } },
-            output: "main_comment",
-          },
-          {
-            block: "publish.inline_comments",
-            with: { review: { from: "validated_review" } },
-            output: "inline_comments",
-          },
-        ],
-      },
-    ],
+    presets: [{ id: "core/default", description: "Default single-reviewer PR workflow", source }],
+    workflows: [],
     blocks: [
-      { id: "context.diff_manifest", description: "Build changed-file manifest", source },
-      { id: "agent.run", description: "Run one Pi-backed reviewer agent", source },
-      { id: "validate.pr_review", description: "Validate structured review output", source },
-      { id: "publish.main_comment", description: "Create or update main review comment", source },
-      { id: "publish.inline_comments", description: "Publish validated inline comments", source },
-      {
-        id: "review.default",
-        description: "Default single-reviewer block composition",
-        source,
-        steps: [
-          { block: "context.diff_manifest", output: "diff_manifest" },
-          {
-            block: "agent.run",
-            with: { input: { from: "diff_manifest" } },
-            output: "review_result",
-          },
-          {
-            block: "validate.pr_review",
-            with: {
-              review: { from: "review_result" },
-              manifest: { from: "diff_manifest" },
-            },
-            output: "validated_review",
-          },
-        ],
-      },
+      { id: "core/diff-manifest", description: "Build changed-file manifest", source },
+      { id: "core/run-agent", description: "Run one Pi-backed reviewer agent", source },
+      { id: "core/validate-pr-review", description: "Validate structured review output", source },
+      { id: "core/main-comment", description: "Create or update main review comment", source },
+      { id: "core/inline-comments", description: "Publish validated inline comments", source },
     ],
-    agents: [{ id: "reviewer", description: "Default pull request reviewer", source }],
-    schemas: [{ id: "pr-review", description: "Structured PR review schema", source }],
-    comments: [{ id: "main", description: "Main pipr review comment template", source }],
-    tools: [
-      { id: "git.read_diff", description: "Read pull request diff context", source },
-      { id: "git.read_file", description: "Read repository files", source },
-      { id: "review.list_commentable_ranges", description: "List valid inline ranges", source },
-    ],
+    agents: [],
+    schemas: [],
+    comments: [],
+    tools: [],
   };
 }
 
 export function createRuntimeRegistry(resolved?: Pick<ResolvedConfig, "modules">): RuntimeRegistry {
-  const registry = mergeModules(createBuiltinRegistry(), resolved?.modules ?? {});
+  const registry = parseRuntimeRegistry(
+    mergeModules(createCoreRegistry(), resolved?.modules ?? {}),
+  );
   validateRegistry(registry);
   return registry;
 }

@@ -1,25 +1,46 @@
 import { readFile } from "node:fs/promises";
+import { z } from "zod";
 import type { PullRequestEventContext } from "./types.js";
+import { parsePullRequestEventContext } from "./types.js";
 
-type GitHubPullRequestPayload = {
-  action?: string;
-  number?: number;
-  repository?: {
-    full_name?: string;
-  };
-  pull_request?: {
-    number?: number;
-    base?: {
-      sha?: string;
-      repo?: {
-        full_name?: string;
-      };
-    };
-    head?: {
-      sha?: string;
-    };
-  };
-};
+const githubPullRequestPayloadSchema = z
+  .object({
+    action: z.string().optional(),
+    number: z.number().optional(),
+    repository: z
+      .object({
+        full_name: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+    pull_request: z
+      .object({
+        number: z.number().optional(),
+        base: z
+          .object({
+            sha: z.string().optional(),
+            repo: z
+              .object({
+                full_name: z.string().optional(),
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough()
+          .optional(),
+        head: z
+          .object({
+            sha: z.string().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+type GitHubPullRequestPayload = z.infer<typeof githubPullRequestPayloadSchema>;
 
 export async function loadPullRequestEventContext(
   eventPath: string,
@@ -28,7 +49,7 @@ export async function loadPullRequestEventContext(
   const payload = await readEventPayload(eventPath);
   const pullRequest = requirePullRequest(payload);
 
-  return {
+  return parsePullRequestEventContext({
     eventName: readEventName(env),
     action: payload.action,
     repo: readRepo(payload, pullRequest, env),
@@ -36,11 +57,11 @@ export async function loadPullRequestEventContext(
     baseSha: readBaseSha(pullRequest),
     headSha: readHeadSha(pullRequest),
     workspace: readWorkspace(env),
-  };
+  });
 }
 
 async function readEventPayload(eventPath: string): Promise<GitHubPullRequestPayload> {
-  return JSON.parse(await readFile(eventPath, "utf8")) as GitHubPullRequestPayload;
+  return githubPullRequestPayloadSchema.parse(JSON.parse(await readFile(eventPath, "utf8")));
 }
 
 function requirePullRequest(

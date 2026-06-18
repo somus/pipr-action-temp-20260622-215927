@@ -20,4 +20,4 @@ jobs:
           DEEPSEEK_API_KEY: local-fixture-key
           PIPR_DRY_RUN: "1"
         with:
-          config-dir: .pipr
+          config-dir: packages/runtime/distribution/official-minimal/.pipr

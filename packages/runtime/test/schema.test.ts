@@ -22,15 +22,13 @@ const config = {
       apiKeyEnv: "OPENAI_API_KEY",
     },
   ],
-  workflows: { enabled: ["official/review"] },
-  commands: { enabled: ["official/default-commands"] },
+  workflows: ["pipr/review"],
   publication: {
-    mainCommentTemplate: "official/main",
     maxInlineComments: 5,
   },
-  limits: { timeoutSeconds: 300 },
-  artifacts: { enabled: false },
-  plugins: [],
+  limits: {
+    timeoutSeconds: 300,
+  },
 };
 
 describe("pipr.dev/v1 schemas", () => {
@@ -40,54 +38,54 @@ describe("pipr.dev/v1 schemas", () => {
       validateComponentDocument(".pipr/workflows/review.yaml", {
         apiVersion: "pipr.dev/v1",
         kind: "Workflow",
-        id: "official/review",
+        id: "pipr/review",
         on: ["pull_request.opened"],
-        steps: [{ id: "review", uses: "official/review-default" }],
+        steps: [
+          { id: "review", uses: "pipr/review-default" },
+          {
+            id: "main-comment",
+            uses: "core/main-comment",
+            with: { review: { from: "validated_review" }, template: "pipr/main" },
+          },
+        ],
       }),
       validateComponentDocument(".pipr/blocks/review-default.yaml", {
         apiVersion: "pipr.dev/v1",
         kind: "Block",
-        id: "official/review-default",
+        id: "pipr/review-default",
         steps: [{ id: "manifest", uses: "core/diff-manifest" }],
       }),
       validateComponentDocument(".pipr/agents/reviewer.md", {
         apiVersion: "pipr.dev/v1",
         kind: "Agent",
-        id: "official/reviewer",
+        id: "pipr/reviewer",
         provider: "primary",
-        fallbacks: ["fallback"],
-        tools: ["core/read-file", "core/submit-review"],
-        output: { schema: "official/pr-review" },
+        tools: ["plugin/custom-review-tool"],
+        output: { schema: "pipr/pr-review" },
       }),
       validateComponentDocument(".pipr/comments/main.yaml", {
         apiVersion: "pipr.dev/v1",
         kind: "CommentTemplate",
-        id: "official/main",
+        id: "pipr/main",
         marker: "pipr:main-comment",
         heading: "Pi PR Review",
         sections: [{ id: "summary", title: "Summary", order: 10 }],
       }),
-      validateComponentDocument(".pipr/commands/default.yaml", {
-        apiVersion: "pipr.dev/v1",
-        kind: "CommandSet",
-        id: "official/default-commands",
-        commands: [
-          {
-            id: "review",
-            aliases: ["@pipr review"],
-            run: { workflows: ["official/review"] },
-          },
-        ],
-      }),
       validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
         apiVersion: "pipr.dev/v1",
         kind: "Schema",
-        id: "official/pr-review",
+        id: "pipr/pr-review",
         schema: { type: "object" },
       }),
     ];
 
-    expect(() => validateMaterializedProject({ config: parsedConfig, components })).not.toThrow();
+    expect(() =>
+      validateMaterializedProject({
+        config: parsedConfig,
+        components,
+        pluginToolIds: ["plugin/custom-review-tool"],
+      }),
+    ).not.toThrow();
   });
 
   it("rejects component IDs outside namespace/name format", () => {
@@ -101,13 +99,38 @@ describe("pipr.dev/v1 schemas", () => {
     ).toThrow("must match pattern");
   });
 
+  it("rejects materialized components in the reserved core namespace", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Workflow",
+      id: "core/review",
+      steps: [],
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [workflow] }),
+    ).toThrow("Component id 'core/review' uses reserved namespace 'core/'");
+  });
+
+  it("caps configured inline comments at the runtime maximum", () => {
+    expect(() =>
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        publication: {
+          maxInlineComments: 51,
+        },
+      }),
+    ).toThrow("50");
+  });
+
   it("rejects unknown fields", () => {
     expect(() =>
       validatePiprConfigDocument(".pipr/config.yaml", {
         ...config,
         unexpected: true,
       }),
-    ).toThrow("unexpected");
+    ).toThrow("Unrecognized key");
   });
 
   it("requires unique provider IDs", () => {
@@ -119,20 +142,19 @@ describe("pipr.dev/v1 schemas", () => {
     ).toThrow("Duplicate provider id 'primary'");
   });
 
-  it("requires agent provider and fallback refs to resolve", () => {
+  it("requires agent provider refs to resolve", () => {
     const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
     const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
       apiVersion: "pipr.dev/v1",
       kind: "Agent",
-      id: "official/reviewer",
+      id: "pipr/reviewer",
       provider: "missing",
-      fallbacks: ["also-missing"],
-      output: { schema: "official/pr-review" },
+      output: { schema: "pipr/pr-review" },
     });
     const schema = validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
       apiVersion: "pipr.dev/v1",
       kind: "Schema",
-      id: "official/pr-review",
+      id: "pipr/pr-review",
       schema: { type: "object" },
     });
 
@@ -141,36 +163,96 @@ describe("pipr.dev/v1 schemas", () => {
     ).toThrow("unknown provider 'missing'");
   });
 
+  it("requires agent tool refs to resolve to plugin tools", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Agent",
+      id: "pipr/reviewer",
+      provider: "primary",
+      tools: ["plugin/missing-tool"],
+      output: { schema: "pipr/pr-review" },
+    });
+    const schema = validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Schema",
+      id: "pipr/pr-review",
+      schema: { type: "object" },
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [agent, schema] }),
+    ).toThrow("Agent 'pipr/reviewer' references unknown tool 'plugin/missing-tool'");
+  });
+
+  it("rejects built-in Pi tools in Agent tool refs", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Agent",
+      id: "pipr/reviewer",
+      provider: "primary",
+      tools: ["core/read"],
+      output: { schema: "pipr/pr-review" },
+    });
+    const schema = validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Schema",
+      id: "pipr/pr-review",
+      schema: { type: "object" },
+    });
+
+    expect(() =>
+      validateMaterializedProject({
+        config: parsedConfig,
+        components: [agent, schema],
+        pluginToolIds: ["core/read"],
+      }),
+    ).toThrow("Pi built-in tools are attached by pipr, not Agent tools");
+  });
+
+  it("rejects unimplemented agent fallback chains", () => {
+    expect(() =>
+      validateComponentDocument(".pipr/agents/reviewer.md", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Agent",
+        id: "pipr/reviewer",
+        provider: "primary",
+        fallbacks: ["fallback"],
+        output: { schema: "pipr/pr-review" },
+      }),
+    ).toThrow("Unrecognized key");
+  });
+
   it("rejects duplicate component IDs", () => {
     const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
     const first = validateComponentDocument(".pipr/workflows/review.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
-      id: "official/review",
+      id: "pipr/review",
       steps: [],
     });
     const second = validateComponentDocument(".pipr/workflows/other.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
-      id: "official/review",
+      id: "pipr/review",
       steps: [],
     });
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [first, second] }),
-    ).toThrow("Duplicate component id 'official/review'");
+    ).toThrow("Duplicate component id 'pipr/review'");
   });
 
   it("requires config component refs to exist with the expected kind", () => {
     const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
       ...configWithoutRefs(),
-      workflows: { enabled: ["official/main"] },
-      commands: { enabled: [] },
+      workflows: ["pipr/main"],
     });
     const comment = validateComponentDocument(".pipr/comments/main.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "CommentTemplate",
-      id: "official/main",
+      id: "pipr/main",
       marker: "pipr:main-comment",
       heading: "Pi PR Review",
       sections: [{ id: "summary", title: "Summary", order: 10 }],
@@ -178,75 +260,90 @@ describe("pipr.dev/v1 schemas", () => {
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [comment] }),
-    ).toThrow(
-      "Config workflows.enabled references CommentTemplate 'official/main', expected Workflow",
-    );
+    ).toThrow("Config workflows references CommentTemplate 'pipr/main', expected Workflow");
   });
 
   it("rejects missing config component refs", () => {
     const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
       ...configWithoutRefs(),
-      workflows: { enabled: ["official/missing"] },
-      commands: { enabled: [] },
+      workflows: ["pipr/missing"],
     });
 
     expect(() => validateMaterializedProject({ config: parsedConfig, components: [] })).toThrow(
-      "Config workflows.enabled references missing Workflow 'official/missing'",
+      "Config workflows references missing Workflow 'pipr/missing'",
     );
   });
 
-  it("requires command config refs to exist with the expected kind", () => {
-    const missingConfig = validatePiprConfigDocument(".pipr/config.yaml", {
-      ...configWithoutRefs(),
-      commands: { enabled: ["official/missing"] },
-    });
-
-    expect(() => validateMaterializedProject({ config: missingConfig, components: [] })).toThrow(
-      "Config commands.enabled references missing CommandSet 'official/missing'",
-    );
-
-    const wrongKindConfig = validatePiprConfigDocument(".pipr/config.yaml", {
-      ...configWithoutRefs(),
-      commands: { enabled: ["official/review"] },
-    });
-    const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "Workflow",
-      id: "official/review",
-      steps: [],
-    });
-
+  it("rejects Main Review Comment templates in config", () => {
     expect(() =>
-      validateMaterializedProject({ config: wrongKindConfig, components: [workflow] }),
-    ).toThrow("Config commands.enabled references Workflow 'official/review', expected CommandSet");
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        publication: { mainCommentTemplate: "pipr/main" },
+      }),
+    ).toThrow("Unrecognized key");
   });
 
-  it("requires publication config refs to exist with the expected kind", () => {
-    const missingConfig = validatePiprConfigDocument(".pipr/config.yaml", {
-      ...configWithoutRefs(),
-      publication: { mainCommentTemplate: "official/missing" },
-    });
-
-    expect(() => validateMaterializedProject({ config: missingConfig, components: [] })).toThrow(
-      "Config publication.mainCommentTemplate references missing CommentTemplate 'official/missing'",
-    );
-
-    const wrongKindConfig = validatePiprConfigDocument(".pipr/config.yaml", {
-      ...configWithoutRefs(),
-      publication: { mainCommentTemplate: "official/review" },
-    });
-    const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
+  it("requires workflow Main Review Comment template refs to exist with the expected kind", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const missingTemplateWorkflow = validateComponentDocument(".pipr/workflows/review.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
-      id: "official/review",
-      steps: [],
+      id: "pipr/review",
+      steps: [
+        {
+          id: "main-comment",
+          uses: "core/main-comment",
+          with: { review: { from: "validated_review" }, template: "pipr/missing" },
+        },
+      ],
     });
 
     expect(() =>
-      validateMaterializedProject({ config: wrongKindConfig, components: [workflow] }),
+      validateMaterializedProject({ config: parsedConfig, components: [missingTemplateWorkflow] }),
     ).toThrow(
-      "Config publication.mainCommentTemplate references Workflow 'official/review', expected CommentTemplate",
+      "Workflow 'pipr/review' step 'main-comment' template references missing CommentTemplate 'pipr/missing'",
     );
+
+    const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Workflow",
+      id: "pipr/review",
+      steps: [
+        {
+          id: "main-comment",
+          uses: "core/main-comment",
+          with: { review: { from: "validated_review" }, template: "pipr/other-review" },
+        },
+      ],
+    });
+    const wrongKindWorkflow = validateComponentDocument(".pipr/workflows/other.yaml", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Workflow",
+      id: "pipr/other-review",
+      steps: [],
+    });
+
+    expect(() =>
+      validateMaterializedProject({
+        config: parsedConfig,
+        components: [workflow, wrongKindWorkflow],
+      }),
+    ).toThrow(
+      "Workflow 'pipr/review' step 'main-comment' template references Workflow 'pipr/other-review', expected CommentTemplate",
+    );
+  });
+
+  it("rejects unsupported Main Review Comment section IDs", () => {
+    expect(() =>
+      validateComponentDocument(".pipr/comments/main.yaml", {
+        apiVersion: "pipr.dev/v1",
+        kind: "CommentTemplate",
+        id: "pipr/main",
+        marker: "pipr:main-comment",
+        heading: "Pi PR Review",
+        sections: [{ id: "custom", title: "Custom", order: 10 }],
+      }),
+    ).toThrow("Invalid option");
   });
 
   it("requires agent output schema refs to resolve", () => {
@@ -254,30 +351,28 @@ describe("pipr.dev/v1 schemas", () => {
     const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
       apiVersion: "pipr.dev/v1",
       kind: "Agent",
-      id: "official/reviewer",
+      id: "pipr/reviewer",
       provider: "primary",
-      output: { schema: "official/missing" },
+      output: { schema: "pipr/missing" },
     });
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [agent] }),
-    ).toThrow(
-      "Agent 'official/reviewer' output.schema references missing Schema 'official/missing'",
-    );
+    ).toThrow("Agent 'pipr/reviewer' output.schema references missing Schema 'pipr/missing'");
   });
 
-  it("requires command and step refs to resolve with expected kinds", () => {
+  it("requires step refs to resolve with expected kinds", () => {
     const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
     const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
-      id: "official/review",
-      steps: [{ id: "review", uses: "official/main" }],
+      id: "pipr/review",
+      steps: [{ id: "review", uses: "pipr/main" }],
     });
     const comment = validateComponentDocument(".pipr/comments/main.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "CommentTemplate",
-      id: "official/main",
+      id: "pipr/main",
       marker: "pipr:main-comment",
       heading: "Pi PR Review",
       sections: [{ id: "summary", title: "Summary", order: 10 }],
@@ -285,26 +380,7 @@ describe("pipr.dev/v1 schemas", () => {
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [workflow, comment] }),
-    ).toThrow("Workflow 'official/review' step 'review' uses references CommentTemplate");
-
-    const commandSet = validateComponentDocument(".pipr/commands/default.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommandSet",
-      id: "official/default-commands",
-      commands: [
-        {
-          id: "review",
-          aliases: ["@pipr review"],
-          run: { workflows: ["official/missing"] },
-        },
-      ],
-    });
-
-    expect(() =>
-      validateMaterializedProject({ config: parsedConfig, components: [commandSet] }),
-    ).toThrow(
-      "CommandSet 'official/default-commands' command 'review' workflows references missing Workflow",
-    );
+    ).toThrow("Workflow 'pipr/review' step 'review' uses references CommentTemplate");
   });
 
   it("rejects unsafe workflow refs and output paths in materialized steps", () => {
@@ -312,7 +388,7 @@ describe("pipr.dev/v1 schemas", () => {
     const unsafeRefWorkflow = validateComponentDocument(".pipr/workflows/review.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
-      id: "official/review",
+      id: "pipr/review",
       steps: [
         { id: "review", uses: "core/diff-manifest", with: { input: { from: "__proto__.x" } } },
       ],
@@ -325,7 +401,7 @@ describe("pipr.dev/v1 schemas", () => {
     const unsafeOutputWorkflow = validateComponentDocument(".pipr/workflows/review.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
-      id: "official/review",
+      id: "pipr/review",
       steps: [{ id: "review", uses: "core/diff-manifest", output: "constructor.x" }],
     });
 
@@ -339,7 +415,7 @@ describe("pipr.dev/v1 schemas", () => {
       validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
         apiVersion: "pipr.dev/v1",
         kind: "Schema",
-        id: "official/pr-review",
+        id: "pipr/pr-review",
         schema: { type: 42 },
       }),
     ).toThrow("Invalid JSON Schema");
@@ -350,7 +426,7 @@ describe("pipr.dev/v1 schemas", () => {
       validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
         apiVersion: "pipr.dev/v1",
         kind: "Schema",
-        id: "official/pr-review",
+        id: "pipr/pr-review",
         schema: {
           type: "object",
           properties: {
@@ -377,6 +453,74 @@ describe("pipr.dev/v1 schemas", () => {
     ).not.toThrow();
   });
 
+  it("validates Pi-native provider thinking levels", () => {
+    expect(() =>
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        providers: [
+          {
+            id: "primary",
+            provider: "deepseek",
+            model: "deepseek-v4-pro",
+            apiKeyEnv: "DEEPSEEK_API_KEY",
+            thinking: "xhigh",
+          },
+        ],
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        providers: [
+          {
+            id: "primary",
+            provider: "deepseek",
+            model: "deepseek-v4-pro",
+            apiKeyEnv: "DEEPSEEK_API_KEY",
+            thinking: "maybe",
+          },
+        ],
+      }),
+    ).toThrow("Invalid option");
+  });
+
+  it("rejects old provider options bags and reasoning effort fields", () => {
+    expect(() =>
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        providers: [
+          {
+            id: "primary",
+            provider: "deepseek",
+            model: "deepseek-v4-pro",
+            apiKeyEnv: "DEEPSEEK_API_KEY",
+            options: {
+              thinking: "high",
+              reasoning_effort: "high",
+            },
+          },
+        ],
+      }),
+    ).toThrow("Unrecognized key");
+
+    expect(() =>
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        providers: [
+          {
+            id: "primary",
+            provider: "deepseek",
+            model: "deepseek-v4-pro",
+            apiKeyEnv: "DEEPSEEK_API_KEY",
+            thinking: "high",
+            reasoning_effort: "high",
+          },
+        ],
+      }),
+    ).toThrow("Unrecognized key");
+  });
+
   it("rejects raw secret-looking values", () => {
     expect(() =>
       validatePiprConfigDocument(".pipr/config.yaml", {
@@ -393,13 +537,22 @@ describe("pipr.dev/v1 schemas", () => {
     ).toThrow("Raw secret-looking value");
   });
 
-  it("does not exempt arbitrary Env-suffixed free-form fields from secret scanning", () => {
+  it("rejects default-only config fields", () => {
     expect(() =>
       validatePiprConfigDocument(".pipr/config.yaml", {
         ...configWithoutRefs(),
-        artifacts: { tokenEnv: "sk-secret00000000" },
+        artifacts: { enabled: false },
       }),
-    ).toThrow("Raw secret-looking value");
+    ).toThrow("Unrecognized key");
+  });
+
+  it("validates timeout limits explicitly", () => {
+    expect(() =>
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        limits: { timeoutSeconds: 0 },
+      }),
+    ).toThrow("Too small");
   });
 });
 

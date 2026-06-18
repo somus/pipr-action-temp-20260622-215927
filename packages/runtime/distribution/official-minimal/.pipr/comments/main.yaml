@@ -1,0 +1,18 @@
+apiVersion: pipr.dev/v1
+kind: CommentTemplate
+id: pipr/main
+marker: pipr:main-comment
+heading: pipr Review
+sections:
+  - id: summary
+    title: Summary
+    order: 10
+    empty: No summary was produced.
+  - id: findings
+    title: Findings
+    order: 20
+    empty: No inline findings passed validation.
+  - id: metadata
+    title: Metadata
+    order: 30
+    collapsed: true

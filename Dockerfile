@@ -12,7 +12,8 @@ RUN chown -R bun:bun /home/bun/.tmp
 
 ENV BUN_INSTALL=/usr/local
 ENV TMPDIR=/home/bun/.tmp
-RUN bun add -g @earendil-works/pi-coding-agent@0.79.5
+RUN bun add -g @earendil-works/pi-coding-agent@0.79.5 \
+  && PI_OFFLINE=1 PI_TELEMETRY=0 pi --help >/dev/null
 
 COPY --chown=bun:bun . /opt/pipr
 WORKDIR /opt/pipr
@@ -20,7 +21,8 @@ RUN bun install --frozen-lockfile \
   && bun run build \
   && chown -R bun:bun /opt/pipr \
   && chmod +x /opt/pipr/packages/cli/src/main.ts \
-  && ln -sf /opt/pipr/packages/cli/src/main.ts /usr/local/bin/pipr
+  && ln -sf /opt/pipr/packages/cli/src/main.ts /usr/local/bin/pipr \
+  && pipr action --help >/dev/null
 
 USER bun
 WORKDIR /workspace

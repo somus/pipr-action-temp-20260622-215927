@@ -1,0 +1,118 @@
+{
+  "apiVersion": "pipr.dev/v1",
+  "kind": "Schema",
+  "id": "pipr/pr-review",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "summary": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["body"],
+        "additionalProperties": false
+      },
+      "inlineFindings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rangeId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "side": {
+              "type": "string",
+              "enum": ["RIGHT", "LEFT"]
+            },
+            "startLine": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "endLine": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["critical", "high", "medium", "low", "nit"]
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "correctness",
+                "security",
+                "tests",
+                "performance",
+                "maintainability",
+                "docs",
+                "architecture",
+                "other"
+              ]
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "evidenceSnippet": {
+              "type": "string",
+              "minLength": 1
+            },
+            "suggestedFix": {
+              "type": "string"
+            },
+            "semanticAnchor": {
+              "type": "string"
+            },
+            "fingerprintHint": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "body",
+            "path",
+            "rangeId",
+            "side",
+            "startLine",
+            "endLine",
+            "severity",
+            "category",
+            "confidence",
+            "evidenceSnippet"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      }
+    },
+    "required": ["summary", "inlineFindings"],
+    "additionalProperties": false
+  }
+}

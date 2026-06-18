@@ -12,8 +12,20 @@ _Avoid_: legacy product names
 The repository-local product control plane under `.pipr/`.
 _Avoid_: legacy configuration roots, `.pi/`
 
+**Action Trust Boundary**:
+The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads executable review authority from trusted Action provider inputs, the runtime-owned review graph, and base-commit reviewer/comment components.
+_Avoid_: PR-authored runtime authority
+
+**Official Minimal Distribution**:
+The editable `.pipr/` tree created by `pipr init` as the normal starting point for a repository.
+_Avoid_: hidden runtime defaults
+
+**Component Namespace**:
+Use `pipr/*` for product components shipped in the editable distribution. Use `core/*` only for runtime primitive blocks owned by pipr internals.
+_Avoid_: `official/*`
+
 **@pipr**:
-The GitHub pull request command mention used to request pipr review, summaries, or help from a pull request conversation.
+The reserved GitHub pull request command mention for future conversational review commands. The Core MVP Action runs on pull request events.
 _Avoid_: bot aliases
 
 **Pi Agent Runner**:

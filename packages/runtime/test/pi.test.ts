@@ -3,16 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildPiArgs, createReadOnlyWorkspace, runPi } from "../src/pi.js";
+import { toPiProviderInvocation } from "../src/pi-provider.js";
 
 describe("buildPiArgs", () => {
-  it("uses real Pi CLI flags without PR-controlled context or tools", () => {
+  it("uses real Pi CLI flags with explicit read-only tools and without PR-controlled context", () => {
     const args = buildPiArgs(
       {
-        id: "deepseek",
+        id: "backup",
+        provider: "deepseek",
         model: "deepseek-v4-pro",
-        thinking: "enabled",
-        reasoning_effort: "high",
-        api_key_env: "DEEPSEEK_API_KEY",
+        thinking: "high",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
       },
       "Review this diff.",
       "/tmp/pipr-session",
@@ -29,17 +30,44 @@ describe("buildPiArgs", () => {
       "--no-session",
       "--session-dir",
       "/tmp/pipr-session",
+      "--tools",
+      "read,grep,find,ls",
       "--no-context-files",
       "--no-approve",
       "--no-extensions",
       "--no-skills",
       "--no-prompt-templates",
       "--no-themes",
-      "--no-tools",
       "--thinking",
       "high",
       "Review this diff.",
     ]);
+    expect(args).not.toContain("--no-tools");
+    expect(args).not.toContain("--no-builtin-tools");
+    expect(args).not.toContain("bash");
+    expect(args).not.toContain("write");
+    expect(args).not.toContain("edit");
+  });
+
+  it("uses Pi-native provider thinking levels", () => {
+    expect(
+      toPiProviderInvocation({
+        id: "deepseek",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        thinking: "xhigh",
+      }).thinking,
+    ).toBe("xhigh");
+    expect(
+      toPiProviderInvocation({
+        id: "deepseek",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        thinking: "off",
+      }).thinking,
+    ).toBe("off");
   });
 
   it("drops symlinks from the read-only workspace copy", async () => {
@@ -78,11 +106,11 @@ describe("buildPiArgs", () => {
         piExecutable,
         prompt: "Review this diff.",
         provider: {
-          id: "deepseek",
+          id: "backup",
+          provider: "deepseek",
           model: "deepseek-v4-pro",
-          thinking: "enabled",
-          reasoning_effort: "high",
-          api_key_env: "DEEPSEEK_API_KEY",
+          thinking: "high",
+          apiKeyEnv: "DEEPSEEK_API_KEY",
         },
       });
 
@@ -92,12 +120,74 @@ describe("buildPiArgs", () => {
       expect(result.stdout).toContain("HOME=");
       expect(result.stdout).toContain("PI_CODING_AGENT_DIR=");
       expect(result.stdout).toContain("PI_CODING_AGENT_SESSION_DIR=");
-      expect(result.stdout).toContain("PIPR_PROVIDER_ID=deepseek");
+      expect(result.stdout).toContain("PIPR_PROVIDER_ID=backup");
       expect(result.stdout).not.toContain(`HOME=${hostHome}`);
       expect(result.stdout).not.toContain("SECRET_SHOULD_NOT_LEAK");
     } finally {
       restoreEnv("DEEPSEEK_API_KEY", previousProviderKey);
       restoreEnv("SECRET_SHOULD_NOT_LEAK", previousSecret);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("copies provider keys from the supplied source env", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
+    const piExecutable = path.join(workspace, "fake-pi.sh");
+    const previousProviderKey = process.env.DEEPSEEK_API_KEY;
+    try {
+      await writeFile(piExecutable, "#!/bin/sh\nprintenv\n");
+      await chmod(piExecutable, 0o755);
+      delete process.env.DEEPSEEK_API_KEY;
+
+      const result = await runPi({
+        workspace,
+        piExecutable,
+        prompt: "Review this diff.",
+        env: {
+          DEEPSEEK_API_KEY: "provided-key",
+          PATH: process.env.PATH,
+        },
+        provider: {
+          id: "deepseek",
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          thinking: "high",
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("DEEPSEEK_API_KEY=provided-key");
+    } finally {
+      restoreEnv("DEEPSEEK_API_KEY", previousProviderKey);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("times out long-running Pi subprocesses", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
+    const piExecutable = path.join(workspace, "slow-pi.sh");
+    try {
+      await writeFile(piExecutable, "#!/bin/sh\nsleep 2\nprintf '{}\\n'\n");
+      await chmod(piExecutable, 0o755);
+
+      const result = await runPi({
+        workspace,
+        piExecutable,
+        prompt: "Review this diff.",
+        timeoutSeconds: 1,
+        provider: {
+          id: "backup",
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          thinking: "high",
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+        },
+      });
+
+      expect(result.exitCode).toBe(124);
+      expect(result.stderr).toContain("Pi timed out after 1s");
+    } finally {
       await rm(workspace, { recursive: true, force: true });
     }
   });

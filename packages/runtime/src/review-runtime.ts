@@ -1,12 +1,14 @@
 import {
   type InlineCommentDraft,
+  parseInlineCommentDrafts,
   prepareInlineCommentDrafts,
   renderMainComment,
 } from "./comment.js";
+import type { MaterializedProject } from "./config.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "./diff.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "./pi.js";
-import { createRuntimeRegistry } from "./registry.js";
-import { parsePrReview, validatePrReview } from "./review.js";
+import { piReadOnlyToolNames } from "./pi-provider.js";
+import { parsePrReview, reviewSchemaExample, validatePrReview } from "./review.js";
 import type {
   DiffManifest,
   PiprConfig,
@@ -15,6 +17,12 @@ import type {
   PullRequestEventContext,
   RuntimeRegistry,
   ValidatedReview,
+} from "./types.js";
+import {
+  parseDiffManifest,
+  parsePiprConfig,
+  parseProviderConfig,
+  parseValidatedReview,
 } from "./types.js";
 import { executeWorkflow, type WorkflowBlockHandlers } from "./workflow.js";
 
@@ -25,7 +33,10 @@ export type RunReviewRuntimeOptions = {
   workspace: string;
   config: PiprConfig;
   event: PullRequestEventContext;
-  registry?: RuntimeRegistry;
+  env?: NodeJS.ProcessEnv;
+  project?: MaterializedProject;
+  registry: RuntimeRegistry;
+  providerOverride?: ProviderConfig;
   piExecutable?: string;
   piRunner?: PiRunner;
   diffManifestBuilder?: DiffManifestBuilder;
@@ -46,14 +57,18 @@ type ParseReviewResult = { ok: true; review: PrReview } | { ok: false; error: st
 export async function runReviewRuntime(
   options: RunReviewRuntimeOptions,
 ): Promise<ReviewRuntimeResult> {
-  const provider = resolveDefaultProvider(options.config);
+  const config = parsePiprConfig(options.config);
+  const providerOverride = options.providerOverride
+    ? parseProviderConfig(options.providerOverride)
+    : undefined;
+  let provider = providerOverride ?? resolveDefaultProvider(config);
   let repairAttempted = false;
   let diffManifest: DiffManifest | undefined;
   const workflow = await executeWorkflow({
-    registry: options.registry ?? createRuntimeRegistry(),
+    registry: options.registry,
     event: options.event,
     blocks: reviewWorkflowHandlers({
-      options,
+      options: { ...options, config, providerOverride },
       provider,
       markRepairAttempted: () => {
         repairAttempted = true;
@@ -61,13 +76,18 @@ export async function runReviewRuntime(
       setDiffManifest: (manifest) => {
         diffManifest = manifest;
       },
+      setProvider: (selectedProvider) => {
+        provider = selectedProvider;
+      },
+      getProvider: () => provider,
     }),
   });
-  const validated = requireContextValue<ValidatedReview>(workflow.context, "validated_review");
+  const validated = parseValidatedReview(
+    requireContextValue<ValidatedReview>(workflow.context, "validated_review"),
+  );
   const mainComment = requireContextValue<string>(workflow.context, "main_comment");
-  const inlineCommentDrafts = requireContextValue<InlineCommentDraft[]>(
-    workflow.context,
-    "inline_comments",
+  const inlineCommentDrafts = parseInlineCommentDrafts(
+    requireContextValue<InlineCommentDraft[]>(workflow.context, "inline_comments"),
   );
 
   return {
@@ -86,63 +106,145 @@ function reviewWorkflowHandlers(options: {
   provider: ProviderConfig;
   markRepairAttempted: () => void;
   setDiffManifest: (manifest: DiffManifest) => void;
+  setProvider: (provider: ProviderConfig) => void;
+  getProvider: () => ProviderConfig;
 }): WorkflowBlockHandlers {
   const runtime = options.options;
   return {
-    "context.diff_manifest": () => {
-      const manifest = (runtime.diffManifestBuilder ?? buildDiffManifest)({
-        cwd: runtime.workspace,
-        baseSha: runtime.event.baseSha,
-        headSha: runtime.event.headSha,
-      });
+    "core/diff-manifest": () => {
+      const manifest = parseDiffManifest(
+        (runtime.diffManifestBuilder ?? buildDiffManifest)({
+          cwd: runtime.workspace,
+          baseSha: runtime.event.baseSha,
+          headSha: runtime.event.headSha,
+        }),
+      );
       options.setDiffManifest(manifest);
       return manifest;
     },
-    "agent.run": async (input) => {
-      const diffManifest = readAgentInput(input);
+    "core/run-agent": async (input) => {
+      const agentInput = readAgentInput(input);
+      const agent = resolveReviewerAgent(runtime.project, agentInput.agent);
+      const provider =
+        runtime.providerOverride ??
+        (agent ? resolveProvider(runtime.config, agent.document.provider) : options.provider);
+      options.setProvider(provider);
       const result = await runReviewerAgent({
-        provider: options.provider,
-        diffManifest,
+        provider,
+        diffManifest: agentInput.input,
         event: runtime.event,
+        env: runtime.env,
         workspace: runtime.workspace,
+        agentInstructions: agent?.body,
+        outputSchemaId: agent?.document.output.schema,
         piExecutable: runtime.piExecutable,
         piRunner: runtime.piRunner,
+        timeoutSeconds: runtime.config.limits?.timeoutSeconds,
       });
       if (result.repairAttempted) {
         options.markRepairAttempted();
       }
       return result.review;
     },
-    "validate.pr_review": (input) => {
-      const value = requireRecord(input, "validate.pr_review input");
+    "core/validate-pr-review": (input) => {
+      const value = requireRecord(input, "core/validate-pr-review input");
       return validatePrReview(value.review as PrReview, value.manifest as DiffManifest, {
-        maxInlineComments: runtime.config.review.max_inline_comments,
-        minConfidence: runtime.config.review.min_confidence,
+        maxInlineComments: runtime.config.publication.maxInlineComments,
+        minConfidence: runtime.config.publication.minConfidence,
       });
     },
-    "publish.main_comment": (input) => {
-      const validated = readValidatedReview(input, "publish.main_comment input");
+    "core/main-comment": (input) => {
+      const value = requireRecord(input, "core/main-comment input");
+      const validated = readValidatedReview(value, "core/main-comment input");
       return renderMainComment({
         event: runtime.event,
         review: validated.review,
         validFindings: validated.validFindings,
         droppedCount: validated.droppedFindings.length,
-        providerModel: options.provider.model,
+        providerModel: options.getProvider().model,
+        template: resolveCommentTemplate(runtime.project, readOptionalTemplateId(value)),
       });
     },
-    "publish.inline_comments": (input) =>
-      prepareInlineCommentDrafts(readValidatedReview(input, "publish.inline_comments input")),
+    "core/inline-comments": (input) =>
+      prepareInlineCommentDrafts(readValidatedReview(input, "core/inline-comments input")),
   };
 }
 
-function readAgentInput(input: unknown): DiffManifest {
-  const value = requireRecord(input, "agent.run input");
-  return value.input as DiffManifest;
+type AgentRunInput = {
+  agent?: string;
+  input: DiffManifest;
+};
+
+function readAgentInput(input: unknown): AgentRunInput {
+  const value = requireRecord(input, "core/run-agent input");
+  return {
+    agent: typeof value.agent === "string" ? value.agent : undefined,
+    input: value.input as DiffManifest,
+  };
+}
+
+function resolveReviewerAgent(
+  project: MaterializedProject | undefined,
+  agentId: string | undefined,
+):
+  | {
+      document: Extract<MaterializedProject["components"][number], { kind: "Agent" }>;
+      body?: string;
+    }
+  | undefined {
+  if (!project || !agentId) {
+    return undefined;
+  }
+  const agent = project.componentFiles[agentId];
+  if (!agent) {
+    throw new Error(`Unknown reviewer Agent '${agentId}'`);
+  }
+  if (agent.document.kind !== "Agent") {
+    throw new Error(`Reviewer Agent '${agentId}' resolved to ${agent.document.kind}`);
+  }
+  if (agent.document.output.schema !== "pipr/pr-review") {
+    throw new Error(
+      `Reviewer Agent '${agentId}' uses unsupported output schema '${agent.document.output.schema}'`,
+    );
+  }
+  return {
+    document: agent.document,
+    body: agent.body,
+  };
 }
 
 function readValidatedReview(input: unknown, label: string): ValidatedReview {
   const value = requireRecord(input, label);
-  return value.review as ValidatedReview;
+  return parseValidatedReview(value.review);
+}
+
+function readOptionalTemplateId(input: Record<string, unknown>): string | undefined {
+  if (!hasOwn(input, "template")) {
+    return undefined;
+  }
+  if (typeof input.template !== "string") {
+    throw new Error("core/main-comment template must be a CommentTemplate id string");
+  }
+  return input.template;
+}
+
+function resolveCommentTemplate(
+  project: MaterializedProject | undefined,
+  templateId: unknown,
+): Extract<MaterializedProject["components"][number], { kind: "CommentTemplate" }> | undefined {
+  if (!project || typeof templateId !== "string") {
+    return undefined;
+  }
+  const template = project.componentFiles[templateId];
+  if (!template) {
+    throw new Error(`Unknown Main Review Comment template '${templateId}'`);
+  }
+  if (template.document.kind !== "CommentTemplate") {
+    throw new Error(
+      `Main Review Comment template '${templateId}' resolved to ${template.document.kind}`,
+    );
+  }
+  return template.document;
 }
 
 function requireContextValue<T>(context: Record<string, unknown>, key: string): T {
@@ -174,20 +276,28 @@ export async function runReviewerAgent(options: {
   provider: ProviderConfig;
   diffManifest: DiffManifest;
   event: PullRequestEventContext;
+  env?: NodeJS.ProcessEnv;
   workspace: string;
+  agentInstructions?: string;
+  outputSchemaId?: string;
   piExecutable?: string;
   piRunner?: PiRunner;
+  timeoutSeconds?: number;
 }): Promise<{ review: PrReview; repairAttempted: boolean }> {
   const piRunner = options.piRunner ?? runPi;
   const prompt = buildReviewerPrompt({
     event: options.event,
     diffManifest: options.diffManifest,
+    agentInstructions: options.agentInstructions,
+    outputSchemaId: options.outputSchemaId,
   });
   const first = await runPiOnce(piRunner, {
     workspace: options.workspace,
     provider: options.provider,
     prompt,
+    env: options.env,
     piExecutable: options.piExecutable,
+    timeoutSeconds: options.timeoutSeconds,
   });
   const parsed = parseReviewOutput(first.stdout);
   if (parsed.ok) {
@@ -202,7 +312,9 @@ export async function runReviewerAgent(options: {
       invalidOutput: first.stdout,
       error: parsed.error,
     }),
+    env: options.env,
     piExecutable: options.piExecutable,
+    timeoutSeconds: options.timeoutSeconds,
   });
   const repaired = parseReviewOutput(repair.stdout);
   if (repaired.ok) {
@@ -217,11 +329,18 @@ export async function runReviewerAgent(options: {
 export function buildReviewerPrompt(options: {
   event: PullRequestEventContext;
   diffManifest: DiffManifest;
+  agentInstructions?: string;
+  outputSchemaId?: string;
 }): string {
+  const outputSchemaId = options.outputSchemaId ?? "pipr/pr-review";
   return [
     "You are pipr's reviewer agent for a GitHub pull request.",
+    options.agentInstructions ? `Agent Instructions:\n\n${options.agentInstructions}` : undefined,
+    `Available Pi tools: ${piReadOnlyToolNames.join(", ")}.`,
+    "Do not use bash, write, edit, GitHub APIs, or comment publishing tools.",
     "Return only valid JSON. Do not include Markdown fences or prose outside JSON.",
-    "The JSON must match this shape:",
+    `Output Schema ID: ${outputSchemaId}`,
+    "The JSON must match this schema shape:",
     JSON.stringify(reviewSchemaExample(), null, 2),
     "Rules:",
     "- inlineFindings must only target commentableRanges from the Diff Manifest.",
@@ -242,7 +361,9 @@ export function buildReviewerPrompt(options: {
     ),
     "Diff Manifest:",
     JSON.stringify(options.diffManifest, null, 2),
-  ].join("\n\n");
+  ]
+    .filter((part) => part !== undefined)
+    .join("\n\n");
 }
 
 function buildRepairPrompt(options: {
@@ -280,36 +401,13 @@ function parseReviewOutput(output: string): ParseReviewResult {
 }
 
 function resolveDefaultProvider(config: PiprConfig): ProviderConfig {
-  const provider = config.providers.find((item) => item.id === config.default_provider);
-  if (!provider) {
-    throw new Error(`default_provider '${config.default_provider}' does not match any provider id`);
-  }
-  return provider;
+  return resolveProvider(config, config.defaultProvider);
 }
 
-function reviewSchemaExample(): PrReview {
-  return {
-    summary: {
-      body: "Concise pull request review summary.",
-    },
-    inlineFindings: [
-      {
-        title: "Short finding title",
-        body: "Specific issue and why it matters.",
-        path: "src/example.ts",
-        rangeId: "rng_example",
-        side: "RIGHT",
-        startLine: 1,
-        endLine: 1,
-        severity: "medium",
-        category: "correctness",
-        confidence: 0.9,
-        evidenceSnippet: "changed code excerpt",
-        suggestedFix: "Optional fix.",
-        semanticAnchor: "Optional symbol or behavior.",
-        fingerprintHint: "Optional stable dedupe hint.",
-      },
-    ],
-    metadata: {},
-  };
+function resolveProvider(config: PiprConfig, providerId: string): ProviderConfig {
+  const provider = config.providers.find((item) => item.id === providerId);
+  if (!provider) {
+    throw new Error(`Provider '${providerId}' does not match any provider id`);
+  }
+  return provider;
 }

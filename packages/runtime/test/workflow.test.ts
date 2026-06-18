@@ -1,5 +1,9 @@
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createRuntimeRegistry } from "../src/registry.js";
+import { initOfficialMinimalProject } from "../src/init.js";
+import { loadRuntimeProject } from "../src/project.js";
 import type { RuntimeRegistry } from "../src/types.js";
 import {
   executeWorkflow,
@@ -56,39 +60,41 @@ describe("workflow refs", () => {
 });
 
 describe("workflow runner", () => {
-  it("selects the built-in review workflow for pull_request events", () => {
-    const workflow = selectWorkflowForEvent(createRuntimeRegistry(), {
+  it("selects the materialized Review Workflow for pull_request events", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const workflow = selectWorkflowForEvent(runtime.registry, {
       eventName: "pull_request",
       action: "opened",
     });
 
-    expect(workflow?.id).toBe("review");
+    expect(workflow?.id).toBe("pipr/review");
   });
 
-  it("runs the built-in review workflow composition", async () => {
+  it("runs the materialized Review Workflow composition", async () => {
+    const runtime = await loadOfficialRuntimeProject();
     const calls: string[] = [];
     const diffManifest = { files: [] };
     const review = { summary: { body: "ok" }, inlineFindings: [] };
     const validated = { review, validFindings: [], droppedFindings: [] };
 
     const result = await executeWorkflow({
-      registry: createRuntimeRegistry(),
+      registry: runtime.registry,
       event: { eventName: "pull_request", action: "opened" },
       blocks: {
-        "context.diff_manifest": () => {
+        "core/diff-manifest": () => {
           calls.push("diff");
           return diffManifest;
         },
-        "agent.run": {
+        "core/run-agent": {
           validate: (input) => {
-            expect(input).toEqual({ input: diffManifest });
+            expect(input).toEqual({ agent: "pipr/reviewer", input: diffManifest });
           },
           run: () => {
             calls.push("agent");
             return review;
           },
         },
-        "validate.pr_review": {
+        "core/validate-pr-review": {
           validate: (input) => {
             expect(input).toEqual({ review, manifest: diffManifest });
           },
@@ -97,16 +103,16 @@ describe("workflow runner", () => {
             return validated;
           },
         },
-        "publish.main_comment": {
+        "core/main-comment": {
           validate: (input) => {
-            expect(input).toEqual({ review: validated });
+            expect(input).toEqual({ review: validated, template: "pipr/main" });
           },
           run: () => {
             calls.push("main");
             return "main-comment";
           },
         },
-        "publish.inline_comments": {
+        "core/inline-comments": {
           validate: (input) => {
             expect(input).toEqual({ review: validated });
           },
@@ -234,9 +240,15 @@ describe("workflow runner", () => {
   });
 });
 
+async function loadOfficialRuntimeProject() {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-workflow-"));
+  await initOfficialMinimalProject({ rootDir });
+  return await loadRuntimeProject({ rootDir });
+}
+
 function testRegistry(options: { badRef?: boolean } = {}): RuntimeRegistry {
   return {
-    presets: [{ id: "builtin:minimal", description: "Test preset", source: "test" }],
+    presets: [{ id: "core/default", description: "Test preset", source: "test" }],
     workflows: [
       {
         id: "review",
