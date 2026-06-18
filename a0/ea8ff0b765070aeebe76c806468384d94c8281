@@ -1,0 +1,110 @@
+packages/cli/test/main.test.ts
+  s_e3682c1e6e7dd6::t_745282ecf07b20 297,301,376-378
+  s_e3682c1e6e7dd6::t_b7b9d383af1b78 432-436,442-454,495-497
+  s_e3682c1e6e7dd6::t_b3e10692efdef8 621-622,624
+  s_e3682c1e6e7dd6::t_41fd2ad09411e2 623
+  s_e3682c1e6e7dd6::t_94e9234ff2ac72 27,273,275,290-293,415
+  s_e3682c1e6e7dd6::t_e890b230647f57 371,375
+packages/runtime/src/project.ts
+  s_e3682c1e6e7dd6::t_bb4021f098eb66 6,111,118-119,126-127,129-130,137-142,148,170-173,190-202,219-224,226,229,263-266
+packages/runtime/src/record.ts
+  s_e3682c1e6e7dd6::t_668eef53ae0c10 1-3
+packages/runtime/test/workflow.test.ts
+  s_e3682c1e6e7dd6::t_8e3825fc511756 10-14,16-27,34,37,41,43-44,48-50,53-54,56-58,60-64,66,69-76,79,106,152-154,157,186,227,254,277,281-299,311,341,353-354,371-395
+  s_e3682c1e6e7dd6::t_3e7275111ee1f2 32-33,35,52,55,59,65,78
+  s_e3682c1e6e7dd6::t_0d320f0106998c 399-400,402
+  s_e3682c1e6e7dd6::t_62345751c962f2 187-224
+  s_e3682c1e6e7dd6::t_0ab5f372090f9e 367
+  s_e3682c1e6e7dd6::t_a18d0ef901b227 250
+  s_e3682c1e6e7dd6::t_41fd2ad09411e2 401
+  s_e3682c1e6e7dd6::t_e3a9ce34c18889 8,81
+  s_e3682c1e6e7dd6::t_45ee868df5287d 343,356-357,359
+packages/runtime/src/config.ts
+  s_e3682c1e6e7dd6::t_2a0c100b0a5fd8 20
+packages/runtime/test/schema.test.ts
+  s_e3682c1e6e7dd6::t_3429653682df63 630-631,633
+  s_e3682c1e6e7dd6::t_471244b2baefb5 448-453,470
+  s_e3682c1e6e7dd6::t_41fd2ad09411e2 632
+  s_e3682c1e6e7dd6::t_e3a9ce34c18889 472-474
+  s_e3682c1e6e7dd6::t_00a2cd121a1b0b 49,309,328,409,426
+  s_e3682c1e6e7dd6::t_219e9df3df5869 26,75-86,399,406-408,410,418-425,427-442,446,454-464,468-469,471
+packages/runtime/distribution/official-minimal/.pipr/commands/default.yaml
+  s_e3682c1e6e7dd6::t_d1b3deaa1850b8 1-22
+packages/runtime/src/review-runtime.ts
+  s_e3682c1e6e7dd6::t_ed778264d215a5 27,70,87,89,91,251-254,256
+packages/runtime/src/schema.ts
+  s_e3682c1e6e7dd6::t_147edd68037c94 499-502
+  s_e3682c1e6e7dd6::t_5e777d4aaca808 3,9-16,68,83,115-120,122-124,181,192,199,305-307,342-348,364-373,398,400-403,406-411,415-417,420,423-447
+  s_e3682c1e6e7dd6::t_0edb56b5c0a3b7 2
+  s_e3682c1e6e7dd6::t_d6a923ac4084a3 5,121
+  s_e3682c1e6e7dd6::t_bfe0b52628d808 230,310,312,316,418
+README.md
+  s_e3682c1e6e7dd6::t_02f752cde9d6ba 100-101,114,126
+packages/cli/src/main.ts
+  s_e3682c1e6e7dd6::t_e1038f62ee46df 45,59,314-317,320
+packages/runtime/src/command-contract.ts
+  s_e3682c1e6e7dd6::t_668eef53ae0c10 1-32
+packages/runtime/distribution/official-minimal/.pipr/workflows/review.yaml
+  s_e3682c1e6e7dd6::t_8c5ec4b070ffde 15,20
+packages/runtime/test/materialized-config.test.ts
+  s_e3682c1e6e7dd6::t_3e5c8919d9bc2f 22,63,66,75-77,105-126
+packages/runtime/test/registry.test.ts
+  s_e3682c1e6e7dd6::t_051f95c04da3eb 83
+  s_e3682c1e6e7dd6::t_e6517fb62531ee 6,8,11,15,18,21,25,27,31-38,43-44,47,59,63,66,75-78,81,94,100,107,115-118,126,128-143,148-155,165
+  s_e3682c1e6e7dd6::t_41fd2ad09411e2 164
+  s_e3682c1e6e7dd6::t_623cb04908c06f 127,162-163
+packages/runtime/distribution/official-minimal/.pipr/blocks/review-default.yaml
+  s_e3682c1e6e7dd6::t_83b411a4028d39 5-7,15,19-22
+AGENTS.md
+  s_e3682c1e6e7dd6::t_3d19575e9e0c45 63
+packages/runtime/distribution/official-minimal/.pipr/config.yaml
+  s_e3682c1e6e7dd6::t_1683af79c99410 11-12
+packages/runtime/src/registry.ts
+  s_e3682c1e6e7dd6::t_e3a9ce34c18889 1,142
+  s_e3682c1e6e7dd6::t_6f90923ad299f4 4,22,37,42,61-63,89-93,97-122,147,159,164,167,171,179-182,199-200,203,205,208-229,239,242-253
+  s_e3682c1e6e7dd6::t_585e16f4aadb04 131-138
+packages/runtime/src/expression.ts
+  s_e3682c1e6e7dd6::t_1c9c7303c08391 151
+  s_e3682c1e6e7dd6::t_c9641fd181ea35 1-15,23-25,35,37-150,152-293,302-303,363-419
+  s_e3682c1e6e7dd6::t_e3a9ce34c18889 36
+  s_e3682c1e6e7dd6::t_92c26cf572345d 16-22,26-34,294-301,304-362
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_3437281d11196e 43,55,146-148,151,154,161-162,169-170,172-176,183-186,198,211,241,245-247
+  s_e3682c1e6e7dd6::t_fd22e4571d1429 2,177-182
+packages/runtime/src/commands.ts
+  s_e3682c1e6e7dd6::t_ef1ef74c8e36a1 5,167
+  s_e3682c1e6e7dd6::t_5fbb5b221a7d79 123-126
+packages/runtime/src/workflow.ts
+  s_e3682c1e6e7dd6::t_7a6ef411ceccc7 2
+  s_e3682c1e6e7dd6::t_6139e98a81ef42 105,321-338
+  s_e3682c1e6e7dd6::t_a964b5957fc8a1 102,104
+  s_e3682c1e6e7dd6::t_472532c127f2c5 5,12-13,16-20,23-25,42-43,50-51,54-59,75-94,100-101,103,106-108,150-169,175-177,184-188,191-237,239-240,244-245,256,311-317,339
+  s_e3682c1e6e7dd6::t_f45156f9d3c82d 109-111,113-132,134-144
+  s_e3682c1e6e7dd6::t_a04ad5e9ddc574 238,241-243,246-255
+  s_e3682c1e6e7dd6::t_e3a9ce34c18889 1
+packages/runtime/test/init.test.ts
+  s_e3682c1e6e7dd6::t_8ad404016a6d01 22
+packages/runtime/test/review-runtime.test.ts
+  s_e3682c1e6e7dd6::t_7e09b2a01afce1 130,132,137,149,151-152,154,159
+  s_e3682c1e6e7dd6::t_9765d9dd24185e 488-489,491
+  s_e3682c1e6e7dd6::t_41fd2ad09411e2 490
+  s_e3682c1e6e7dd6::t_bc659133498489 134,139,156,162-163,167,292,297
+packages/runtime/test/types.test.ts
+  s_e3682c1e6e7dd6::t_c756ed49e7406b 38,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "a0ea8ff0b765070aeebe76c806468384d94c8281",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
