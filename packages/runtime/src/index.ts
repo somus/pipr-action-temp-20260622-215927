@@ -6,5 +6,6 @@ export * from "./pi.js";
 export * from "./registry.js";
 export * from "./review.js";
 export * from "./review-runtime.js";
+export * from "./schema.js";
 export * from "./types.js";
 export * from "./workflow.js";

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { buildDiffManifest, parseNameStatus, parseUnifiedDiff } from "../src/diff.js";
 
@@ -150,8 +151,26 @@ async function withGitRepo<T>(run: (repo: string) => Promise<T>): Promise<T> {
   try {
     return await run(repo);
   } finally {
-    await rm(repo, { recursive: true, force: true });
+    await removeTempRepo(repo);
   }
+}
+
+async function removeTempRepo(repo: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(repo, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!isRetryableRmError(error) || attempt === 4) {
+        throw error;
+      }
+      await delay(50);
+    }
+  }
+}
+
+function isRetryableRmError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOTEMPTY";
 }
 
 async function createGitRepo(): Promise<string> {
