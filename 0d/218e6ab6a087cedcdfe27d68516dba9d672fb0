@@ -1,0 +1,62 @@
+AGENTS.md
+  s_e3682c1e6e7dd6::t_bbcb8e8fdac155 17-18,66
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_12614a16824f24 16
+scripts/check-actions.sh
+  s_e3682c1e6e7dd6::t_5dcd58e0ec1b55 1-6
+package.json
+  s_e3682c1e6e7dd6::t_e9ac17a6dcc332 17-18
+docs/adr/0002-docker-action-with-read-only-pi-workspace.md
+  s_e3682c1e6e7dd6::t_5dc3460f074e5b 5
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_bd59836508de5a 2
+  s_e3682c1e6e7dd6::t_fba9ccb922c806 14
+packages/runtime/src/pi-contract.ts
+  s_e3682c1e6e7dd6::t_fba9ccb922c806 1-23,26-38,40-41,43-50,52-69
+  s_e3682c1e6e7dd6::t_8194d1c9f8800d 39
+  s_e3682c1e6e7dd6::t_0112f754ae02d6 24-25,42,51
+packages/runtime/src/pi-provider.ts
+  s_e3682c1e6e7dd6::t_fba9ccb922c806 1-7,10
+packages/cli/test/main.test.ts
+  s_e3682c1e6e7dd6::t_e72fe1bda1734f 150,172,182,184-202,205,210
+  s_e3682c1e6e7dd6::t_4189c14e2176d8 183,203-204,206-209
+packages/runtime/src/commands.ts
+  s_e3682c1e6e7dd6::t_5bef06dba3aad9 239-242
+  s_e3682c1e6e7dd6::t_cb7b35a832f823 152,243-248,250,264
+packages/runtime/src/schema.ts
+  s_e3682c1e6e7dd6::t_8194d1c9f8800d 2,41
+  s_e3682c1e6e7dd6::t_fba9ccb922c806 45
+packages/runtime/src/index.ts
+  s_e3682c1e6e7dd6::t_fba9ccb922c806 8
+.github/workflows/ci.yml
+  s_e3682c1e6e7dd6::t_41e681c6badf48 17
+packages/runtime/test/pi.test.ts
+  s_e3682c1e6e7dd6::t_fc05e8aa4dc1ff 6-13,16-91
+mise.toml
+  s_e3682c1e6e7dd6::t_6a6ad298f69f3d 15-22
+scripts/check-pi-contract.ts
+  s_e3682c1e6e7dd6::t_570a7b56405d5c 66-78,84
+  s_e3682c1e6e7dd6::t_26e82e87a37f7e 26-30
+  s_e3682c1e6e7dd6::t_085b8a1086ff27 1-25,31-65,79-83,85-129
+packages/runtime/src/review-runtime.ts
+  s_e3682c1e6e7dd6::t_fba9ccb922c806 10
+README.md
+  s_e3682c1e6e7dd6::t_37a03474f7cd58 69-70
+  s_e3682c1e6e7dd6::t_464d00162fca81 16,19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "0d218e6ab6a087cedcdfe27d68516dba9d672fb0",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
