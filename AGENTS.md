@@ -14,7 +14,8 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 
 - Use `mise run install` for local dependency setup.
 - Use `mise run check` before opening or updating a pull request.
-- Use `mise run act-pr` after editing the GitHub Action, Docker Action packaging, workflow fixtures, or PR event handling.
+- Use `mise run check-actions` after editing the GitHub Action, Docker Action packaging, workflow fixtures, Pi CLI mapping, or PR event handling.
+- Use `mise run act-pr` only when the local Action fixture is the narrowest useful check.
 - Use `bun run fallow` when working on maintainability, dependency hygiene, dead exports, duplication, or complexity.
 - Use package-level commands during development when narrower feedback is enough.
 
@@ -62,7 +63,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Add tests for config merge behavior, provider ID resolution, registry resolution, explicit `from:` refs, diff parsing, schema validation, comment rendering, GitHub publishing, and dry-run boundaries when those areas change.
 - Run the narrowest relevant package tests during development.
 - Run `mise run check` before opening or updating a PR.
-- Run `mise run act-pr` after Action, Docker, workflow, or event fixture changes.
+- Run `mise run check-actions` after Action, Docker, workflow, Pi CLI mapping, or event fixture changes.
 - If Docker packaging changes, verify the image can run `pi --help` and `pipr action --help`.
 
 ## Pull Requests

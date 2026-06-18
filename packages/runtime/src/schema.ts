@@ -1,5 +1,5 @@
 import { type ZodType, z } from "zod";
-import { piThinkingLevelSchema } from "./types.js";
+import { piProviderIdSchema, piProviderProfileSchema } from "./pi-contract.js";
 import { isRefValue, validateWorkflowPath } from "./workflow.js";
 
 export const piprApiVersion = "pipr.dev/v1";
@@ -7,13 +7,9 @@ export const piprApiVersion = "pipr.dev/v1";
 const componentKindValues = ["Workflow", "Block", "Agent", "CommentTemplate", "Schema"] as const;
 
 const componentIdPattern = "^[a-z0-9-]+/[a-z0-9-]+$";
-const providerIdPattern = "^[a-z][a-z0-9_-]*$";
-const envNamePattern = "^[A-Z_][A-Z0-9_]*$";
 const commandIdPattern = "^[a-z0-9-]+$";
 const rawSecretPattern = /(sk-|api[_-]?key|secret|token)[a-z0-9_-]{8,}/i;
 const componentIdRegex = new RegExp(componentIdPattern);
-const providerIdRegex = new RegExp(providerIdPattern);
-const envNameRegex = new RegExp(envNamePattern);
 const commandIdRegex = new RegExp(commandIdPattern);
 const componentKinds = new Set<string>(componentKindValues);
 const jsonSchemaTypeNames = new Set([
@@ -42,20 +38,11 @@ const jsonValueSchema: ZodType<JsonValue> = z.lazy(() =>
 const stringMapSchema = z.record(z.string(), z.unknown());
 const componentKindSchema = z.enum(componentKindValues);
 const componentIdSchema = z.string().regex(componentIdRegex);
-const providerIdSchema = z.string().regex(providerIdRegex);
-const envNameSchema = z.string().regex(envNameRegex);
+const providerIdSchema = piProviderIdSchema;
 const commandIdSchema = z.string().regex(commandIdRegex);
 const failurePolicySchema = z.enum(["fail", "continue", "skip-output"]);
 
-const providerProfileSchema = z
-  .object({
-    id: providerIdSchema,
-    provider: z.string().min(1),
-    model: z.string().min(1),
-    apiKeyEnv: envNameSchema,
-    thinking: piThinkingLevelSchema.optional(),
-  })
-  .strict();
+const providerProfileSchema = piProviderProfileSchema;
 
 const limitsSchema = z
   .object({

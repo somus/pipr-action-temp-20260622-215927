@@ -14,7 +14,4 @@ jobs:
       - uses: jdx/mise-action@v4
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: docker build -t pipr:ci .
-      - run: docker run --rm --entrypoint pi pipr:ci --help
-      - run: docker run --rm pipr:ci action --help
-      - run: bun run act:pr
+      - run: bun run check:actions

@@ -13,10 +13,10 @@ mise run check
 Local GitHub Action testing uses `act`:
 
 ```bash
-mise run act-pr
+mise run check-actions
 ```
 
-The local Action fixture runs with `PIPR_DRY_RUN=1`; it proves Docker Action packaging and event/config loading without calling Pi or publishing comments.
+This builds the Docker Action image, verifies the installed Pi CLI contract, and runs the local Action fixture through `act`. The fixture runs with `PIPR_DRY_RUN=1`; it proves Docker Action packaging and event/config loading without calling Pi or publishing comments.
 
 ## Repository setup
 
@@ -66,7 +66,8 @@ The Docker Action pins provider execution from trusted Action inputs, not from P
 `.pipr/config.yaml`. This keeps a pull request from redirecting the provider backend, model,
 or API-key environment variable.
 
-pipr maps the selected provider to Pi CLI flags: `--provider`, `--model`, and `--thinking`.
+The provider profile's `thinking` value stays in `.pipr/config.yaml`. Non-dry Action runs read it
+from the pull request base commit, then map it to Pi's `--thinking` flag.
 Provider secrets stay env-only through `apiKeyEnv`; pipr does not pass raw keys with
 `--api-key`. Pi runs with `--tools read,grep,find,ls`, so the reviewer can inspect the
 read-only workspace without `bash`, `write`, or `edit`.

@@ -5,6 +5,7 @@ export * from "./diff.js";
 export * from "./event.js";
 export * from "./init.js";
 export * from "./pi.js";
+export * from "./pi-contract.js";
 export * from "./pi-provider.js";
 export * from "./project.js";
 export * from "./registry.js";

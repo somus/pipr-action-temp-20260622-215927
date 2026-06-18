@@ -147,6 +147,7 @@ describe("pipr CLI", () => {
         "#!/bin/sh",
         'case " $* " in *" --provider trusted-backend "*) ;; *) echo "wrong provider: $*" >&2; exit 41;; esac',
         'case " $* " in *" --model trusted-model "*) ;; *) echo "wrong model: $*" >&2; exit 42;; esac',
+        'case " $* " in *" --thinking high "*) ;; *) echo "wrong thinking: $*" >&2; exit 45;; esac',
         '[ "$TRUSTED_API_KEY" = "trusted-key" ] || { echo "missing trusted key" >&2; exit 43; }',
         'printf \'%s\\n\' \'{"summary":{"body":"No findings."},"inlineFindings":[]}\'',
       ].join("\n"),
@@ -168,8 +169,40 @@ describe("pipr CLI", () => {
         "#!/bin/sh",
         'case " $* " in *" --provider trusted-backend "*) ;; *) echo "wrong provider: $*" >&2; exit 41;; esac',
         'case " $* " in *" --model trusted-model "*) ;; *) echo "wrong model: $*" >&2; exit 42;; esac',
+        'case " $* " in *" --thinking high "*) ;; *) echo "wrong thinking: $*" >&2; exit 45;; esac',
         '[ "$TRUSTED_API_KEY" = "trusted-key" ] || { echo "missing trusted key" >&2; exit 43; }',
         '[ -z "$DEEPSEEK_API_KEY" ] || { echo "default key leaked" >&2; exit 44; }',
+        'printf \'%s\\n\' \'{"summary":{"body":"No findings."},"inlineFindings":[]}\'',
+      ].join("\n"),
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("uses provider thinking from the base-commit config, not Action inputs", async () => {
+    const result = await runActionWithGitWorkspace({
+      configYaml: [
+        "apiVersion: pipr.dev/v1",
+        "kind: Config",
+        "providers:",
+        "  - id: deepseek",
+        "    provider: deepseek",
+        "    model: deepseek-v4-pro",
+        "    apiKeyEnv: DEEPSEEK_API_KEY",
+        "    thinking: xhigh",
+        "workflows:",
+        "  - pipr/review",
+        "publication:",
+        "  maxInlineComments: 5",
+        "limits:",
+        "  timeoutSeconds: 300",
+      ].join("\n"),
+      env: {
+        INPUT_THINKING: "minimal",
+      },
+      piScript: [
+        "#!/bin/sh",
+        'case " $* " in *" --thinking xhigh "*) ;; *) echo "wrong thinking: $*" >&2; exit 45;; esac',
         'printf \'%s\\n\' \'{"summary":{"body":"No findings."},"inlineFindings":[]}\'',
       ].join("\n"),
     });

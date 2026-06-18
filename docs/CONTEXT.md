@@ -13,7 +13,7 @@ The repository-local product control plane under `.pipr/`.
 _Avoid_: legacy configuration roots, `.pi/`
 
 **Action Trust Boundary**:
-The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads executable review authority from trusted Action provider inputs, the runtime-owned review graph, and base-commit reviewer/comment components.
+The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads executable review authority from trusted Action provider inputs, base-commit provider thinking config, the runtime-owned review graph, and base-commit reviewer/comment components.
 _Avoid_: PR-authored runtime authority
 
 **Official Minimal Distribution**:

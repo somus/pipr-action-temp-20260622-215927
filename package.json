@@ -14,6 +14,8 @@
     "format:check": "biome check .",
     "fallow": "fallow --fail-on-issues --format compact",
     "check": "turbo run check //#format:check //#fallow",
+    "check:actions": "bash scripts/check-actions.sh",
+    "check:pi-contract": "bun scripts/check-pi-contract.ts --image pipr-action:contract",
     "act:pr": "scripts/act-pr-fixture.sh"
   },
   "devDependencies": {

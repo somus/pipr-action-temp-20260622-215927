@@ -3,7 +3,92 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildPiArgs, createReadOnlyWorkspace, runPi } from "../src/pi.js";
+import {
+  parsePiProviderInvocation,
+  parsePiProviderProfile,
+  piBuiltinToolNames,
+  piReadOnlyToolNames,
+  piRequiredCliFlags,
+  piThinkingLevels,
+} from "../src/pi-contract.js";
 import { toPiProviderInvocation } from "../src/pi-provider.js";
+
+describe("Pi contract", () => {
+  it("tracks the Pi CLI contract pipr depends on", () => {
+    expect(piThinkingLevels).toEqual(["off", "minimal", "low", "medium", "high", "xhigh"]);
+    expect(piBuiltinToolNames).toEqual(["read", "bash", "edit", "write", "grep", "find", "ls"]);
+    expect(piReadOnlyToolNames).toEqual(["read", "grep", "find", "ls"]);
+    expect(piRequiredCliFlags).toEqual([
+      "--provider",
+      "--model",
+      "--mode",
+      "--print",
+      "--no-session",
+      "--session-dir",
+      "--tools",
+      "--no-context-files",
+      "--no-approve",
+      "--no-extensions",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-themes",
+      "--thinking",
+    ]);
+  });
+
+  it("accepts only Pi-native provider profile fields", () => {
+    expect(
+      parsePiProviderProfile({
+        id: "deepseek",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        thinking: "high",
+      }),
+    ).toMatchObject({ thinking: "high" });
+
+    expect(() =>
+      parsePiProviderProfile({
+        id: "deepseek",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        options: { reasoning_effort: "high" },
+      }),
+    ).toThrow();
+    expect(() =>
+      parsePiProviderProfile({
+        id: "deepseek",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        thinking: "enabled",
+      }),
+    ).toThrow();
+  });
+
+  it("keeps Pi invocation read-only and schema-backed", () => {
+    expect(
+      parsePiProviderInvocation({
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        thinking: "high",
+        tools: ["read", "grep", "find", "ls"],
+      }),
+    ).toMatchObject({ tools: ["read", "grep", "find", "ls"] });
+
+    expect(() =>
+      parsePiProviderInvocation({
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        thinking: "high",
+        tools: ["read", "bash", "grep", "find", "ls"],
+      }),
+    ).toThrow();
+  });
+});
 
 describe("buildPiArgs", () => {
   it("uses real Pi CLI flags with explicit read-only tools and without PR-controlled context", () => {

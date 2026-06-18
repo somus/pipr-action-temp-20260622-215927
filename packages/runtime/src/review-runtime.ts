@@ -7,7 +7,7 @@ import {
 import type { MaterializedProject } from "./config.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "./diff.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "./pi.js";
-import { piReadOnlyToolNames } from "./pi-provider.js";
+import { piReadOnlyToolNames } from "./pi-contract.js";
 import { parsePrReview, reviewSchemaExample, validatePrReview } from "./review.js";
 import type {
   DiffManifest,

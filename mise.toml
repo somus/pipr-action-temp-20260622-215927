@@ -12,6 +12,14 @@ run = "bun install"
 description = "Run repository checks"
 run = "bun run check"
 
+[tasks.check-actions]
+description = "Build Docker Action, verify Pi contract, and run the local pull_request fixture through act"
+run = "bun run check:actions"
+
+[tasks.check-pi-contract]
+description = "Verify the Docker Action Pi CLI contract"
+run = "bun run check:pi-contract"
+
 [tasks.act-pr]
 description = "Run the local pull_request action fixture through act"
 run = "bun run act:pr"

@@ -149,7 +149,7 @@ export async function runActionCommand(
     commitSha: event.baseSha,
     env: options.env,
   });
-  const provider = trustedActionProvider(options);
+  const provider = trustedActionProvider(options, trustedRuntime.resolved.config);
 
   return {
     kind: "review",
@@ -236,9 +236,18 @@ function trustedActionConfig(
   });
 }
 
-function trustedActionProvider(options: ActionCommandOptions): ProviderConfig {
+function trustedActionProvider(
+  options: ActionCommandOptions,
+  trustedConfig: PiprConfig,
+): ProviderConfig {
+  const providerId = readTrustedProviderOption(
+    options,
+    "providerId",
+    "provider-id",
+    defaultActionProvider.id,
+  );
   return parseProviderConfig({
-    id: readTrustedProviderOption(options, "providerId", "provider-id", defaultActionProvider.id),
+    id: providerId,
     provider: readTrustedProviderOption(
       options,
       "provider",
@@ -252,7 +261,7 @@ function trustedActionProvider(options: ActionCommandOptions): ProviderConfig {
       "api-key-env",
       defaultActionProvider.apiKeyEnv,
     ),
-    thinking: defaultActionProvider.thinking,
+    thinking: trustedConfig.providers.find((provider) => provider.id === providerId)?.thinking,
   });
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { piProviderProfileSchema } from "./pi-contract.js";
 import { prReviewSchema, reviewFindingSchema } from "./review-contract.js";
 
 export type {
@@ -10,17 +11,7 @@ export type {
 
 const nonEmptyStringSchema = z.string().min(1);
 
-export const piThinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
-
-export const providerConfigSchema = z
-  .object({
-    id: nonEmptyStringSchema,
-    provider: nonEmptyStringSchema,
-    model: nonEmptyStringSchema,
-    apiKeyEnv: nonEmptyStringSchema,
-    thinking: piThinkingLevelSchema.optional(),
-  })
-  .strict();
+export const providerConfigSchema = piProviderProfileSchema;
 
 export const piprConfigSchema = z
   .object({
@@ -204,7 +195,6 @@ export const resolvedConfigSchema = z
   })
   .strict();
 
-export type PiThinkingLevel = z.infer<typeof piThinkingLevelSchema>;
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export type PiprConfig = z.infer<typeof piprConfigSchema>;
 export type RegistryCollectionName = z.infer<typeof registryCollectionNameSchema>;
