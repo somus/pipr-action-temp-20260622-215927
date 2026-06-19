@@ -1,0 +1,155 @@
+scripts/act-pr-full-fixture.sh
+  s_e3682c1e6e7dd6::t_7694276425cad3 23,39
+packages/runtime/src/workflow/tests/workflow.test.ts
+  s_e3682c1e6e7dd6::t_df0957de6adf15 139-141,299-321,323-328,330-337
+  s_e3682c1e6e7dd6::t_14bdb9552b61f5 133-135
+  s_e3682c1e6e7dd6::t_a7262115c0d1f3 86,91,117
+  s_e3682c1e6e7dd6::t_2abcd042db38c0 625-633
+  s_e3682c1e6e7dd6::t_fe12617f1a8280 8,85,87,93-99,108-113,118,120,130-132,143
+  s_e3682c1e6e7dd6::t_8d7ee95f0db3ab 224-225,251-253,256,268,273
+  s_e3682c1e6e7dd6::t_483270bd710650 329
+  s_e3682c1e6e7dd6::t_b686fcafd8de4e 322,362
+  s_e3682c1e6e7dd6::t_c704c3cf092f5e 88-90,92,100-107,114-116,119,121-129
+  s_e3682c1e6e7dd6::t_95b44ce83c99d2 340-361,363-383
+  s_e3682c1e6e7dd6::t_790ab3414315df 136-138,142
+  s_e3682c1e6e7dd6::t_a49b4d6ab829bd 226-250,254-255,257-267,269-272,274-298,338-339
+packages/runtime/src/config/tests/schema.test.ts
+  s_e3682c1e6e7dd6::t_f767f9595ed1c3 229-239
+  s_e3682c1e6e7dd6::t_62cfe6f9fd894d 174-192,208-228,240-256
+  s_e3682c1e6e7dd6::t_329a025052edd5 193-207
+packages/runtime/src/registry/registry.ts
+  s_e3682c1e6e7dd6::t_30589a31818c5c 34-39
+scripts/act-pr-orchestrator-fixture.sh
+  s_e3682c1e6e7dd6::t_7694276425cad3 24,66
+  s_e3682c1e6e7dd6::t_d513e7bd9e3639 23
+  s_e3682c1e6e7dd6::t_030352005e4018 26,68,72
+  s_e3682c1e6e7dd6::t_1345db2a311066 1-22,25,27-65,67,69-71,73-213
+packages/runtime/src/review/runtime.ts
+  s_e3682c1e6e7dd6::t_4cbfd60946bccb 6,275,328,347
+  s_e3682c1e6e7dd6::t_22e8a897298c14 31-34,96-103,114,118-119,123,157,208,210,214,217-219,222-225,228,233-235,244,260,268,279-285,316-318,320-327,329-338
+  s_e3682c1e6e7dd6::t_cfd7367f2723e1 319
+scripts/check-actions.sh
+  s_e3682c1e6e7dd6::t_f2353459b4bd53 10
+scripts/test-act-full-fixture-assertions.ts
+  s_e3682c1e6e7dd6::t_ae0c8d06b0fe9b 5,11,43-47,58-61,95-102
+README.md
+  s_e3682c1e6e7dd6::t_595fbeb0e7a1bb 162-187
+scripts/assert-act-condensed-fixture.mjs
+  s_e3682c1e6e7dd6::t_eee577365d6cfb 3
+packages/runtime/src/config/schema.ts
+  s_e3682c1e6e7dd6::t_2e4c4344a72dc8 37,399-403,405,436-438
+  s_e3682c1e6e7dd6::t_35019ab4daa629 148-150
+  s_e3682c1e6e7dd6::t_a156e0251b5878 446
+  s_e3682c1e6e7dd6::t_5fc5e4c9da8fe1 439-445,447-453,455-461
+  s_e3682c1e6e7dd6::t_d1aa6f64ca44cc 1,368-372,584,597,622,635,652,672
+  s_e3682c1e6e7dd6::t_946cdede472ab4 47
+  s_e3682c1e6e7dd6::t_e931877e8e8ee9 3-7
+  s_e3682c1e6e7dd6::t_ad3e963a87c5ee 16
+  s_e3682c1e6e7dd6::t_835d97f3394beb 48-55,117
+  s_e3682c1e6e7dd6::t_0b43227add64c0 11,46,116
+packages/runtime/src/review/agent-template.ts
+  s_e3682c1e6e7dd6::t_e6bcac226a9fd1 7,48
+  s_e3682c1e6e7dd6::t_39b5670b3af63e 63
+  s_e3682c1e6e7dd6::t_0aef866d37343b 4-6,8-9,60-62,64
+  s_e3682c1e6e7dd6::t_0bbeafbd4fc615 2,10-15,17,21-45,47,49-54,56-59,65-71,73-77,81-83,86-87,89-94,97-98,100-101,103-110
+  s_e3682c1e6e7dd6::t_e84e3f3bad613f 18-19,78-80
+  s_e3682c1e6e7dd6::t_8d1af9eede7133 3
+  s_e3682c1e6e7dd6::t_37d10793763722 85,88,96,99
+  s_e3682c1e6e7dd6::t_e3133833c8ce38 1,16,20,46,55,72,84,95,102
+test/fixtures/act/fake-pi
+  s_e3682c1e6e7dd6::t_8a21ad6924d280 3-4,6,8,10,14-209,211,214,222-235,237-242,244-276
+  s_e3682c1e6e7dd6::t_5b5eb38cd2600b 5
+scripts/check-pi-contract.ts
+  s_e3682c1e6e7dd6::t_d3f255ac081074 22-26
+packages/runtime/src/config/config.ts
+  s_e3682c1e6e7dd6::t_5d31425d663052 167,179-188
+  s_e3682c1e6e7dd6::t_80144daa9347c1 4
+packages/runtime/src/workflow/expression.ts
+  s_e3682c1e6e7dd6::t_c1d1beb9e4aed6 22,25,192-194,206,282,291,314,327,329-333,335-336
+  s_e3682c1e6e7dd6::t_6a102d1bc1d890 545-560
+  s_e3682c1e6e7dd6::t_78a232bfdbdcde 26,74,83-90,92,98,105,158,161
+  s_e3682c1e6e7dd6::t_c2b093004b6950 79,129
+  s_e3682c1e6e7dd6::t_201ef93984ed03 67,70-73
+  s_e3682c1e6e7dd6::t_8f8f8c7a1ba0db 23-24,27
+  s_e3682c1e6e7dd6::t_7057b3cb1d2ad0 191,195-198,211
+  s_e3682c1e6e7dd6::t_5f64b80d3476af 110-122
+  s_e3682c1e6e7dd6::t_d051ec3fbf6cb6 308,310-312,315,317-324,326,328
+  s_e3682c1e6e7dd6::t_86a347eb253746 30,61-66,68-69,75-78,80-82,125-126,140-148,159,165-190,199
+  s_e3682c1e6e7dd6::t_7acbe1292e5cbe 281,290
+  s_e3682c1e6e7dd6::t_380e75916ee7c8 151-157
+packages/runtime/src/config/tests/materialized-config.test.ts
+  s_e3682c1e6e7dd6::t_fb4f286ad8694a 350-353
+  s_e3682c1e6e7dd6::t_e8bd2758d77fb1 210-232
+scripts/assert-act-fixture-helpers.mjs
+  s_e3682c1e6e7dd6::t_1b8527d2f6f9b2 1-6,9,13
+packages/cli/src/main.ts
+  s_e3682c1e6e7dd6::t_31e090b7dc71b0 260,264
+packages/runtime/src/review/tests/runtime.test.ts
+  s_e3682c1e6e7dd6::t_b044827e387255 34-35,849-851
+  s_e3682c1e6e7dd6::t_60b696ecc933e0 140,145-160,216-258,260,262-277,279,281-315,317-364,476-493,495-503
+  s_e3682c1e6e7dd6::t_fe48c117a2c44c 9-14,280,673
+  s_e3682c1e6e7dd6::t_43dc09a098d95f 855,857,871,876
+  s_e3682c1e6e7dd6::t_df7213c2f29020 278,316,671
+  s_e3682c1e6e7dd6::t_411ebba0c996bf 365-382,384-402,404-475
+  s_e3682c1e6e7dd6::t_56fcb6a27ba5e6 259,261,383,403,494
+  s_e3682c1e6e7dd6::t_1550419a60f3db 793-796,798-799
+packages/runtime/src/review/tests/agent-template.test.ts
+  s_e3682c1e6e7dd6::t_b04c43d4602b0a 18-20,32,92,95,111,114-117
+  s_e3682c1e6e7dd6::t_78aab0b02e7be2 38,44,48
+  s_e3682c1e6e7dd6::t_ec1a7e618ab6cc 37,39-43,45-47,49-51,97-99
+  s_e3682c1e6e7dd6::t_c02f705a043f5f 1-17,21-31,33-36,52-71,76,80-91,93-94,96,100-110,112-113
+  s_e3682c1e6e7dd6::t_e84e3f3bad613f 72-75,77-79
+scripts/act-pr-condensed-fixture.sh
+  s_e3682c1e6e7dd6::t_030352005e4018 31,73,77
+  s_e3682c1e6e7dd6::t_7694276425cad3 29,71
+  s_e3682c1e6e7dd6::t_a19dd727c378b8 24,26
+  s_e3682c1e6e7dd6::t_d513e7bd9e3639 28
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_f0934c0aebbf02 246-250
+  s_e3682c1e6e7dd6::t_388b36d5d854b0 188-190,311-312
+  s_e3682c1e6e7dd6::t_e528a37dde8c01 167-183,185-187
+  s_e3682c1e6e7dd6::t_d5cf077e4a55bd 184
+test/fixtures/act/workflows/pipr-local-orchestrator.yml
+  s_e3682c1e6e7dd6::t_1345db2a311066 1-39,41-47
+  s_e3682c1e6e7dd6::t_030352005e4018 40
+scripts/assert-act-orchestrator-fixture.mjs
+  s_e3682c1e6e7dd6::t_1345db2a311066 1-2,4-23
+  s_e3682c1e6e7dd6::t_eee577365d6cfb 3
+packages/runtime/src/shared/record.ts
+  s_e3682c1e6e7dd6::t_3af98fb1bd8103 4-10
+test/fixtures/act/workflows/pipr-local-condensed.yml
+  s_e3682c1e6e7dd6::t_030352005e4018 40
+package.json
+  s_e3682c1e6e7dd6::t_19cde322833cd8 22-23
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_9837c48dd5c0e2 35-38
+  s_e3682c1e6e7dd6::t_6accf7ff17057a 48,51
+scripts/assert-act-full-fixture.mjs
+  s_e3682c1e6e7dd6::t_a9e6864e02722f 3,33-35
+packages/runtime/src/workflow/workflow.ts
+  s_e3682c1e6e7dd6::t_ff318231f481c3 33-37,69-73,106,109-113,117-118,120-122,124-127,129,133-134,139,141-144,154-160,162,165-170,172-174,279-282
+  s_e3682c1e6e7dd6::t_954049d7806b6f 135-136,138,180,184
+  s_e3682c1e6e7dd6::t_e84e3f3bad613f 183
+  s_e3682c1e6e7dd6::t_79151b902f083b 114-116,119,123,140,185-188
+  s_e3682c1e6e7dd6::t_9600ed0a56e58a 128,130-132,137,145-153,161,175-179
+  s_e3682c1e6e7dd6::t_5e6b8f14cb67b1 214,266
+  s_e3682c1e6e7dd6::t_fad923a5c960c0 10-14,163,181
+  s_e3682c1e6e7dd6::t_14c740b20afb3d 107-108
+  s_e3682c1e6e7dd6::t_35971b8dbfb026 1,164,182,272,319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "21bed6274d53202980c70a4f1e4d4e8c5c3c7069",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
