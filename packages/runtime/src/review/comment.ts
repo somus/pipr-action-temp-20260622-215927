@@ -95,16 +95,14 @@ function renderMetadataSection(
   return ["<details>", `<summary>${section.title}</summary>`, "", ...lines, "", "</details>", ""];
 }
 
-export const inlineCommentDraftSchema = z
-  .object({
-    path: z.string().min(1),
-    side: reviewSideSchema,
-    startLine: z.number().int().positive(),
-    endLine: z.number().int().positive(),
-    body: z.string().min(1),
-    marker: z.string().min(1),
-  })
-  .strict();
+export const inlineCommentDraftSchema = z.strictObject({
+  path: z.string().min(1),
+  side: reviewSideSchema,
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  body: z.string().min(1),
+  marker: z.string().min(1),
+});
 
 export type InlineCommentDraft = z.infer<typeof inlineCommentDraftSchema>;
 

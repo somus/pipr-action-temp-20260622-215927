@@ -27,7 +27,7 @@ pipr init
 pipr validate
 ```
 
-`pipr init` creates editable files under `.pipr/` for config, workflows, commands, the reviewer agent, comment templates, and PR review schemas. The minimal distribution does not create custom blocks; the default review flow calls `core/run-agent` directly. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
+`pipr init` creates editable files under `.pipr/` for config, workflows, the reviewer agent, comment templates, and PR review schemas. Workflow-owned command triggers live under `Workflow.on.commands`. The minimal distribution does not create custom blocks; the default review flow calls `core/run-agent` directly. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
 
 ## GitHub Action shape
 
@@ -38,6 +38,8 @@ name: pipr
 
 on:
   pull_request:
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -54,6 +56,7 @@ jobs:
       - uses: <owner>/pipr@v1
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           config-dir: .pipr
           provider-id: deepseek
@@ -73,7 +76,7 @@ Provider secrets stay env-only through `apiKeyEnv`; pipr does not pass raw keys 
 read-only workspace without `bash`, `write`, or `edit`.
 
 The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load the
-materialized workflow, command, agent, schema, comment-template, and optional block registry from
+materialized workflow, agent, schema, comment-template, and optional block registry from
 the pull request base commit. That base-commit `.pipr/` tree is trusted review authority, while
 runtime-owned `core/run-agent` owns deterministic diff creation, Pi execution, and review
 validation. Runtime-owned comment handlers own comment preparation. Invalid or deleted PR-head
@@ -97,8 +100,6 @@ providers:
 
 workflows:
   - pipr/review
-commands:
-  - pipr/default-commands
 
 limits:
   timeoutSeconds: 300
@@ -107,6 +108,16 @@ limits:
 The bundled workflow calls the safe review primitive directly, then renders comments:
 
 ```yaml
+on:
+  events:
+    - pull_request.opened
+    - pull_request.synchronize
+    - pull_request.reopened
+  commands:
+    - name: review
+      aliases: ["@pipr review"]
+      requiredPermission: write
+
 steps:
   - id: review
     uses: core/run-agent
@@ -120,6 +131,7 @@ steps:
 ```
 
 Review workflows must expose the reserved runtime step ids `review`, `main-comment`, and `inline-comments`.
+Command triggers run only for `issue_comment` events that target pull requests. pipr checks `github.event.issue.pull_request`, fetches PR metadata, checks the commenter with GitHub's collaborator permission API, parses command arguments, and only then starts the workflow. Permissions are ordered `read < triage < write < maintain < admin`; `requiredPermission` defaults to `write`.
 
 ## Registry modules
 
@@ -128,7 +140,6 @@ The materialized `.pipr/` tree contains conventional component files:
 - `.pipr/workflows/*.yaml`
 - `.pipr/agents/*.md`
 - `.pipr/comments/*.yaml`
-- `.pipr/commands/*.yaml`
 - `.pipr/schemas/*.json`
 
 Custom `.pipr/blocks/*.yaml` files are supported for explicit user extensions, but the minimal distribution does not include one. Bundled product components use the `pipr/*` namespace. Runtime primitive blocks use the reserved `core/*` namespace.

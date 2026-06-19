@@ -48,7 +48,6 @@ const registry: RuntimeRegistry = {
   agents: [],
   schemas: [],
   comments: [],
-  commands: [],
   tools: [],
 };
 

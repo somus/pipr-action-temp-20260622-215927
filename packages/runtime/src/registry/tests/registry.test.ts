@@ -112,6 +112,7 @@ describe("runtime registry", () => {
           description: "Review workflow",
           source: "test",
           events: ["pull_request.opened"],
+          commands: [{ name: "review", aliases: ["@pipr review"] }],
           steps: [
             { id: "review", block: "core/run-agent" },
             { id: "main-comment", block: "core/main-comment", with: { template: "pipr/main" } },
@@ -120,20 +121,6 @@ describe("runtime registry", () => {
       ],
       agents: [{ id: "pipr/reviewer", description: "Reviewer", source: "test" }],
       comments: [{ id: "pipr/main", description: "Main comment", source: "test" }],
-      commands: [
-        {
-          id: "pipr/default-commands",
-          description: "Default commands",
-          source: "test",
-          commands: [
-            {
-              id: "review",
-              aliases: ["@pipr review"],
-              run: { workflows: ["pipr/review"] },
-            },
-          ],
-        },
-      ],
     });
 
     const graph = renderRegistryGraph(registry);

@@ -3,44 +3,73 @@ import { z } from "zod";
 import type { PullRequestEventContext } from "../types.js";
 import { parsePullRequestEventContext } from "../types.js";
 
-const githubPullRequestPayloadSchema = z
-  .object({
-    action: z.string().optional(),
-    number: z.number().optional(),
-    repository: z
-      .object({
-        full_name: z.string().optional(),
-      })
-      .passthrough()
-      .optional(),
-    pull_request: z
-      .object({
-        number: z.number().optional(),
-        base: z
-          .object({
-            sha: z.string().optional(),
-            repo: z
-              .object({
-                full_name: z.string().optional(),
-              })
-              .passthrough()
-              .optional(),
-          })
-          .passthrough()
-          .optional(),
-        head: z
-          .object({
-            sha: z.string().optional(),
-          })
-          .passthrough()
-          .optional(),
-      })
-      .passthrough()
-      .optional(),
-  })
-  .passthrough();
+const githubPullRequestPayloadSchema = z.looseObject({
+  action: z.string().optional(),
+  number: z.number().optional(),
+  repository: z
+    .looseObject({
+      full_name: z.string().optional(),
+    })
+    .optional(),
+  pull_request: z
+    .looseObject({
+      number: z.number().optional(),
+      base: z
+        .looseObject({
+          sha: z.string().optional(),
+          repo: z
+            .looseObject({
+              full_name: z.string().optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+      head: z
+        .looseObject({
+          sha: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
 
 type GitHubPullRequestPayload = z.infer<typeof githubPullRequestPayloadSchema>;
+
+const githubIssueCommentPayloadSchema = z.looseObject({
+  action: z.string().optional(),
+  repository: z
+    .looseObject({
+      full_name: z.string().optional(),
+    })
+    .optional(),
+  issue: z
+    .looseObject({
+      number: z.number().optional(),
+      pull_request: z.unknown().optional(),
+    })
+    .optional(),
+  comment: z
+    .looseObject({
+      body: z.string().optional(),
+      user: z
+        .looseObject({
+          login: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+export type IssueCommentEventContext = {
+  eventName: "issue_comment";
+  action?: string;
+  repo: string;
+  issueNumber: number;
+  isPullRequest: boolean;
+  commentBody: string;
+  commenter: string;
+  workspace: string;
+};
 
 export async function loadPullRequestEventContext(
   eventPath: string,
@@ -58,6 +87,25 @@ export async function loadPullRequestEventContext(
     headSha: readHeadSha(pullRequest),
     workspace: readWorkspace(env),
   });
+}
+
+export async function loadIssueCommentEventContext(
+  eventPath: string,
+  env: NodeJS.ProcessEnv,
+): Promise<IssueCommentEventContext> {
+  const payload = githubIssueCommentPayloadSchema.parse(
+    JSON.parse(await readFile(eventPath, "utf8")),
+  );
+  return {
+    eventName: "issue_comment",
+    action: payload.action,
+    repo: firstString(payload.repository?.full_name, env.GITHUB_REPOSITORY) ?? missingField("repo"),
+    issueNumber: payload.issue?.number ?? missingField("issue number"),
+    isPullRequest: payload.issue?.pull_request !== undefined,
+    commentBody: payload.comment?.body ?? "",
+    commenter: payload.comment?.user?.login ?? missingField("comment user"),
+    workspace: readWorkspace(env),
+  };
 }
 
 async function readEventPayload(eventPath: string): Promise<GitHubPullRequestPayload> {

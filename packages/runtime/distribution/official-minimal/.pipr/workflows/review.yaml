@@ -3,9 +3,15 @@ kind: Workflow
 id: pipr/review
 description: Default Pi pull request review workflow.
 on:
-  - pull_request.opened
-  - pull_request.synchronize
-  - pull_request.reopened
+  events:
+    - pull_request.opened
+    - pull_request.synchronize
+    - pull_request.reopened
+  commands:
+    - name: review
+      aliases:
+        - "@pipr review"
+      requiredPermission: write
 steps:
   - id: review
     uses: core/run-agent

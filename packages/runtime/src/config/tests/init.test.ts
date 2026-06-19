@@ -19,7 +19,6 @@ describe("initOfficialMinimalProject", () => {
     expect(project.config.limits?.timeoutSeconds).toBe(300);
     expect(project.config.publication?.maxInlineComments).toBeUndefined();
     expect(project.components.map((component) => component.id).sort()).toEqual([
-      "pipr/default-commands",
       "pipr/main",
       "pipr/pr-review",
       "pipr/review",

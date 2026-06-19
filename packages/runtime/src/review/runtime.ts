@@ -42,6 +42,8 @@ export type RunReviewRuntimeOptions = {
   project?: MaterializedProject;
   registry: RuntimeRegistry;
   providerOverride?: ProviderConfig;
+  workflowId?: string;
+  workflowInputs?: unknown;
   piExecutable?: string;
   piRunner?: PiRunner;
   diffManifestBuilder?: DiffManifestBuilder;
@@ -69,10 +71,12 @@ export async function runReviewRuntime(
   let provider = providerOverride ?? resolveDefaultProvider(config);
   let repairAttempted = false;
   let diffManifest: DiffManifest | undefined;
-  assertReviewWorkflowContract(options.registry, options.event);
+  assertReviewWorkflowContract(options.registry, options.event, options.workflowId);
   const workflow = await executeWorkflow({
     registry: options.registry,
+    workflowId: options.workflowId,
     event: options.event,
+    inputs: options.workflowInputs,
     config,
     blocks: reviewWorkflowHandlers({
       options: { ...options, config, providerOverride },
@@ -111,8 +115,11 @@ export async function runReviewRuntime(
 function assertReviewWorkflowContract(
   registry: RuntimeRegistry,
   event: Pick<PullRequestEventContext, "eventName" | "action">,
+  workflowId?: string,
 ): void {
-  const workflow = selectWorkflowForEvent(registry, event);
+  const workflow = workflowId
+    ? registry.workflows.find((entry) => entry.id === workflowId)
+    : selectWorkflowForEvent(registry, event);
   if (!workflow) {
     return;
   }

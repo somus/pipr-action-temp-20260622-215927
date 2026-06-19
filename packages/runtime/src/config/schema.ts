@@ -1,19 +1,13 @@
 import { type ZodType, z } from "zod";
+import { commandPatternInputIds } from "../commands/grammar.js";
 import { piProviderIdSchema, piProviderProfileSchema } from "../pi/contract.js";
 import { isRecord } from "../shared/record.js";
+import { workflowCommandSchema, workflowInputsSchema } from "../types.js";
 import { validateWorkflowExpressions } from "../workflow/expression.js";
-import { createCommandDefinitionSchema } from "./command-contract.js";
 
 export const piprApiVersion = "pipr.dev/v1";
 
-const componentKindValues = [
-  "Workflow",
-  "Block",
-  "Agent",
-  "CommentTemplate",
-  "CommandSet",
-  "Schema",
-] as const;
+const componentKindValues = ["Workflow", "Block", "Agent", "CommentTemplate", "Schema"] as const;
 
 const componentIdPattern = "^[a-z0-9-]+/[a-z0-9-]+$";
 const commandIdPattern = "^[a-z0-9-]+$";
@@ -53,118 +47,94 @@ const failurePolicySchema = z.enum(["fail", "continue", "skip-output"]);
 
 const providerProfileSchema = piProviderProfileSchema;
 
-const limitsSchema = z
-  .object({
-    timeoutSeconds: z.number().int().positive().max(3600),
-  })
-  .strict();
+const limitsSchema = z.strictObject({
+  timeoutSeconds: z.number().int().positive().max(3600),
+});
 
-const configDocumentSchema = z
-  .object({
-    apiVersion: z.literal(piprApiVersion),
-    kind: z.literal("Config"),
-    providers: z.array(providerProfileSchema).min(1),
-    workflows: z.array(componentIdSchema).optional(),
-    commands: z.array(componentIdSchema).optional(),
-    publication: z
-      .object({
-        maxInlineComments: z.number().int().min(0).max(50).optional(),
-      })
-      .strict()
-      .optional(),
-    limits: limitsSchema.optional(),
-  })
-  .strict();
+const stepSchema = z.strictObject({
+  id: commandIdSchema,
+  uses: componentIdSchema,
+  with: z.unknown().optional(),
+  failurePolicy: failurePolicySchema.optional(),
+});
 
-const stepSchema = z
-  .object({
-    id: commandIdSchema,
-    uses: componentIdSchema,
-    with: z.unknown().optional(),
-    failurePolicy: failurePolicySchema.optional(),
-  })
-  .strict();
+const workflowComponentSchema = z.strictObject({
+  apiVersion: z.literal(piprApiVersion),
+  kind: z.literal("Workflow"),
+  id: componentIdSchema,
+  description: z.string().optional(),
+  inputs: workflowInputsSchema.optional(),
+  failurePolicy: failurePolicySchema.optional(),
+  on: z
+    .strictObject({
+      events: z.array(z.string().min(1)).optional(),
+      commands: z.array(workflowCommandSchema).optional(),
+    })
+    .optional(),
+  steps: z.array(stepSchema),
+});
 
-const workflowComponentSchema = z
-  .object({
-    apiVersion: z.literal(piprApiVersion),
-    kind: z.literal("Workflow"),
-    id: componentIdSchema,
-    description: z.string().optional(),
-    failurePolicy: failurePolicySchema.optional(),
-    on: z.array(z.string().min(1)).optional(),
-    steps: z.array(stepSchema),
-  })
-  .strict();
+const configWorkflowRefSchema = z.union([componentIdSchema, workflowComponentSchema]);
 
-const blockComponentSchema = z
-  .object({
-    apiVersion: z.literal(piprApiVersion),
-    kind: z.literal("Block"),
-    id: componentIdSchema,
-    description: z.string().optional(),
-    inputs: stringMapSchema.optional(),
-    outputs: stringMapSchema.optional(),
-    steps: z.array(stepSchema).optional(),
-    output: stringMapSchema.optional(),
-    failurePolicy: failurePolicySchema.optional(),
-  })
-  .strict();
+const configDocumentSchema = z.strictObject({
+  apiVersion: z.literal(piprApiVersion),
+  kind: z.literal("Config"),
+  providers: z.array(providerProfileSchema).min(1),
+  workflows: z.array(configWorkflowRefSchema).optional(),
+  publication: z
+    .strictObject({
+      maxInlineComments: z.number().int().min(0).max(50).optional(),
+    })
+    .optional(),
+  limits: limitsSchema.optional(),
+});
 
-const commandSetComponentSchema = z
-  .object({
-    apiVersion: z.literal(piprApiVersion),
-    kind: z.literal("CommandSet"),
-    id: componentIdSchema,
-    description: z.string().optional(),
-    commands: z.array(createCommandDefinitionSchema(commandIdSchema, componentIdSchema)),
-  })
-  .strict();
+const blockComponentSchema = z.strictObject({
+  apiVersion: z.literal(piprApiVersion),
+  kind: z.literal("Block"),
+  id: componentIdSchema,
+  description: z.string().optional(),
+  inputs: stringMapSchema.optional(),
+  outputs: stringMapSchema.optional(),
+  steps: z.array(stepSchema).optional(),
+  output: stringMapSchema.optional(),
+  failurePolicy: failurePolicySchema.optional(),
+});
 
-const agentComponentSchema = z
-  .object({
-    apiVersion: z.literal(piprApiVersion),
-    kind: z.literal("Agent"),
-    id: componentIdSchema,
-    provider: providerIdSchema,
-    tools: z.array(componentIdSchema).optional(),
-    output: z
-      .object({
-        schema: componentIdSchema,
-      })
-      .strict(),
-  })
-  .strict();
+const agentComponentSchema = z.strictObject({
+  apiVersion: z.literal(piprApiVersion),
+  kind: z.literal("Agent"),
+  id: componentIdSchema,
+  provider: providerIdSchema,
+  tools: z.array(componentIdSchema).optional(),
+  output: z.strictObject({
+    schema: componentIdSchema,
+  }),
+});
 
-const commentTemplateComponentSchema = z
-  .object({
-    apiVersion: z.literal(piprApiVersion),
-    kind: z.literal("CommentTemplate"),
-    id: componentIdSchema,
-    marker: z.string().min(1),
-    heading: z.string().min(1),
-    sections: z.array(
-      z
-        .object({
-          id: z.enum(["summary", "findings", "metadata"]),
-          title: z.string().min(1),
-          order: z.number().int(),
-          empty: z.string().optional(),
-          collapsed: z.boolean().optional(),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
+const commentTemplateComponentSchema = z.strictObject({
+  apiVersion: z.literal(piprApiVersion),
+  kind: z.literal("CommentTemplate"),
+  id: componentIdSchema,
+  marker: z.string().min(1),
+  heading: z.string().min(1),
+  sections: z.array(
+    z.strictObject({
+      id: z.enum(["summary", "findings", "metadata"]),
+      title: z.string().min(1),
+      order: z.number().int(),
+      empty: z.string().optional(),
+      collapsed: z.boolean().optional(),
+    }),
+  ),
+});
 
-const schemaComponentSchema = z
-  .object({
-    apiVersion: z.literal(piprApiVersion),
-    kind: z.literal("Schema"),
-    id: componentIdSchema,
-    schema: stringMapSchema,
-  })
-  .strict();
+const schemaComponentSchema = z.strictObject({
+  apiVersion: z.literal(piprApiVersion),
+  kind: z.literal("Schema"),
+  id: componentIdSchema,
+  schema: stringMapSchema,
+});
 
 const jsonSchemaDocumentSchema = z
   .record(z.string(), jsonValueSchema)
@@ -177,25 +147,23 @@ const componentValidators = {
   Block: blockComponentSchema,
   Agent: agentComponentSchema,
   CommentTemplate: commentTemplateComponentSchema,
-  CommandSet: commandSetComponentSchema,
   Schema: schemaComponentSchema,
 } as const satisfies Record<PiprComponentKind, ZodType<PiprComponent>>;
 
 export type PiprComponentKind = z.infer<typeof componentKindSchema>;
 export type ProviderProfile = z.infer<typeof providerProfileSchema>;
-export type PiprV1Config = z.infer<typeof configDocumentSchema>;
+type RawPiprV1Config = z.infer<typeof configDocumentSchema>;
+export type PiprV1Config = Omit<RawPiprV1Config, "workflows"> & { workflows?: string[] };
 export type WorkflowComponent = z.infer<typeof workflowComponentSchema>;
 export type BlockComponent = z.infer<typeof blockComponentSchema>;
 export type AgentComponent = z.infer<typeof agentComponentSchema>;
 export type CommentTemplateComponent = z.infer<typeof commentTemplateComponentSchema>;
-export type CommandSetComponent = z.infer<typeof commandSetComponentSchema>;
 export type SchemaComponent = z.infer<typeof schemaComponentSchema>;
 export type PiprComponent =
   | WorkflowComponent
   | BlockComponent
   | AgentComponent
   | CommentTemplateComponent
-  | CommandSetComponent
   | SchemaComponent;
 
 export type ValidateMaterializedProjectOptions = {
@@ -206,9 +174,15 @@ export type ValidateMaterializedProjectOptions = {
 
 export function validatePiprConfigDocument(filePath: string, value: unknown): PiprV1Config {
   assertNoRawSecret(filePath, value);
-  const config = assertSchemaValid(filePath, configDocumentSchema, value);
+  const config = normalizeConfigDocument(assertSchemaValid(filePath, configDocumentSchema, value));
   assertUniqueProviders(config);
   return config;
+}
+
+export function extractPiprConfigComponents(filePath: string, value: unknown): PiprComponent[] {
+  assertNoRawSecret(filePath, value);
+  const config = assertSchemaValid(filePath, configDocumentSchema, value);
+  return (config.workflows ?? []).filter(isInlineWorkflow);
 }
 
 export function validateComponentDocument(filePath: string, value: unknown): PiprComponent {
@@ -258,6 +232,15 @@ function assertSchemaValid<T>(filePath: string, validator: ZodType<T>, value: un
   throw new Error(formatZodErrors(filePath, parsed.error));
 }
 
+function normalizeConfigDocument(config: RawPiprV1Config): PiprV1Config {
+  return {
+    ...config,
+    workflows: config.workflows?.map((workflow) =>
+      typeof workflow === "string" ? workflow : workflow.id,
+    ),
+  };
+}
+
 function formatZodErrors(filePath: string, error: z.ZodError): string {
   return error.issues.map((issue) => formatZodIssue(filePath, issue)).join("\n");
 }
@@ -301,23 +284,16 @@ function assertConfigComponentRefs(config: PiprV1Config, components: PiprCompone
   for (const workflowId of config.workflows ?? []) {
     assertComponentRef(componentById, workflowId, "Workflow", "Config workflows");
   }
-  for (const commandSetId of config.commands ?? []) {
-    assertComponentRef(componentById, commandSetId, "CommandSet", "Config commands");
-  }
 }
 
 function assertComponentGraphRefs(config: PiprV1Config, components: PiprComponent[]): void {
   const componentById = new Map(components.map((component) => [component.id, component]));
   const enabledWorkflowIds = new Set(config.workflows ?? []);
-  const enabledCommandSetIds = new Set(config.commands ?? []);
   for (const component of components) {
     assertAgentSchemaRef(componentById, component);
     assertStepContainerRefs(componentById, component);
-    assertCommandSetRefs(componentById, component, {
-      enabledCommandSetIds,
-      enabledWorkflowIds,
-    });
   }
+  assertEnabledWorkflowCommands(componentById, enabledWorkflowIds);
 }
 
 function assertAgentSchemaRef(
@@ -415,48 +391,6 @@ function assertSafeMaterializedExpressions(label: string, value: unknown): void 
   }
 }
 
-function assertCommandSetRefs(
-  componentById: Map<string, PiprComponent>,
-  component: PiprComponent,
-  enabledRefs: {
-    enabledCommandSetIds: Set<string>;
-    enabledWorkflowIds: Set<string>;
-  },
-): void {
-  if (!isCommandSetComponent(component)) {
-    return;
-  }
-  if (!enabledRefs.enabledCommandSetIds.has(component.id)) {
-    return;
-  }
-  for (const command of component.commands) {
-    for (const workflowId of command.run.workflows ?? []) {
-      assertComponentRef(
-        componentById,
-        workflowId,
-        "Workflow",
-        `CommandSet '${component.id}' command '${command.id}'`,
-      );
-      if (!enabledRefs.enabledWorkflowIds.has(workflowId)) {
-        throw new Error(
-          `CommandSet '${component.id}' command '${command.id}' references disabled Workflow '${workflowId}'`,
-        );
-      }
-    }
-    if (command.run.block) {
-      if (isExternalComponentRef(command.run.block)) {
-        continue;
-      }
-      assertComponentRef(
-        componentById,
-        command.run.block,
-        "Block",
-        `CommandSet '${component.id}' command '${command.id}' block`,
-      );
-    }
-  }
-}
-
 function assertComponentRef(
   componentById: Map<string, PiprComponent>,
   componentId: string,
@@ -501,12 +435,83 @@ function assertAgentToolRefs(options: ValidateMaterializedProjectOptions): void 
   }
 }
 
-function isAgentComponent(component: PiprComponent): component is AgentComponent {
-  return component.kind === "Agent";
+function assertEnabledWorkflowCommands(
+  componentById: Map<string, PiprComponent>,
+  enabledWorkflowIds: Set<string>,
+): void {
+  const commandNames = new Map<string, string>();
+  const commandAliases = new Map<string, string>();
+  for (const workflowId of enabledWorkflowIds) {
+    const workflow = enabledWorkflow(componentById, workflowId);
+    if (workflow) {
+      assertWorkflowCommands(workflow, { commandNames, commandAliases });
+    }
+  }
 }
 
-function isCommandSetComponent(component: PiprComponent): component is CommandSetComponent {
-  return component.kind === "CommandSet";
+function enabledWorkflow(
+  componentById: Map<string, PiprComponent>,
+  workflowId: string,
+): WorkflowComponent | undefined {
+  const workflow = componentById.get(workflowId);
+  return workflow?.kind === "Workflow" ? workflow : undefined;
+}
+
+function assertWorkflowCommands(
+  workflow: WorkflowComponent,
+  seen: { commandNames: Map<string, string>; commandAliases: Map<string, string> },
+): void {
+  for (const command of workflow.on?.commands ?? []) {
+    assertUniqueWorkflowCommand(command.name, workflow.id, seen.commandNames, "command name");
+    assertWorkflowCommandAliases(workflow, command, seen.commandAliases);
+  }
+}
+
+function assertWorkflowCommandAliases(
+  workflow: WorkflowComponent,
+  command: NonNullable<NonNullable<WorkflowComponent["on"]>["commands"]>[number],
+  commandAliases: Map<string, string>,
+): void {
+  for (const alias of command.aliases ?? []) {
+    assertUniqueWorkflowCommand(alias, workflow.id, commandAliases, "command alias");
+  }
+  if (!command.pattern) {
+    return;
+  }
+  assertUniqueWorkflowCommand(command.pattern, workflow.id, commandAliases, "command pattern");
+  assertCommandPatternInputs(workflow, command.pattern, command.name);
+}
+
+function assertUniqueWorkflowCommand(
+  value: string,
+  workflowId: string,
+  seen: Map<string, string>,
+  label: string,
+): void {
+  const existing = seen.get(value);
+  if (existing) {
+    throw new Error(`Duplicate workflow ${label} '${value}' in '${existing}' and '${workflowId}'`);
+  }
+  seen.set(value, workflowId);
+}
+
+function assertCommandPatternInputs(
+  workflow: WorkflowComponent,
+  pattern: string,
+  commandName: string,
+): void {
+  const inputIds = new Set(Object.keys(workflow.inputs ?? {}));
+  for (const inputId of commandPatternInputIds(pattern)) {
+    if (!inputIds.has(inputId)) {
+      throw new Error(
+        `Workflow '${workflow.id}' command '${commandName}' pattern references missing input '${inputId}'`,
+      );
+    }
+  }
+}
+
+function isAgentComponent(component: PiprComponent): component is AgentComponent {
+  return component.kind === "Agent";
 }
 
 type StepContainerComponent = WorkflowComponent | BlockComponent;
@@ -517,6 +522,10 @@ function isStepContainerComponent(component: PiprComponent): component is StepCo
 
 function isSchemaComponent(component: PiprComponent): component is SchemaComponent {
   return component.kind === "Schema";
+}
+
+function isInlineWorkflow(value: string | WorkflowComponent): value is WorkflowComponent {
+  return typeof value !== "string";
 }
 
 function hasOwn(value: object, key: string): boolean {

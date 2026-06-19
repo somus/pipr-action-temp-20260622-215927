@@ -369,7 +369,6 @@ function testRegistry(options: { badRef?: boolean } = {}): RuntimeRegistry {
     agents: [],
     schemas: [],
     comments: [],
-    commands: [],
     tools: [],
   };
 }
@@ -397,7 +396,6 @@ function failureRegistry(): RuntimeRegistry {
     agents: [],
     schemas: [],
     comments: [],
-    commands: [],
     tools: [],
   };
 }

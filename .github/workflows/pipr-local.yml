@@ -2,6 +2,8 @@ name: pipr local fixture
 
 on:
   pull_request:
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -18,6 +20,7 @@ jobs:
       - uses: ./
         env:
           DEEPSEEK_API_KEY: local-fixture-key
+          GITHUB_TOKEN: ${{ github.token }}
           PIPR_DRY_RUN: "1"
         with:
           config-dir: packages/runtime/distribution/official-minimal/.pipr

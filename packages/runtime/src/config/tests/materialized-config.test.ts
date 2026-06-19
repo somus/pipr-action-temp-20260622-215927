@@ -19,7 +19,6 @@ describe("loadMaterializedProject", () => {
     expect(project.config.providers[0]?.id).toBe("deepseek");
     expect(project.sources.config).toContain(".pipr/config.yaml");
     expect(project.components.map((component) => component.id).sort()).toEqual([
-      "pipr/default-commands",
       "pipr/main",
       "pipr/pr-review",
       "pipr/review",
@@ -42,6 +41,44 @@ describe("loadMaterializedProject", () => {
     );
   });
 
+  it("auto-enables Workflow objects defined inline in root config", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
+    await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, ".pipr", "config.yaml"),
+      [
+        "apiVersion: pipr.dev/v1",
+        "kind: Config",
+        "providers:",
+        "  - id: deepseek",
+        "    provider: deepseek",
+        "    model: deepseek-v4-pro",
+        "    apiKeyEnv: DEEPSEEK_API_KEY",
+        "workflows:",
+        "  - apiVersion: pipr.dev/v1",
+        "    kind: Workflow",
+        "    id: pipr/inline-review",
+        "    on:",
+        "      events:",
+        "        - pull_request.opened",
+        "      commands:",
+        "        - name: review",
+        "          aliases: ['@pipr review']",
+        "    steps:",
+        "      - id: review",
+        "        uses: core/run-agent",
+      ].join("\n"),
+    );
+
+    const runtime = await loadRuntimeProject({ rootDir });
+
+    expect(runtime.project.config.workflows).toEqual(["pipr/inline-review"]);
+    expect(runtime.registry.workflows[0]).toMatchObject({
+      id: "pipr/inline-review",
+      commands: [{ name: "review", aliases: ["@pipr review"] }],
+    });
+  });
+
   it("rejects configDir paths outside the repo root", async () => {
     const parentDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
     const rootDir = path.join(parentDir, "repo");
@@ -59,10 +96,12 @@ describe("loadMaterializedProject", () => {
     const runtime = await loadRuntimeProject({ rootDir });
     const workflowIds = runtime.registry.workflows.map((workflow) => workflow.id);
     const blockIds = runtime.registry.blocks.map((block) => block.id);
-    const commandIds = runtime.registry.commands.map((command) => command.id);
+    const commandNames = runtime.registry.workflows.flatMap((workflow) =>
+      (workflow.commands ?? []).map((command) => command.name),
+    );
 
     expect(workflowIds).toEqual(["pipr/review"]);
-    expect(commandIds).toEqual(["pipr/default-commands"]);
+    expect(commandNames).toEqual(["review"]);
     expect(blockIds).toContain("core/run-agent");
     expect(blockIds).not.toContain("pipr/review-default");
     expect(blockIds).not.toContain("core/diff-manifest");
@@ -72,14 +111,10 @@ describe("loadMaterializedProject", () => {
     expect(runtime.resolved.sources.modules.workflows?.["pipr/review"]).toContain(
       ".pipr/workflows/review.yaml",
     );
-    expect(runtime.resolved.sources.modules.commands?.["pipr/default-commands"]).toContain(
-      ".pipr/commands/default.yaml",
-    );
   });
 
   it("only registers workflows enabled by config", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
-    await initOfficialMinimalProject({ rootDir });
+    const rootDir = await initializedProject();
     await writeFile(
       path.join(rootDir, ".pipr", "workflows", "hijack.yaml"),
       [
@@ -87,7 +122,11 @@ describe("loadMaterializedProject", () => {
         "kind: Workflow",
         "id: pipr/hijack",
         "on:",
-        "  - pull_request.opened",
+        "  events:",
+        "    - pull_request.opened",
+        "  commands:",
+        "    - name: hijack",
+        "      aliases: ['@pipr hijack']",
         "steps:",
         "  - id: review",
         "    uses: core/run-agent",
@@ -102,28 +141,30 @@ describe("loadMaterializedProject", () => {
     });
   });
 
-  it("only registers commands enabled by config", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
-    await initOfficialMinimalProject({ rootDir });
+  it("ignores commands from disabled workflows", async () => {
+    const rootDir = await initializedProject();
     await writeFile(
-      path.join(rootDir, ".pipr", "commands", "extra.yaml"),
+      path.join(rootDir, ".pipr", "workflows", "extra.yaml"),
       [
         "apiVersion: pipr.dev/v1",
-        "kind: CommandSet",
-        "id: pipr/extra-commands",
-        "commands:",
+        "kind: Workflow",
+        "id: pipr/extra",
+        "on:",
+        "  commands:",
+        "    - name: extra",
+        "      aliases: ['@pipr extra']",
+        "steps:",
         "  - id: review",
-        "    aliases: ['@pipr extra']",
-        "    run:",
-        "      workflows: [pipr/review]",
+        "    uses: core/run-agent",
       ].join("\n"),
     );
 
     const runtime = await loadRuntimeProject({ rootDir });
 
-    expect(runtime.registry.commands.map((command) => command.id)).toEqual([
-      "pipr/default-commands",
-    ]);
+    expect(runtime.registry.workflows.flatMap((workflow) => workflow.commands ?? [])).toHaveLength(
+      1,
+    );
+    expect(JSON.stringify(runtime.registry.workflows)).not.toContain("@pipr extra");
   });
 
   it("fails when config.yaml is missing", async () => {
@@ -150,27 +191,18 @@ describe("loadMaterializedProject", () => {
     await expectMaterializedProjectErrorFromFile("schemas/bad.schema.json", "{");
   });
 
-  it("fails invalid command YAML with the source path", async () => {
-    await expectMaterializedProjectErrorFromFile("commands/bad.yaml", "apiVersion: [");
-  });
+  it("rejects obsolete CommandSet directories", async () => {
+    const rootDir = await initializedProject();
+    await mkdir(path.join(rootDir, ".pipr", "commands"));
+    await writeFile(path.join(rootDir, ".pipr", "commands", "bad.yaml"), "apiVersion: [");
 
-  it("fails malformed CommandSet documents with the source path", async () => {
-    await expectMaterializedProjectErrorFromFile(
-      "commands/bad.yaml",
-      [
-        "apiVersion: pipr.dev/v1",
-        "kind: CommandSet",
-        "id: pipr/bad-commands",
-        "commands:",
-        "  - id: review",
-        "    aliases: []",
-      ].join("\n"),
+    await expect(loadMaterializedProject({ rootDir })).rejects.toThrow(
+      "CommandSet files are not supported",
     );
   });
 
   it("rejects secret-looking values in agent Markdown bodies", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
-    await initOfficialMinimalProject({ rootDir });
+    const rootDir = await initializedProject();
     await writeFile(
       path.join(rootDir, ".pipr", "agents", "leaky.md"),
       [
@@ -191,8 +223,7 @@ describe("loadMaterializedProject", () => {
   });
 
   it("rejects Agent tool refs when no plugin tool definition exists", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
-    await initOfficialMinimalProject({ rootDir });
+    const rootDir = await initializedProject();
     await writeFile(
       path.join(rootDir, ".pipr", "agents", "reviewer.md"),
       [
@@ -217,8 +248,7 @@ describe("loadMaterializedProject", () => {
   });
 
   it("rejects components materialized in the wrong directory", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
-    await initOfficialMinimalProject({ rootDir });
+    const rootDir = await initializedProject();
     await writeFile(
       path.join(rootDir, ".pipr", "agents", "workflow.md"),
       [
@@ -239,9 +269,8 @@ describe("loadMaterializedProject", () => {
   });
 
   it("rejects symlinked config files", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
+    const rootDir = await initializedProject();
     const outsideDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-outside-"));
-    await initOfficialMinimalProject({ rootDir });
     await writeFile(
       path.join(outsideDir, "config.yaml"),
       "apiVersion: pipr.dev/v1\nkind: Config\n",
@@ -266,9 +295,8 @@ describe("loadMaterializedProject", () => {
   });
 
   it("rejects symlinked component directories and files", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
+    const rootDir = await initializedProject();
     const outsideDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-outside-"));
-    await initOfficialMinimalProject({ rootDir });
     await rm(path.join(rootDir, ".pipr", "agents"), { recursive: true });
     await mkdir(path.join(outsideDir, "agents"));
     await symlink(path.join(outsideDir, "agents"), path.join(rootDir, ".pipr", "agents"));
@@ -298,9 +326,14 @@ async function expectMaterializedProjectErrorFromFile(
   relativePath: string,
   content: string,
 ): Promise<void> {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
-  await initOfficialMinimalProject({ rootDir });
+  const rootDir = await initializedProject();
   await writeFile(path.join(rootDir, ".pipr", ...relativePath.split("/")), content);
 
   await expect(loadMaterializedProject({ rootDir })).rejects.toThrow(`.pipr/${relativePath}`);
+}
+
+async function initializedProject(): Promise<string> {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
+  await initOfficialMinimalProject({ rootDir });
+  return rootDir;
 }

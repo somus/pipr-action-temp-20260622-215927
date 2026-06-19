@@ -13,11 +13,11 @@ The repository-local product control plane under `.pipr/`.
 _Avoid_: legacy configuration roots, `.pi/`
 
 **Action Trust Boundary**:
-The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads executable review authority from trusted Action provider inputs, base-commit provider thinking config, the base-commit materialized workflow/command registry, and runtime-owned `core/*` handlers. Custom blocks are optional base-commit extensions, not part of the minimal distribution.
+The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads executable review authority from trusted Action provider inputs, base-commit provider thinking config, the base-commit materialized workflow registry, and runtime-owned `core/*` handlers. Custom blocks are optional base-commit extensions, not part of the minimal distribution.
 _Avoid_: PR-authored runtime authority
 
 **Official Minimal Distribution**:
-The editable `.pipr/` tree created by `pipr init` as the normal starting point for a repository. It ships config, workflows, commands, agents, comments, and schemas, but no custom blocks.
+The editable `.pipr/` tree created by `pipr init` as the normal starting point for a repository. It ships config, workflows with command triggers, agents, comments, and schemas, but no custom blocks.
 _Avoid_: hidden runtime defaults
 
 **Component Namespace**:
@@ -25,7 +25,7 @@ Use `pipr/*` for product components shipped in the editable distribution. Use `c
 _Avoid_: `official/*`
 
 **@pipr**:
-The GitHub pull request command mention for pipr commands such as `@pipr review`, `@pipr summary`, and `@pipr help`. The Core MVP Action also runs on pull request events.
+The GitHub pull request command mention for workflow-owned commands such as `@pipr review` and built-in `@pipr help`. Command permissions control who may trigger a workflow, not what the workflow may do.
 _Avoid_: bot aliases
 
 **Pi Agent Runner**:

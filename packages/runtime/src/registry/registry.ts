@@ -1,6 +1,6 @@
+import { commandLabels, piprHelpCommandLine } from "../commands/grammar.js";
 import type {
   BlockRegistryEntry,
-  CommandSetRegistryEntry,
   RegistryCollectionName,
   RegistryEntry,
   ResolvedConfig,
@@ -12,6 +12,8 @@ import type {
 import { parseRuntimeRegistry } from "../types.js";
 import { validateWorkflowExpressions } from "../workflow/expression.js";
 
+type WorkflowCommandEntry = NonNullable<WorkflowRegistryEntry["commands"]>[number];
+
 const registryCollections: RegistryCollectionName[] = [
   "presets",
   "workflows",
@@ -19,7 +21,6 @@ const registryCollections: RegistryCollectionName[] = [
   "agents",
   "schemas",
   "comments",
-  "commands",
   "tools",
 ];
 
@@ -32,12 +33,10 @@ export function createCoreRegistry(): RuntimeRegistry {
       { id: "core/run-agent", description: "Build diff and run one validated Pi review", source },
       { id: "core/main-comment", description: "Create or update main review comment", source },
       { id: "core/inline-comments", description: "Publish validated inline comments", source },
-      { id: "core/show-help", description: "Render command help", source },
     ],
     agents: [],
     schemas: [],
     comments: [],
-    commands: [],
     tools: [],
   };
 }
@@ -58,7 +57,7 @@ export function renderRegistryGraph(registry: RuntimeRegistry): string {
     renderSimpleSection("Agents", registry.agents),
     renderSimpleSection("Schemas", registry.schemas),
     renderSimpleSection("Comments", registry.comments),
-    renderCommandSection(registry.commands),
+    renderWorkflowCommandsSection(registry.workflows),
     renderSimpleSection("Tools", registry.tools),
   ].join("\n\n");
 }
@@ -75,6 +74,7 @@ function renderWorkflow(workflow: WorkflowRegistryEntry): string[] {
   return [
     `  ${workflow.id}`,
     ...workflow.events.map((event) => `    ${event}`),
+    ...(workflow.commands ?? []).flatMap((command) => renderWorkflowCommand(command, "    ")),
     ...workflow.steps.map((step) => renderStep(step, "      ")),
   ];
 }
@@ -96,20 +96,23 @@ function renderStep(step: WorkflowStep, prefix: string): string {
   return `${prefix}${step.id} -> ${step.block}${template ? ` template ${template}` : ""}`;
 }
 
-function renderCommandSection(commands: CommandSetRegistryEntry[]): string {
-  return [sectionTitle("Commands"), ...commands.flatMap(renderCommandSet)].join("\n");
+function renderWorkflowCommandsSection(workflows: WorkflowRegistryEntry[]): string {
+  return [
+    sectionTitle("Commands"),
+    `  ${piprHelpCommandLine} -> builtin help`,
+    ...workflows.flatMap((workflow) =>
+      (workflow.commands ?? []).flatMap((command) =>
+        commandLabels(command).map((label) => `  ${label} -> workflow ${workflow.id}`),
+      ),
+    ),
+  ].join("\n");
 }
 
-function renderCommandSet(commandSet: CommandSetRegistryEntry): string[] {
-  return [
-    `  ${commandSet.id}`,
-    ...commandSet.commands.flatMap((command) => {
-      const targets = command.run.workflows?.map((workflow) => `workflow ${workflow}`) ?? [
-        `block ${command.run.block}`,
-      ];
-      return command.aliases.map((alias) => `    ${alias} -> ${targets.join(", ")}`);
-    }),
-  ];
+function renderWorkflowCommand(command: WorkflowCommandEntry, prefix: string): string[] {
+  return commandLabels(command).map(
+    (label) =>
+      `${prefix}command ${command.name}: ${label} (${command.requiredPermission ?? "write"})`,
+  );
 }
 
 function readTemplateId(value: unknown): string | undefined {
@@ -132,7 +135,6 @@ function mergeModules(base: RuntimeRegistry, modules: RuntimeModuleSet): Runtime
     agents: mergeCollection(base.agents, modules.agents),
     schemas: mergeCollection(base.schemas, modules.schemas),
     comments: mergeCollection(base.comments, modules.comments),
-    commands: mergeCollection(base.commands, modules.commands),
     tools: mergeCollection(base.tools, modules.tools),
   };
 }
@@ -166,7 +168,6 @@ function validateRegistry(registry: RuntimeRegistry): void {
     }
   }
 
-  assertKnownCommandTargets(registry);
   assertNoDeclarativeBlockCycles(registry);
 }
 
@@ -204,27 +205,6 @@ function assertSafeExpressions(owner: string, value: unknown, source: string): v
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${source}: ${owner} has invalid expression: ${message}`);
-  }
-}
-
-function assertKnownCommandTargets(registry: RuntimeRegistry): void {
-  const workflowIds = new Set(registry.workflows.map((workflow) => workflow.id));
-  const blockIds = new Set(registry.blocks.map((block) => block.id));
-  for (const commandSet of registry.commands) {
-    for (const command of commandSet.commands) {
-      for (const workflowId of command.run.workflows ?? []) {
-        if (!workflowIds.has(workflowId)) {
-          throw new Error(
-            `${commandSet.source}: command '${commandSet.id}/${command.id}' references unknown workflow '${workflowId}'`,
-          );
-        }
-      }
-      if (command.run.block && !blockIds.has(command.run.block)) {
-        throw new Error(
-          `${commandSet.source}: command '${commandSet.id}/${command.id}' references unknown block '${command.run.block}'`,
-        );
-      }
-    }
   }
 }
 

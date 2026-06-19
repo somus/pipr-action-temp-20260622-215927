@@ -23,7 +23,6 @@ const config = {
     },
   ],
   workflows: ["pipr/review"],
-  commands: ["pipr/default-commands"],
   publication: {
     maxInlineComments: 5,
   },
@@ -40,7 +39,10 @@ describe("pipr.dev/v1 schemas", () => {
         apiVersion: "pipr.dev/v1",
         kind: "Workflow",
         id: "pipr/review",
-        on: ["pull_request.opened"],
+        on: {
+          events: ["pull_request.opened"],
+          commands: [{ name: "review", aliases: ["@pipr review"] }],
+        },
         steps: [
           { id: "review", uses: "core/run-agent", with: { agent: "pipr/reviewer" } },
           {
@@ -71,18 +73,6 @@ describe("pipr.dev/v1 schemas", () => {
         marker: "pipr:main-comment",
         heading: "Pi PR Review",
         sections: [{ id: "summary", title: "Summary", order: 10 }],
-      }),
-      validateComponentDocument(".pipr/commands/default.yaml", {
-        apiVersion: "pipr.dev/v1",
-        kind: "CommandSet",
-        id: "pipr/default-commands",
-        commands: [
-          {
-            id: "review",
-            aliases: ["@pipr review"],
-            run: { workflows: ["pipr/review"] },
-          },
-        ],
       }),
       validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
         apiVersion: "pipr.dev/v1",
@@ -164,12 +154,7 @@ describe("pipr.dev/v1 schemas", () => {
       provider: "missing",
       output: { schema: "pipr/pr-review" },
     });
-    const schema = validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
-      apiVersion: "pipr.dev/v1",
-      kind: "Schema",
-      id: "pipr/pr-review",
-      schema: { type: "object" },
-    });
+    const schema = prReviewSchemaComponent();
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [agent, schema] }),
@@ -186,12 +171,7 @@ describe("pipr.dev/v1 schemas", () => {
       tools: ["plugin/missing-tool"],
       output: { schema: "pipr/pr-review" },
     });
-    const schema = validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
-      apiVersion: "pipr.dev/v1",
-      kind: "Schema",
-      id: "pipr/pr-review",
-      schema: { type: "object" },
-    });
+    const schema = prReviewSchemaComponent();
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [agent, schema] }),
@@ -208,12 +188,7 @@ describe("pipr.dev/v1 schemas", () => {
       tools: ["core/read"],
       output: { schema: "pipr/pr-review" },
     });
-    const schema = validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
-      apiVersion: "pipr.dev/v1",
-      kind: "Schema",
-      id: "pipr/pr-review",
-      schema: { type: "object" },
-    });
+    const schema = prReviewSchemaComponent();
 
     expect(() =>
       validateMaterializedProject({
@@ -262,14 +237,7 @@ describe("pipr.dev/v1 schemas", () => {
       ...configWithoutRefs(),
       workflows: ["pipr/main"],
     });
-    const comment = validateComponentDocument(".pipr/comments/main.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommentTemplate",
-      id: "pipr/main",
-      marker: "pipr:main-comment",
-      heading: "Pi PR Review",
-      sections: [{ id: "summary", title: "Summary", order: 10 }],
-    });
+    const comment = mainCommentTemplate();
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [comment] }),
@@ -294,6 +262,24 @@ describe("pipr.dev/v1 schemas", () => {
         publication: { mainCommentTemplate: "pipr/main" },
       }),
     ).toThrow("Unrecognized key");
+  });
+
+  it("rejects root command refs and CommandSet documents", () => {
+    expect(() =>
+      validatePiprConfigDocument(".pipr/config.yaml", {
+        ...configWithoutRefs(),
+        commands: ["pipr/default-commands"],
+      }),
+    ).toThrow("Unrecognized key");
+
+    expect(() =>
+      validateComponentDocument(".pipr/commands/default.yaml", {
+        apiVersion: "pipr.dev/v1",
+        kind: "CommandSet",
+        id: "pipr/default-commands",
+        commands: [],
+      }),
+    ).toThrow("unknown component kind 'CommandSet'");
   });
 
   it("requires workflow Main Review Comment template refs to exist with the expected kind", () => {
@@ -382,14 +368,7 @@ describe("pipr.dev/v1 schemas", () => {
       id: "pipr/review",
       steps: [{ id: "review", uses: "pipr/main" }],
     });
-    const comment = validateComponentDocument(".pipr/comments/main.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommentTemplate",
-      id: "pipr/main",
-      marker: "pipr:main-comment",
-      heading: "Pi PR Review",
-      sections: [{ id: "summary", title: "Summary", order: 10 }],
-    });
+    const comment = mainCommentTemplate();
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [workflow, comment] }),
@@ -433,147 +412,142 @@ describe("pipr.dev/v1 schemas", () => {
     ).toThrow("Unsupported workflow expression token '('");
   });
 
-  it("requires enabled CommandSet refs and command targets to resolve", () => {
+  it("rejects duplicate enabled workflow command names and aliases", () => {
     const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
       ...configWithoutRefs(),
-      workflows: ["pipr/review"],
-      commands: ["pipr/default-commands"],
+      workflows: ["pipr/review", "pipr/other"],
     });
     const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
       id: "pipr/review",
+      on: {
+        commands: [{ name: "review", aliases: ["@pipr review"] }],
+      },
       steps: [],
     });
+    const otherWorkflow = validateComponentDocument(".pipr/workflows/other.yaml", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Workflow",
+      id: "pipr/other",
+      on: {
+        commands: [{ name: "review", aliases: ["@pipr other"] }],
+      },
+      steps: [],
+    });
+
+    expect(() =>
+      validateMaterializedProject({
+        config: parsedConfig,
+        components: [workflow, otherWorkflow],
+      }),
+    ).toThrow("Duplicate workflow command name 'review'");
+
+    const aliasWorkflow = validateComponentDocument(".pipr/workflows/other.yaml", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Workflow",
+      id: "pipr/other",
+      on: {
+        commands: [{ name: "other", aliases: ["@pipr review"] }],
+      },
+      steps: [],
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [workflow, aliasWorkflow] }),
+    ).toThrow("Duplicate workflow command alias '@pipr review'");
+  });
+
+  it("rejects workflow commands without valid pipr command triggers", () => {
+    expect(() =>
+      validateComponentDocument(".pipr/workflows/review.yaml", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Workflow",
+        id: "pipr/review",
+        on: {
+          commands: [{ name: "review" }],
+        },
+        steps: [],
+      }),
+    ).toThrow("requires at least one alias or pattern");
+
+    expect(() =>
+      validateComponentDocument(".pipr/workflows/review.yaml", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Workflow",
+        id: "pipr/review",
+        on: {
+          commands: [{ name: "review", aliases: ["review"] }],
+        },
+        steps: [],
+      }),
+    ).toThrow("must use @pipr as the first token");
+
+    expect(() =>
+      validateComponentDocument(".pipr/workflows/review.yaml", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Workflow",
+        id: "pipr/review",
+        on: {
+          commands: [{ name: "review", aliases: ["@piprbot review"] }],
+        },
+        steps: [],
+      }),
+    ).toThrow("must use @pipr as the first token");
+  });
+
+  it("rejects workflow commands that collide with built-in help", () => {
+    expect(() =>
+      validateComponentDocument(".pipr/workflows/review.yaml", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Workflow",
+        id: "pipr/review",
+        on: {
+          commands: [{ name: "help", aliases: ["@pipr help"] }],
+        },
+        steps: [],
+      }),
+    ).toThrow("workflow command trigger '@pipr help' is reserved");
+  });
+
+  it("validates enabled workflow command pattern input refs only", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
+      ...configWithoutRefs(),
+      workflows: ["pipr/review"],
+    });
+    const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Workflow",
+      id: "pipr/review",
+      inputs: {
+        finding: { type: "string", required: true },
+      },
+      on: {
+        commands: [{ name: "explain", pattern: "@pipr explain <missing>" }],
+      },
+      steps: [],
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [workflow] }),
+    ).toThrow("pattern references missing input 'missing'");
+
     const disabledWorkflow = validateComponentDocument(".pipr/workflows/disabled.yaml", {
       apiVersion: "pipr.dev/v1",
       kind: "Workflow",
       id: "pipr/disabled",
+      on: {
+        commands: [{ name: "disabled", pattern: "@pipr disabled <missing>" }],
+      },
       steps: [],
-    });
-    const commandSet = validateComponentDocument(".pipr/commands/default.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommandSet",
-      id: "pipr/default-commands",
-      commands: [
-        {
-          id: "review",
-          aliases: ["@pipr review"],
-          run: { workflows: ["pipr/disabled"] },
-        },
-      ],
     });
 
     expect(() =>
       validateMaterializedProject({
         config: parsedConfig,
-        components: [workflow, disabledWorkflow, commandSet],
-      }),
-    ).toThrow(
-      "CommandSet 'pipr/default-commands' command 'review' references disabled Workflow 'pipr/disabled'",
-    );
-  });
-
-  it("does not validate disabled CommandSet targets", () => {
-    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
-      ...configWithoutRefs(),
-      workflows: ["pipr/review"],
-      commands: ["pipr/default-commands"],
-    });
-    const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "Workflow",
-      id: "pipr/review",
-      steps: [],
-    });
-    const commandSet = validateComponentDocument(".pipr/commands/default.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommandSet",
-      id: "pipr/default-commands",
-      commands: [
-        {
-          id: "review",
-          aliases: ["@pipr review"],
-          run: { workflows: ["pipr/review"] },
-        },
-      ],
-    });
-    const disabledCommandSet = validateComponentDocument(".pipr/commands/extra.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommandSet",
-      id: "pipr/extra-commands",
-      commands: [
-        {
-          id: "experiment",
-          aliases: ["@pipr experiment"],
-          run: { workflows: ["pipr/experimental"] },
-        },
-      ],
-    });
-
-    expect(() =>
-      validateMaterializedProject({
-        config: parsedConfig,
-        components: [workflow, commandSet, disabledCommandSet],
+        components: [workflowWithoutCommands(), disabledWorkflow],
       }),
     ).not.toThrow();
-  });
-
-  it("rejects CommandSet refs to missing workflows", () => {
-    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
-      ...configWithoutRefs(),
-      workflows: ["pipr/review"],
-      commands: ["pipr/default-commands"],
-    });
-    const workflow = validateComponentDocument(".pipr/workflows/review.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "Workflow",
-      id: "pipr/review",
-      steps: [],
-    });
-    const commandSet = validateComponentDocument(".pipr/commands/default.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommandSet",
-      id: "pipr/default-commands",
-      commands: [
-        {
-          id: "review",
-          aliases: ["@pipr review"],
-          run: { workflows: ["pipr/missing"] },
-        },
-      ],
-    });
-
-    expect(() =>
-      validateMaterializedProject({ config: parsedConfig, components: [workflow, commandSet] }),
-    ).toThrow(
-      "CommandSet 'pipr/default-commands' command 'review' references missing Workflow 'pipr/missing'",
-    );
-  });
-
-  it("rejects CommandSet refs to missing blocks", () => {
-    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
-      ...configWithoutRefs(),
-      commands: ["pipr/default-commands"],
-    });
-    const commandSet = validateComponentDocument(".pipr/commands/default.yaml", {
-      apiVersion: "pipr.dev/v1",
-      kind: "CommandSet",
-      id: "pipr/default-commands",
-      commands: [
-        {
-          id: "help",
-          aliases: ["@pipr help"],
-          run: { block: "pipr/missing" },
-        },
-      ],
-    });
-
-    expect(() =>
-      validateMaterializedProject({ config: parsedConfig, components: [commandSet] }),
-    ).toThrow(
-      "CommandSet 'pipr/default-commands' command 'help' block references missing Block 'pipr/missing'",
-    );
   });
 
   it("rejects invalid JSON Schema components", () => {
@@ -728,6 +702,35 @@ function configWithoutRefs() {
     kind: config.kind,
     providers: config.providers,
   };
+}
+
+function workflowWithoutCommands() {
+  return validateComponentDocument(".pipr/workflows/review.yaml", {
+    apiVersion: "pipr.dev/v1",
+    kind: "Workflow",
+    id: "pipr/review",
+    steps: [],
+  });
+}
+
+function prReviewSchemaComponent() {
+  return validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
+    apiVersion: "pipr.dev/v1",
+    kind: "Schema",
+    id: "pipr/pr-review",
+    schema: { type: "object" },
+  });
+}
+
+function mainCommentTemplate() {
+  return validateComponentDocument(".pipr/comments/main.yaml", {
+    apiVersion: "pipr.dev/v1",
+    kind: "CommentTemplate",
+    id: "pipr/main",
+    marker: "pipr:main-comment",
+    heading: "Pi PR Review",
+    sections: [{ id: "summary", title: "Summary", order: 10 }],
+  });
 }
 
 function expr(source: string): string {

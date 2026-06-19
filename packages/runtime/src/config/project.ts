@@ -13,7 +13,6 @@ import { loadMaterializedProject, type MaterializedProject } from "./config.js";
 import type {
   AgentComponent,
   BlockComponent,
-  CommandSetComponent,
   CommentTemplateComponent,
   ProviderProfile,
   SchemaComponent,
@@ -108,13 +107,14 @@ function materializedProjectToResolvedConfig(
 
 function materializedProjectToRuntimeModules(project: MaterializedProject): RuntimeModuleSet {
   const workflows = enabledWorkflowComponents(project);
-  const commands = enabledCommandSetComponents(project);
   return {
     workflows: workflows.map((workflow) => ({
       id: workflow.id,
       description: workflow.description ?? workflow.id,
       source: sourceFor(project, workflow.id),
-      events: workflow.on ?? [],
+      inputs: workflow.inputs,
+      events: workflow.on?.events ?? [],
+      commands: workflow.on?.commands ?? [],
       failurePolicy: workflow.failurePolicy,
       steps: workflow.steps.map(toRuntimeStep),
     })),
@@ -133,18 +133,11 @@ function materializedProjectToRuntimeModules(project: MaterializedProject): Runt
     comments: project.components
       .filter(isCommentTemplate)
       .map((comment) => registryEntry(project, comment.id)),
-    commands: commands.map((commandSet) => ({
-      id: commandSet.id,
-      description: commandSet.description ?? commandSet.id,
-      source: sourceFor(project, commandSet.id),
-      commands: commandSet.commands,
-    })),
   };
 }
 
 function materializedProjectToModuleSources(project: MaterializedProject): SourceMap["modules"] {
   const workflows = enabledWorkflowComponents(project);
-  const commands = enabledCommandSetComponents(project);
   return {
     workflows: sourceMapFor(
       project,
@@ -166,10 +159,6 @@ function materializedProjectToModuleSources(project: MaterializedProject): Sourc
       project,
       project.components.filter(isCommentTemplate).map((item) => item.id),
     ),
-    commands: sourceMapFor(
-      project,
-      commands.map((item) => item.id),
-    ),
   };
 }
 
@@ -183,19 +172,6 @@ function enabledWorkflowComponents(project: MaterializedProject): WorkflowCompon
       throw new Error(`Config workflows references missing Workflow '${workflowId}'`);
     }
     return workflow;
-  });
-}
-
-function enabledCommandSetComponents(project: MaterializedProject): CommandSetComponent[] {
-  const commandSetById = new Map(
-    project.components.filter(isCommandSet).map((commandSet) => [commandSet.id, commandSet]),
-  );
-  return (project.config.commands ?? []).map((commandSetId) => {
-    const commandSet = commandSetById.get(commandSetId);
-    if (!commandSet) {
-      throw new Error(`Config commands references missing CommandSet '${commandSetId}'`);
-    }
-    return commandSet;
   });
 }
 
@@ -257,12 +233,6 @@ function isCommentTemplate(
   component: MaterializedProject["components"][number],
 ): component is CommentTemplateComponent {
   return component.kind === "CommentTemplate";
-}
-
-function isCommandSet(
-  component: MaterializedProject["components"][number],
-): component is CommandSetComponent {
-  return component.kind === "CommandSet";
 }
 
 function assertRequiredProviderEnv(

@@ -3,10 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject } from "../../config/init.js";
-import { loadRuntimeProject } from "../../config/project.js";
+import { type LoadedRuntimeProject, loadRuntimeProject } from "../../config/project.js";
 import { createRuntimeRegistry } from "../../registry/registry.js";
 import type { DiffManifest, PullRequestEventContext } from "../../types.js";
-import { type PiRunner, runReviewRuntime } from "../runtime.js";
+import { type PiRunner, type RunReviewRuntimeOptions, runReviewRuntime } from "../runtime.js";
 
 const event: PullRequestEventContext = {
   eventName: "pull_request",
@@ -42,6 +42,11 @@ const manifest: DiffManifest = {
     },
   ],
 };
+
+const noFindingsReview = JSON.stringify({
+  summary: { body: "No findings." },
+  inlineFindings: [],
+});
 
 describe("runReviewRuntime", () => {
   it("runs Pi, validates findings, and renders comment drafts", async () => {
@@ -87,9 +92,7 @@ describe("runReviewRuntime", () => {
 
   it("runs the default pull request workflow when the event action is omitted", async () => {
     const runtime = await loadOfficialRuntimeProject();
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
+    const pi = noFindingsPiRunner();
     const eventWithoutAction: PullRequestEventContext = {
       eventName: "pull_request",
       repo: "local/pipr",
@@ -99,15 +102,9 @@ describe("runReviewRuntime", () => {
       workspace: "/tmp/pipr",
     };
 
-    const result = await runReviewRuntime({
-      workspace: runtime.project.sources.config,
-      config: runtime.resolved.config,
-      event: eventWithoutAction,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, { event: eventWithoutAction }),
+    );
 
     expect(pi.prompts).toHaveLength(1);
     expect(result.validated.validFindings).toHaveLength(0);
@@ -115,10 +112,7 @@ describe("runReviewRuntime", () => {
 
   it("executes the resolved registry workflow", async () => {
     let manifestBuilds = 0;
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "Warmup." }, inlineFindings: [] }),
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
+    const pi = fakePiRunner([reviewSummary("Warmup."), noFindingsReview]);
     const registry = createRuntimeRegistry({
       modules: {
         workflows: [
@@ -195,22 +189,12 @@ describe("runReviewRuntime", () => {
   });
 
   it("runs the materialized Official Minimal Distribution Review Workflow", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-review-runtime-"));
-    await initOfficialMinimalProject({ rootDir });
-    const runtime = await loadRuntimeProject({ rootDir });
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
+    const { rootDir, runtime } = await createOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
 
-    const result = await runReviewRuntime({
-      workspace: rootDir,
-      config: runtime.resolved.config,
-      event,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, { workspace: rootDir }),
+    );
 
     expect(result.validated.validFindings).toHaveLength(0);
     expect(result.mainComment).toContain("# pipr Review");
@@ -219,19 +203,9 @@ describe("runReviewRuntime", () => {
 
   it("includes the materialized reviewer Agent instructions in the Pi prompt", async () => {
     const runtime = await loadOfficialRuntimeProject();
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
+    const pi = noFindingsPiRunner();
 
-    await runReviewRuntime({
-      workspace: runtime.project.sources.config,
-      config: runtime.resolved.config,
-      event,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    await runReviewRuntime(reviewRuntimeOptions(runtime, pi));
 
     expect(pi.prompts[0]).toContain(
       "Review the pull request diff for correctness, security, maintainability, and test risk.",
@@ -244,36 +218,9 @@ describe("runReviewRuntime", () => {
   });
 
   it("uses the materialized CommentTemplate for the Main Review Comment", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-review-runtime-"));
-    await initOfficialMinimalProject({ rootDir });
-    await writeFile(
-      path.join(rootDir, ".pipr", "comments", "main.yaml"),
-      [
-        "apiVersion: pipr.dev/v1",
-        "kind: CommentTemplate",
-        "id: pipr/main",
-        "marker: pipr:custom-main",
-        "heading: Custom Review",
-        "sections:",
-        "  - id: summary",
-        "    title: Digest",
-        "    order: 10",
-      ].join("\n"),
-    );
-    const runtime = await loadRuntimeProject({ rootDir });
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
-
-    const result = await runReviewRuntime({
-      workspace: rootDir,
-      config: runtime.resolved.config,
-      event,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeCommentTemplate(rootDir, "main.yaml", "pipr/main", "Custom Review");
+    const result = await runProjectReview(rootDir);
 
     expect(result.mainComment).toContain("<!-- pipr:custom-main pr=1 -->");
     expect(result.mainComment).toContain("# Custom Review");
@@ -281,8 +228,7 @@ describe("runReviewRuntime", () => {
   });
 
   it("uses the workflow template input for the Main Review Comment", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-review-runtime-"));
-    await initOfficialMinimalProject({ rootDir });
+    const { rootDir } = await createOfficialRuntimeProject();
     await writeFile(
       path.join(rootDir, ".pipr", "workflows", "review.yaml"),
       [
@@ -290,7 +236,8 @@ describe("runReviewRuntime", () => {
         "kind: Workflow",
         "id: pipr/review",
         "on:",
-        "  - pull_request.opened",
+        "  events:",
+        "    - pull_request.opened",
         "steps:",
         "  - id: review",
         "    uses: core/run-agent",
@@ -307,42 +254,15 @@ describe("runReviewRuntime", () => {
         `      review: ${expr("steps.review.outputs.result")}`,
       ].join("\n"),
     );
-    await writeFile(
-      path.join(rootDir, ".pipr", "comments", "custom.yaml"),
-      [
-        "apiVersion: pipr.dev/v1",
-        "kind: CommentTemplate",
-        "id: custom/main",
-        "marker: pipr:custom-main",
-        "heading: Configured Review",
-        "sections:",
-        "  - id: summary",
-        "    title: Digest",
-        "    order: 10",
-      ].join("\n"),
-    );
-    const runtime = await loadRuntimeProject({ rootDir });
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
-
-    const result = await runReviewRuntime({
-      workspace: rootDir,
-      config: runtime.resolved.config,
-      event,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    await writeCommentTemplate(rootDir, "custom.yaml", "custom/main", "Configured Review");
+    const result = await runProjectReview(rootDir);
 
     expect(result.mainComment).toContain("<!-- pipr:custom-main pr=1 -->");
     expect(result.mainComment).toContain("# Configured Review");
   });
 
   it("uses the materialized Agent provider for Pi and review metadata", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-review-runtime-"));
-    await initOfficialMinimalProject({ rootDir });
+    const { rootDir } = await createOfficialRuntimeProject();
     await writeFile(
       path.join(rootDir, ".pipr", "config.yaml"),
       [
@@ -379,19 +299,11 @@ describe("runReviewRuntime", () => {
       ].join("\n"),
     );
     const runtime = await loadRuntimeProject({ rootDir });
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
+    const pi = noFindingsPiRunner();
 
-    const result = await runReviewRuntime({
-      workspace: rootDir,
-      config: runtime.resolved.config,
-      event,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, { workspace: rootDir }),
+    );
 
     expect(result.provider.id).toBe("backup");
     expect(pi.providerIds).toEqual(["backup"]);
@@ -400,40 +312,20 @@ describe("runReviewRuntime", () => {
 
   it("passes the runtime source env through to Pi", async () => {
     const runtime = await loadOfficialRuntimeProject();
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
+    const pi = noFindingsPiRunner();
 
-    await runReviewRuntime({
-      workspace: runtime.project.sources.config,
-      config: runtime.resolved.config,
-      env: { DEEPSEEK_API_KEY: "provided-key" },
-      event,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, { env: { DEEPSEEK_API_KEY: "provided-key" } }),
+    );
 
     expect(pi.envs[0]?.DEEPSEEK_API_KEY).toBe("provided-key");
   });
 
   it("repairs invalid reviewer JSON once", async () => {
     const runtime = await loadOfficialRuntimeProject();
-    const pi = fakePiRunner([
-      JSON.stringify({ summary: { body: "" }, inlineFindings: [] }),
-      JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
-    ]);
+    const pi = fakePiRunner([reviewSummary(""), noFindingsReview]);
 
-    const result = await runReviewRuntime({
-      workspace: runtime.project.sources.config,
-      config: runtime.resolved.config,
-      event,
-      project: runtime.project,
-      registry: runtime.registry,
-      piRunner: pi.run,
-      diffManifestBuilder: () => manifest,
-    });
+    const result = await runReviewRuntime(reviewRuntimeOptions(runtime, pi));
 
     expect(result.repairAttempted).toBe(true);
     expect(pi.prompts).toHaveLength(2);
@@ -460,9 +352,67 @@ describe("runReviewRuntime", () => {
 });
 
 async function loadOfficialRuntimeProject() {
+  return (await createOfficialRuntimeProject()).runtime;
+}
+
+async function createOfficialRuntimeProject() {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-review-runtime-"));
   await initOfficialMinimalProject({ rootDir });
-  return await loadRuntimeProject({ rootDir });
+  return { rootDir, runtime: await loadRuntimeProject({ rootDir }) };
+}
+
+async function runProjectReview(rootDir: string) {
+  const runtime = await loadRuntimeProject({ rootDir });
+  return await runReviewRuntime(
+    reviewRuntimeOptions(runtime, noFindingsPiRunner(), { workspace: rootDir }),
+  );
+}
+
+function noFindingsPiRunner() {
+  return fakePiRunner([noFindingsReview]);
+}
+
+function reviewRuntimeOptions(
+  runtime: LoadedRuntimeProject,
+  pi: { run: PiRunner },
+  overrides: Partial<RunReviewRuntimeOptions> = {},
+): RunReviewRuntimeOptions {
+  return {
+    workspace: runtime.project.sources.config,
+    config: runtime.resolved.config,
+    event,
+    project: runtime.project,
+    registry: runtime.registry,
+    piRunner: pi.run,
+    diffManifestBuilder: () => manifest,
+    ...overrides,
+  };
+}
+
+async function writeCommentTemplate(
+  rootDir: string,
+  fileName: string,
+  id: string,
+  heading: string,
+): Promise<void> {
+  await writeFile(
+    path.join(rootDir, ".pipr", "comments", fileName),
+    [
+      "apiVersion: pipr.dev/v1",
+      "kind: CommentTemplate",
+      `id: ${id}`,
+      "marker: pipr:custom-main",
+      `heading: ${heading}`,
+      "sections:",
+      "  - id: summary",
+      "    title: Digest",
+      "    order: 10",
+    ].join("\n"),
+  );
+}
+
+function reviewSummary(body: string): string {
+  return JSON.stringify({ summary: { body }, inlineFindings: [] });
 }
 
 function fakePiRunner(outputs: string[]): {

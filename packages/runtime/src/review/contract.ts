@@ -1,44 +1,38 @@
 import { z } from "zod";
 
-export const reviewFindingSchema = z
-  .object({
-    title: z.string().min(1),
-    body: z.string().min(1),
-    path: z.string().min(1),
-    rangeId: z.string().min(1),
-    side: z.enum(["RIGHT", "LEFT"]),
-    startLine: z.number().int().positive(),
-    endLine: z.number().int().positive(),
-    severity: z.enum(["critical", "high", "medium", "low", "nit"]),
-    category: z.enum([
-      "correctness",
-      "security",
-      "tests",
-      "performance",
-      "maintainability",
-      "docs",
-      "architecture",
-      "other",
-    ]),
-    confidence: z.number().min(0).max(1),
-    evidenceSnippet: z.string().min(1),
-    suggestedFix: z.string().optional(),
-    semanticAnchor: z.string().optional(),
-    fingerprintHint: z.string().optional(),
-  })
-  .strict();
+export const reviewFindingSchema = z.strictObject({
+  title: z.string().min(1),
+  body: z.string().min(1),
+  path: z.string().min(1),
+  rangeId: z.string().min(1),
+  side: z.enum(["RIGHT", "LEFT"]),
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  severity: z.enum(["critical", "high", "medium", "low", "nit"]),
+  category: z.enum([
+    "correctness",
+    "security",
+    "tests",
+    "performance",
+    "maintainability",
+    "docs",
+    "architecture",
+    "other",
+  ]),
+  confidence: z.number().min(0).max(1),
+  evidenceSnippet: z.string().min(1),
+  suggestedFix: z.string().optional(),
+  semanticAnchor: z.string().optional(),
+  fingerprintHint: z.string().optional(),
+});
 
-export const prReviewSchema = z
-  .object({
-    summary: z
-      .object({
-        body: z.string().min(1),
-      })
-      .strict(),
-    inlineFindings: z.array(reviewFindingSchema),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict();
+export const prReviewSchema = z.strictObject({
+  summary: z.strictObject({
+    body: z.string().min(1),
+  }),
+  inlineFindings: z.array(reviewFindingSchema),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
 
 export type ReviewFinding = z.infer<typeof reviewFindingSchema>;
 export type ReviewFindingSeverity = ReviewFinding["severity"];

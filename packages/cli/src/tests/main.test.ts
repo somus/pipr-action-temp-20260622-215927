@@ -24,7 +24,7 @@ describe("pipr CLI", () => {
       const validate = await runCli(["validate"], {}, workspace);
 
       expect(init.exitCode).toBe(0);
-      expect(init.stdout).toContain("created 6 file(s) in .pipr");
+      expect(init.stdout).toContain("created 5 file(s) in .pipr");
       expect(validate.exitCode).toBe(0);
       expect(validate.stdout).toContain("valid:");
       const configYaml = await readFile(path.join(workspace, ".pipr", "config.yaml"), "utf8");
@@ -277,7 +277,8 @@ describe("pipr CLI", () => {
         "kind: Workflow",
         "id: pipr/review",
         "on:",
-        "  - pull_request.opened",
+        "  events:",
+        "    - pull_request.opened",
         "steps:",
         "  - id: review",
         "    uses: core/run-agent",
@@ -314,7 +315,8 @@ describe("pipr CLI", () => {
         "kind: Workflow",
         "id: pipr/review",
         "on:",
-        "  - pull_request.opened",
+        "  events:",
+        "    - pull_request.opened",
         "steps:",
         "  - id: warmup",
         "    uses: core/run-agent",
@@ -403,9 +405,8 @@ describe("pipr CLI", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("pipr/reviewer\tpipr/reviewer");
       expect(commands.exitCode).toBe(0);
-      expect(commands.stdout).toContain(
-        "pipr/default-commands\tDefault pipr pull request commands.",
-      );
+      expect(commands.stdout).toContain("@pipr help\tBuilt-in pipr command help.");
+      expect(commands.stdout).toContain("@pipr review\tpipr/review command 'review'");
     } finally {
       await removeWorkspace(workspace);
     }

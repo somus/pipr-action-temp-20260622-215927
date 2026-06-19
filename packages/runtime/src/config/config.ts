@@ -4,6 +4,7 @@ import { parse } from "yaml";
 import { resolveContainedConfigDir } from "./paths.js";
 import {
   assertNoRawSecrets,
+  extractPiprConfigComponents,
   type PiprComponent,
   type PiprComponentKind,
   type PiprV1Config,
@@ -17,7 +18,6 @@ const componentDirectories = [
   { name: "blocks", extensions: [".yaml", ".yml"], kind: "Block" },
   { name: "agents", extensions: [".md"], kind: "Agent" },
   { name: "comments", extensions: [".yaml", ".yml"], kind: "CommentTemplate" },
-  { name: "commands", extensions: [".yaml", ".yml"], kind: "CommandSet" },
   { name: "schemas", extensions: [".json"], kind: "Schema" },
 ] as const;
 
@@ -59,9 +59,14 @@ export async function loadMaterializedProject(
     throw new Error(`${configDir}/config.yaml is required. Run pipr init to create it.`);
   }
   await assertNotSymlink(configPath);
+  await assertNoObsoleteCommandsDirectory(projectDir);
 
-  const config = validatePiprConfigDocument(configPath, await readYamlObject(configPath));
-  const componentFiles = await loadMaterializedComponents(projectDir);
+  const configValue = await readYamlObject(configPath);
+  const config = validatePiprConfigDocument(configPath, configValue);
+  const componentFiles = [
+    ...inlineConfigComponents(configPath, configValue),
+    ...(await loadMaterializedComponents(projectDir)),
+  ];
   const components = componentFiles.map((componentFile) => componentFile.document);
   validateMaterializedProject({ config, components });
 
@@ -78,6 +83,27 @@ export async function loadMaterializedProject(
       ),
     },
   };
+}
+
+async function assertNoObsoleteCommandsDirectory(projectDir: string): Promise<void> {
+  const commandsDir = path.join(projectDir, "commands");
+  if (await fileExists(commandsDir)) {
+    throw new Error(
+      `${commandsDir}: CommandSet files are not supported; define commands under Workflow on.commands`,
+    );
+  }
+}
+
+function inlineConfigComponents(
+  configPath: string,
+  configValue: Record<string, unknown>,
+): LoadedMaterializedComponent[] {
+  return extractPiprConfigComponents(configPath, configValue).map((document) => ({
+    id: document.id,
+    kind: document.kind,
+    document,
+    source: `${configPath}#workflows`,
+  }));
 }
 
 async function loadMaterializedComponents(

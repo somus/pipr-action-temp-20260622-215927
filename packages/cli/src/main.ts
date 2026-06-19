@@ -3,12 +3,14 @@ import { inspect } from "node:util";
 import * as core from "@actions/core";
 import type { RegistryEntry } from "@pipr/runtime";
 import {
+  type ActionCommandResult,
   runActionCommand,
   runDryRunCommand,
   runExplainConfigCommand,
   runGraphCommand,
   runInitCommand,
   runListCommand,
+  runListCommandsCommand,
   runValidateCommand,
 } from "@pipr/runtime";
 
@@ -27,6 +29,7 @@ type CliOptions = {
 
 type CommandHandler = (options: CliOptions) => Promise<void> | void;
 type OptionHandler = (options: CliOptions, args: string[], index: number) => number;
+type LoadedActionResult = Exclude<ActionCommandResult, { kind: "ignored" }>;
 
 const help = `pipr
 
@@ -96,12 +99,56 @@ async function runAction(options: CliOptions): Promise<void> {
     piExecutable: process.env.PIPR_PI_EXECUTABLE,
     trustedProvider: options.trustedProvider,
   });
-  logActionEvent(result.event);
-  core.info(`pipr config source: ${result.configSource}`);
-  if (result.kind === "dry-run") {
-    core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
+  handleActionResult(result);
+}
+
+function handleActionResult(result: ActionCommandResult): void {
+  if (result.kind === "ignored") {
+    handleIgnoredActionResult(result);
     return;
   }
+  handleLoadedActionResult(result);
+}
+
+function handleLoadedActionResult(result: LoadedActionResult): void {
+  if (result.kind === "dry-run") {
+    handleDryRunActionResult(result);
+    return;
+  }
+  handleCompletedActionResult(result);
+}
+
+function handleCompletedActionResult(
+  result: Exclude<LoadedActionResult, { kind: "dry-run" }>,
+): void {
+  if (result.kind === "command-help") {
+    handleCommandHelpActionResult(result);
+    return;
+  }
+  handleReviewActionResult(result);
+}
+
+function handleIgnoredActionResult(
+  result: Extract<ActionCommandResult, { kind: "ignored" }>,
+): void {
+  core.info(`pipr ignored event: ${result.reason}`);
+}
+
+function handleDryRunActionResult(result: Extract<ActionCommandResult, { kind: "dry-run" }>): void {
+  logActionContext(result);
+  core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
+}
+
+function handleCommandHelpActionResult(
+  result: Extract<ActionCommandResult, { kind: "command-help" }>,
+): void {
+  logActionContext(result);
+  core.info(`pipr command help: ${result.reason}`);
+  core.setOutput("main-comment", result.body);
+}
+
+function handleReviewActionResult(result: Extract<ActionCommandResult, { kind: "review" }>): void {
+  logActionContext(result);
   core.info(
     `pipr review produced ${result.review.validated.validFindings.length} inline draft(s), ` +
       `${result.review.validated.droppedFindings.length} dropped finding(s)`,
@@ -112,6 +159,11 @@ async function runAction(options: CliOptions): Promise<void> {
   core.setOutput("main-comment", result.review.mainComment);
   core.setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
   core.setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
+}
+
+function logActionContext(result: LoadedActionResult): void {
+  logActionEvent(result.event);
+  core.info(`pipr config source: ${result.configSource}`);
 }
 
 async function runInit(options: CliOptions): Promise<void> {
@@ -312,12 +364,18 @@ async function listPresets(options: CliOptions): Promise<void> {
 }
 
 async function listCommands(options: CliOptions): Promise<void> {
-  listEntries(await loadEntries(options, "commands"));
+  listEntries(
+    await runListCommandsCommand({
+      rootDir: process.cwd(),
+      configDir: options.configDir,
+      env: process.env,
+    }),
+  );
 }
 
 function loadEntries(
   options: CliOptions,
-  collection: "blocks" | "tools" | "agents" | "presets" | "commands",
+  collection: "blocks" | "tools" | "agents" | "presets",
 ): Promise<RegistryEntry[]> {
   return runListCommand(
     {

@@ -34,25 +34,21 @@ export const piReadOnlyToolNamesSchema = z.tuple([
   z.literal("ls"),
 ]);
 
-export const piProviderProfileSchema = z
-  .object({
-    id: piProviderIdSchema,
-    provider: nonEmptyStringSchema,
-    model: nonEmptyStringSchema,
-    apiKeyEnv: piApiKeyEnvNameSchema,
-    thinking: piThinkingLevelSchema.optional(),
-  })
-  .strict();
+export const piProviderProfileSchema = z.strictObject({
+  id: piProviderIdSchema,
+  provider: nonEmptyStringSchema,
+  model: nonEmptyStringSchema,
+  apiKeyEnv: piApiKeyEnvNameSchema,
+  thinking: piThinkingLevelSchema.optional(),
+});
 
-export const piProviderInvocationSchema = z
-  .object({
-    provider: nonEmptyStringSchema,
-    model: nonEmptyStringSchema,
-    apiKeyEnv: piApiKeyEnvNameSchema,
-    thinking: piThinkingLevelSchema,
-    tools: piReadOnlyToolNamesSchema,
-  })
-  .strict();
+export const piProviderInvocationSchema = z.strictObject({
+  provider: nonEmptyStringSchema,
+  model: nonEmptyStringSchema,
+  apiKeyEnv: piApiKeyEnvNameSchema,
+  thinking: piThinkingLevelSchema,
+  tools: piReadOnlyToolNamesSchema,
+});
 
 export type PiThinkingLevel = z.infer<typeof piThinkingLevelSchema>;
 export type PiBuiltinToolName = z.infer<typeof piBuiltinToolNameSchema>;
