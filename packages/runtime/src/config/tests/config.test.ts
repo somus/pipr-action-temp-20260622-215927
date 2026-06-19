@@ -37,7 +37,7 @@ describe("loadRuntimeProject", () => {
       apiKeyEnv: "DEEPSEEK_API_KEY",
       thinking: "high",
     });
-    expect(resolved.config.publication.maxInlineComments).toBe(5);
+    expect(resolved.config.publication.maxInlineComments).toBeUndefined();
   });
 
   it("checks provider env vars only when requested", async () => {

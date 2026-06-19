@@ -11,6 +11,12 @@ import {
   validateProject,
 } from "../config/project.js";
 import { renderRegistryGraph } from "../registry/registry.js";
+import {
+  createGitHubPublicationClient,
+  type GitHubPublicationClient,
+  type PublicationResult,
+  publishPublicationPlan,
+} from "../review/publish.js";
 import { type ReviewRuntimeResult, runReviewRuntime } from "../review/runtime.js";
 import type {
   PiprConfig,
@@ -72,6 +78,7 @@ export type ActionCommandOptions = RuntimeCommandOptions & {
     apiKeyEnv?: string;
   };
   githubClient?: GitHubCommandClient;
+  githubPublicationClient?: GitHubPublicationClient;
 };
 
 export type DryRunCommandResult = {
@@ -103,6 +110,7 @@ export type ActionCommandResult =
       configSource: string;
       command?: string;
       review: ReviewRuntimeResult;
+      publication: PublicationResult;
     };
 
 export async function runInitCommand(
@@ -202,7 +210,7 @@ export async function runActionCommand(
     kind: "review",
     event,
     configSource: trustedRuntime.resolved.source,
-    review: await runTrustedReview({ options, trustedRuntime, provider, event }),
+    ...(await runTrustedReviewAndPublish({ options, trustedRuntime, provider, event })),
   };
 }
 
@@ -310,26 +318,26 @@ async function dispatchIssueCommentCommand(
     event: prepared.event,
     command: prepared.resolution.invocation.commandName,
     configSource: prepared.trustedRuntime.resolved.source,
-    review: await runTrustedReview({
+    ...(await runTrustedReviewAndPublish({
       options,
       trustedRuntime: prepared.trustedRuntime,
       provider,
       event: prepared.event,
       workflowId: prepared.resolution.invocation.workflowId,
       workflowInputs: prepared.resolution.invocation.inputs,
-    }),
+    })),
   };
 }
 
-async function runTrustedReview(options: {
+async function runTrustedReviewAndPublish(options: {
   options: ActionCommandOptions;
   trustedRuntime: LoadedRuntimeProject;
   provider: ProviderConfig;
   event: PullRequestEventContext;
   workflowId?: string;
   workflowInputs?: unknown;
-}): Promise<ReviewRuntimeResult> {
-  return await runReviewRuntime({
+}): Promise<{ review: ReviewRuntimeResult; publication: PublicationResult }> {
+  const review = await runReviewRuntime({
     workspace: options.options.rootDir,
     config: trustedActionConfig(
       options.trustedRuntime.resolved.config,
@@ -343,8 +351,29 @@ async function runTrustedReview(options: {
     providerOverride: options.provider,
     workflowId: options.workflowId,
     workflowInputs: options.workflowInputs,
+    trustedConfigSha: readTrustedRuntimeSha(options.trustedRuntime),
+    trustedConfigHash: readTrustedRuntimeHash(options.trustedRuntime),
     piExecutable: options.options.piExecutable,
   });
+  const client =
+    options.options.githubPublicationClient ??
+    createGitHubPublicationClient(actionEnv(options.options));
+  const publication = await publishPublicationPlan({
+    client,
+    event: options.event,
+    plan: review.publicationPlan,
+  });
+  return { review, publication };
+}
+
+function readTrustedRuntimeSha(runtime: LoadedRuntimeProject): string | undefined {
+  const trusted = runtime as unknown as { trustedConfigSha?: unknown };
+  return typeof trusted.trustedConfigSha === "string" ? trusted.trustedConfigSha : undefined;
+}
+
+function readTrustedRuntimeHash(runtime: LoadedRuntimeProject): string | undefined {
+  const trusted = runtime as unknown as { trustedConfigHash?: unknown };
+  return typeof trusted.trustedConfigHash === "string" ? trusted.trustedConfigHash : undefined;
 }
 
 function trustedActionConfig(

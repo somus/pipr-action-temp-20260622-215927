@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
+import { readFile, writeFile } from "node:fs/promises";
 import { inspect } from "node:util";
 import * as core from "@actions/core";
-import type { RegistryEntry } from "@pipr/runtime";
+import type { GitHubPublicationClient, RegistryEntry } from "@pipr/runtime";
 import {
   type ActionCommandResult,
+  PublicationError,
   runActionCommand,
   runDryRunCommand,
   runExplainConfigCommand,
@@ -98,6 +100,10 @@ async function runAction(options: CliOptions): Promise<void> {
     dryRun: isActionDryRun(),
     piExecutable: process.env.PIPR_PI_EXECUTABLE,
     trustedProvider: options.trustedProvider,
+    githubPublicationClient: fixturePublicationClient({
+      fixturePath: process.env.PIPR_GITHUB_FIXTURE_PATH,
+      enabled: process.env.PIPR_ENABLE_TEST_FIXTURES === "1",
+    }),
   });
   handleActionResult(result);
 }
@@ -150,8 +156,13 @@ function handleCommandHelpActionResult(
 function handleReviewActionResult(result: Extract<ActionCommandResult, { kind: "review" }>): void {
   logActionContext(result);
   core.info(
-    `pipr review produced ${result.review.validated.validFindings.length} inline draft(s), ` +
+    `pipr review produced ${result.review.validated.validFindings.length} valid inline finding(s), ` +
       `${result.review.validated.droppedFindings.length} dropped finding(s)`,
+  );
+  core.info(
+    `pipr published main comment (${result.publication.mainComment.action}) and ` +
+      `${result.publication.inlineComments.posted} inline comment(s); ` +
+      `${result.publication.inlineComments.skipped} skipped`,
   );
   if (result.review.repairAttempted) {
     core.info("pipr repaired reviewer JSON once before validation");
@@ -159,6 +170,7 @@ function handleReviewActionResult(result: Extract<ActionCommandResult, { kind: "
   core.setOutput("main-comment", result.review.mainComment);
   core.setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
   core.setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
+  core.setOutput("publication", JSON.stringify(result.publication));
 }
 
 function logActionContext(result: LoadedActionResult): void {
@@ -333,6 +345,86 @@ function logActionEvent(event: { pullRequestNumber: number; repo: string }): voi
   core.info(`pipr loaded PR #${event.pullRequestNumber} for ${event.repo}`);
 }
 
+function fixturePublicationClient(options: {
+  fixturePath: string | undefined;
+  enabled: boolean;
+}): GitHubPublicationClient | undefined {
+  if (!options.fixturePath) {
+    return undefined;
+  }
+  if (!options.enabled) {
+    throw new Error("PIPR_GITHUB_FIXTURE_PATH requires PIPR_ENABLE_TEST_FIXTURES=1");
+  }
+  const fixturePath = options.fixturePath;
+  return {
+    async getAuthenticatedUserLogin() {
+      return (await readFixture(fixturePath)).ownerLogin;
+    },
+    async getPullRequestHeadSha() {
+      return (await readFixture(fixturePath)).headSha;
+    },
+    async listIssueComments() {
+      return (await readFixture(fixturePath)).issueComments;
+    },
+    async createIssueComment(options) {
+      const fixture = await readFixture(fixturePath);
+      const comment = {
+        id: fixture.issueComments.length + 1,
+        body: options.body,
+        authorLogin: fixture.ownerLogin,
+      };
+      fixture.issueComments.push(comment);
+      await writeFixture(fixturePath, fixture);
+      return { id: comment.id };
+    },
+    async updateIssueComment(options) {
+      const fixture = await readFixture(fixturePath);
+      const comment = fixture.issueComments.find((item) => item.id === options.commentId);
+      if (!comment) {
+        throw new Error(`Fixture issue comment ${options.commentId} not found`);
+      }
+      comment.body = options.body;
+      await writeFixture(fixturePath, fixture);
+      return { id: comment.id };
+    },
+    async listReviewComments() {
+      return (await readFixture(fixturePath)).reviewComments;
+    },
+    async createReviewComment(options) {
+      const fixture = await readFixture(fixturePath);
+      if (fixture.failReviewComment) {
+        throw new Error("fixture inline failed");
+      }
+      const comment = {
+        id: fixture.reviewComments.length + 1,
+        body: options.body,
+        authorLogin: fixture.ownerLogin,
+      };
+      fixture.reviewComments.push(comment);
+      fixture.reviewCommentPayloads.push(options);
+      await writeFixture(fixturePath, fixture);
+      return { id: comment.id };
+    },
+  };
+}
+
+type GitHubPublicationFixture = {
+  ownerLogin: string;
+  headSha: string;
+  issueComments: Array<{ id: number; body: string; authorLogin: string | undefined }>;
+  reviewComments: Array<{ id: number; body: string; authorLogin: string | undefined }>;
+  reviewCommentPayloads: unknown[];
+  failReviewComment?: boolean;
+};
+
+async function readFixture(fixturePath: string): Promise<GitHubPublicationFixture> {
+  return JSON.parse(await readFile(fixturePath, "utf8")) as GitHubPublicationFixture;
+}
+
+async function writeFixture(fixturePath: string, fixture: GitHubPublicationFixture): Promise<void> {
+  await writeFile(fixturePath, JSON.stringify(fixture));
+}
+
 async function printGraph(options: CliOptions): Promise<void> {
   console.log(
     await runGraphCommand({
@@ -398,6 +490,10 @@ function hasOwn(value: object, key: string): boolean {
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof PublicationError && error.result) {
+    core.setOutput("publication", JSON.stringify(error.result));
+    core.error(`pipr publication metadata: ${JSON.stringify(error.result)}`);
+  }
   const message = error instanceof Error ? error.message : String(error);
   core.setFailed(message);
   process.exitCode = 1;

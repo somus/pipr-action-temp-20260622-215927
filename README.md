@@ -1,6 +1,6 @@
 # pipr
 
-pipr is a Pi-powered GitHub PR automation runtime. The current runtime validates `.pipr/` configuration, loads GitHub pull request events, builds a local Diff Manifest, runs Pi for schema-first review JSON, validates findings against commentable ranges, renders the Main Review Comment, and prepares Inline Review Comment drafts. GitHub publishing is still not wired in the Core MVP scaffold.
+pipr is a Pi-powered GitHub PR automation runtime. The current runtime validates `.pipr/` configuration, loads GitHub pull request events, builds a local Diff Manifest, runs Pi for schema-first review JSON, validates findings against commentable ranges, reduces workflow contributions into one publication plan, then upserts the Main Review Comment and publishes Inline Review Comments.
 
 ## Development
 
@@ -79,7 +79,8 @@ The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs
 materialized workflow, agent, comment-template, optional custom schema, and optional block registry from
 the pull request base commit. That base-commit `.pipr/` tree is trusted review authority, while
 runtime-owned `core/run-agent` owns deterministic diff creation, Pi execution, and review
-validation. Runtime-owned comment handlers own comment preparation. Invalid or deleted PR-head
+validation. Runtime-owned publication code owns comment reduction, stale-head checks, main-comment
+upsert, inline marker dedupe, and GitHub comment writes. Invalid or deleted PR-head
 `.pipr/` files cannot block the trusted review run. The base commit must contain the materialized
 `.pipr/` tree.
 
@@ -128,6 +129,10 @@ steps:
     with:
       review: ${{ steps.review.outputs.result }}
       template: pipr/main
+  - id: inline-comments
+    uses: core/inline-comments
+    with:
+      review: ${{ steps.review.outputs.result }}
 ```
 
 Review workflows must expose the reserved runtime step ids `review`, `main-comment`, and `inline-comments`.
@@ -144,4 +149,4 @@ The materialized `.pipr/` tree contains conventional component files:
 
 Custom `.pipr/blocks/*.yaml` files are supported for explicit user extensions, but the minimal distribution does not include one. Bundled product components use the `pipr/*` namespace. Runtime internals use the reserved `core/*` namespace, including the canonical `core/pr-review` schema.
 
-`pipr validate` checks the generated tree and reports source-file errors before model or GitHub publishing work starts.
+`pipr validate` checks the generated tree and reports source-file errors before model or GitHub publishing work starts. If `publication.maxInlineComments` is omitted, inline publication is uncapped for the current validated finding set.

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -15,7 +16,7 @@ export async function loadRuntimeProjectFromGitCommit(options: {
   configDir?: string;
   commitSha: string;
   env?: NodeJS.ProcessEnv;
-}): Promise<LoadedRuntimeProject> {
+}): Promise<LoadedRuntimeProject & { trustedConfigSha: string; trustedConfigHash: string }> {
   const configDir = resolveContainedConfigDir(options);
   const files = listConfigFilesAtCommit(options.rootDir, options.commitSha, configDir.gitPath);
   if (files.length === 0) {
@@ -26,6 +27,7 @@ export async function loadRuntimeProjectFromGitCommit(options: {
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-base-config-"));
   try {
+    const hash = crypto.createHash("sha256");
     for (const file of files) {
       assertRegularFile(file, options.commitSha);
       const relativePath = relativeGitPath(configDir.gitPath, file.path);
@@ -34,15 +36,24 @@ export async function loadRuntimeProjectFromGitCommit(options: {
         configDir.relativeConfigDir,
         ...relativePath.split("/"),
       );
+      const contents = showFileAtCommit(options.rootDir, options.commitSha, file.path);
+      hash.update(relativePath);
+      hash.update("\0");
+      hash.update(contents);
+      hash.update("\0");
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, showFileAtCommit(options.rootDir, options.commitSha, file.path));
+      await writeFile(targetPath, contents);
     }
-    return await loadRuntimeProject({
-      rootDir: tempRoot,
-      configDir: configDir.relativeConfigDir,
-      env: options.env,
-      requireProviderEnv: false,
-    });
+    return {
+      ...(await loadRuntimeProject({
+        rootDir: tempRoot,
+        configDir: configDir.relativeConfigDir,
+        env: options.env,
+        requireProviderEnv: false,
+      })),
+      trustedConfigSha: options.commitSha,
+      trustedConfigHash: hash.digest("hex"),
+    };
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

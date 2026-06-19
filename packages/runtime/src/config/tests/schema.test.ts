@@ -305,8 +305,8 @@ describe("pipr.dev/v1 schemas", () => {
     );
   });
 
-  it("rejects unsupported Main Review Comment section IDs", () => {
-    expect(() =>
+  it("allows custom Main Review Comment section IDs", () => {
+    expect(
       validateComponentDocument(".pipr/comments/main.yaml", {
         apiVersion: "pipr.dev/v1",
         kind: "CommentTemplate",
@@ -315,7 +315,7 @@ describe("pipr.dev/v1 schemas", () => {
         heading: "Pi PR Review",
         sections: [{ id: "custom", title: "Custom", order: 10 }],
       }),
-    ).toThrow("Invalid option");
+    ).toMatchObject({ kind: "CommentTemplate" });
   });
 
   it("requires agent output schema refs to resolve", () => {

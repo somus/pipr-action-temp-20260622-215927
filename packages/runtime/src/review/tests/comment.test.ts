@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ValidatedReview } from "../../types.js";
 import {
+  buildPublicationPlan,
   extractFindingMarkers,
   parseInlineCommentDrafts,
   prepareInlineCommentDrafts,
+  reduceMainSectionContributions,
   renderMainComment,
+  reviewToMainSectionContributions,
 } from "../comment.js";
 
 const validated: ValidatedReview = {
@@ -28,6 +31,44 @@ const validated: ValidatedReview = {
     },
   ],
   droppedFindings: [],
+};
+const manifest = {
+  baseSha: "base",
+  headSha: "head",
+  mergeBaseSha: "base",
+  files: [
+    {
+      path: "src/a.ts",
+      status: "modified" as const,
+      additions: 1,
+      deletions: 0,
+      hunks: [
+        {
+          hunkIndex: 1,
+          header: "@@ -10,1 +10,1 @@",
+          oldStart: 10,
+          oldLines: 1,
+          newStart: 10,
+          newLines: 1,
+          contentHash: "deadbeefcafe",
+        },
+      ],
+      commentableRanges: [
+        {
+          id: "range-1",
+          path: "src/a.ts",
+          side: "RIGHT" as const,
+          startLine: 10,
+          endLine: 10,
+          kind: "added" as const,
+          hunkIndex: 1,
+          hunkHeader: "@@ -10,1 +10,1 @@",
+          hunkContentHash: "deadbeefcafe",
+          preview: "fail()",
+        },
+      ],
+    },
+  ],
 };
 
 describe("comments", () => {
@@ -73,12 +114,14 @@ describe("comments", () => {
   });
 
   it("dedupes inline drafts with hidden markers", () => {
-    const first = prepareInlineCommentDrafts(validated);
+    const first = prepareInlineCommentDrafts(validated, manifest, "head");
     const markers = extractFindingMarkers(first.map((draft) => draft.body));
-    const second = prepareInlineCommentDrafts(validated, markers);
+    const second = prepareInlineCommentDrafts(validated, manifest, "head", markers);
 
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(0);
+    expect(first[0]?.body).toContain("<!-- pipr:finding fingerprint=");
+    expect(first[0]?.body).toContain(" head=head -->");
   });
 
   it("dedupes duplicate findings in the same draft batch", () => {
@@ -86,10 +129,14 @@ describe("comments", () => {
     if (!finding) {
       throw new Error("test fixture missing finding");
     }
-    const drafts = prepareInlineCommentDrafts({
-      ...validated,
-      validFindings: [finding, finding],
-    });
+    const drafts = prepareInlineCommentDrafts(
+      {
+        ...validated,
+        validFindings: [finding, finding],
+      },
+      manifest,
+      "head",
+    );
 
     expect(drafts).toHaveLength(1);
   });
@@ -103,9 +150,114 @@ describe("comments", () => {
           startLine: 10,
           endLine: 10,
           body: "",
-          marker: "pipr:finding:abc",
+          marker: "pipr:finding:abc:head",
+          fingerprint: "0123456789abcdef",
+          reviewedHeadSha: "head",
+          finding: validated.validFindings[0],
+          range: manifest.files[0]?.commentableRanges[0],
         },
       ]),
     ).toThrow();
+  });
+
+  it("reduces main sections deterministically", () => {
+    const reduced = reduceMainSectionContributions([
+      {
+        workflowId: "b/workflow",
+        sectionId: "summary",
+        policy: "replace",
+        priority: 5,
+        value: "B",
+      },
+      {
+        workflowId: "a/workflow",
+        sectionId: "summary",
+        policy: "replace",
+        priority: 5,
+        value: "A",
+      },
+      {
+        workflowId: "a/workflow",
+        sectionId: "details",
+        policy: "append",
+        priority: 1,
+        value: "one",
+      },
+      {
+        workflowId: "b/workflow",
+        sectionId: "details",
+        policy: "append",
+        priority: 2,
+        value: "two",
+      },
+      {
+        workflowId: "a/workflow",
+        sectionId: "findings",
+        policy: "list",
+        priority: 1,
+        value: "first",
+      },
+      {
+        workflowId: "b/workflow",
+        sectionId: "findings",
+        policy: "list",
+        priority: 2,
+        value: "second",
+      },
+    ]);
+
+    expect(reduced.get("summary")).toBe("A");
+    expect(reduced.get("details")).toBe("two\n\none");
+    expect(reduced.get("findings")).toBe("second\nfirst");
+  });
+
+  it("rejects conflicting main section policies", () => {
+    expect(() =>
+      reduceMainSectionContributions([
+        { workflowId: "a", sectionId: "summary", policy: "exclusive", priority: 1, value: "A" },
+        { workflowId: "b", sectionId: "summary", policy: "exclusive", priority: 1, value: "B" },
+      ]),
+    ).toThrow("multiple exclusive writers");
+
+    expect(() =>
+      reduceMainSectionContributions([
+        { workflowId: "a", sectionId: "summary", policy: "replace", priority: 1, value: "A" },
+        { workflowId: "b", sectionId: "summary", policy: "append", priority: 1, value: "B" },
+      ]),
+    ).toThrow("mixed merge policies");
+  });
+
+  it("renders a publication plan with configured empty sections", () => {
+    const plan = buildPublicationPlan({
+      event: { pullRequestNumber: 1, headSha: "head" },
+      mainContributions: reviewToMainSectionContributions({
+        workflowId: "pipr/review",
+        validated: { ...validated, validFindings: [] },
+      }),
+      inlineItems: [],
+      metadata: {
+        runtimeVersion: "0.0.0",
+        reviewedHeadSha: "head",
+        selectedWorkflows: ["pipr/review"],
+        failedWorkflows: [],
+        validFindings: 0,
+        droppedFindings: 0,
+      },
+      template: {
+        apiVersion: "pipr.dev/v1",
+        kind: "CommentTemplate",
+        id: "pipr/main",
+        marker: "pipr:main-comment",
+        heading: "Review",
+        sections: [
+          { id: "summary", title: "Summary", order: 10 },
+          { id: "custom", title: "Custom", order: 20, empty: "Nothing here." },
+          { id: "metadata", title: "Metadata", order: 30, collapsed: true },
+        ],
+      },
+    });
+
+    expect(plan.mainComment).toContain("Nothing here.");
+    expect(plan.mainComment).toContain("<summary>Metadata</summary>");
   });
 });

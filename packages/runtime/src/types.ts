@@ -18,7 +18,7 @@ export const piprConfigSchema = z.strictObject({
   defaultProvider: nonEmptyStringSchema,
   providers: z.array(providerConfigSchema).min(1),
   publication: z.strictObject({
-    maxInlineComments: z.number().int().min(0).max(50),
+    maxInlineComments: z.number().int().min(0).max(50).optional(),
     minConfidence: z.number().min(0).max(1),
   }),
   limits: z

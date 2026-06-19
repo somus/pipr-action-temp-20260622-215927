@@ -19,7 +19,6 @@ import type {
   WorkflowComponent,
 } from "./schema.js";
 
-const defaultMaxInlineComments = 5;
 const defaultMinConfidence = 0.75;
 
 export type LoadRuntimeProjectOptions = {
@@ -81,8 +80,7 @@ function materializedProjectToResolvedConfig(
       defaultProvider: defaultProvider.id,
       providers: project.config.providers.map(toRuntimeProvider),
       publication: {
-        maxInlineComments:
-          project.config.publication?.maxInlineComments ?? defaultMaxInlineComments,
+        maxInlineComments: project.config.publication?.maxInlineComments,
         minConfidence: defaultMinConfidence,
       },
       limits: project.config.limits,

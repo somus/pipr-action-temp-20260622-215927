@@ -26,7 +26,7 @@ describe("initOfficialMinimalProject", () => {
     expect(validation.kind).toBe("materialized");
     expect(validation.resolved.config.defaultProvider).toBe("deepseek");
     expect(validation.resolved.config.limits?.timeoutSeconds).toBe(300);
-    expect(validation.resolved.config.publication.maxInlineComments).toBe(5);
+    expect(validation.resolved.config.publication.maxInlineComments).toBeUndefined();
     expect(validation.registry.schemas.map((schema) => schema.id)).toContain("core/pr-review");
   });
 

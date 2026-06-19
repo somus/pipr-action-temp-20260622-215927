@@ -30,6 +30,7 @@ export const reviewFindingSchema = z.strictObject({
 
 export const prReviewSchema = z.strictObject({
   summary: z.strictObject({
+    title: z.string().min(1).optional(),
     body: z.string().min(1),
   }),
   inlineFindings: z.array(reviewFindingSchema),
@@ -51,6 +52,7 @@ export function parsePrReview(value: unknown): PrReview {
 export function reviewSchemaExample(): PrReview {
   return {
     summary: {
+      title: "Optional concise review title.",
       body: "Concise pull request review summary.",
     },
     inlineFindings: [

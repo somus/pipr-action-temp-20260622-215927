@@ -93,7 +93,10 @@ describe("pipr CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("pipr loaded PR #1 for local/pipr");
-    expect(result.stdout).toContain("pipr review produced 0 inline draft(s), 0 dropped finding(s)");
+    expect(result.stdout).toContain(
+      "pipr review produced 0 valid inline finding(s), 0 dropped finding(s)",
+    );
+    expect(result.stdout).toContain("pipr published main comment (created)");
   });
 
   it("uses trusted Action provider inputs instead of PR-controlled provider config", async () => {
@@ -234,7 +237,7 @@ describe("pipr CLI", () => {
         "bun -e '",
         'const prompt = process.argv.at(-1) ?? "";',
         'const manifest = JSON.parse(prompt.split("Diff Manifest:\\n\\n").at(-1));',
-        'const range = manifest.files.find((file) => file.path === "src/a.ts").commentableRanges[0];',
+        'const range = manifest.files.find((file) => file.path === "src/a.ts").commentableRanges.find((item) => item.side === "RIGHT");',
         "console.log(JSON.stringify({",
         '  summary: { body: "One finding." },',
         "  inlineFindings: [{",
@@ -256,7 +259,43 @@ describe("pipr CLI", () => {
     });
 
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(result.stdout).toContain("pipr review produced 1 inline draft(s), 0 dropped finding(s)");
+    expect(result.stdout).toContain(
+      "pipr review produced 1 valid inline finding(s), 0 dropped finding(s)",
+    );
+  });
+
+  it("sets publication output when inline publication fails", async () => {
+    const result = await runActionWithGitWorkspace({
+      githubFixture: { failReviewComment: true },
+      piScript: [
+        "#!/bin/sh",
+        "bun -e '",
+        'const prompt = process.argv.at(-1) ?? "";',
+        'const manifest = JSON.parse(prompt.split("Diff Manifest:\\n\\n").at(-1));',
+        'const range = manifest.files.find((file) => file.path === "src/a.ts").commentableRanges.find((item) => item.side === "RIGHT");',
+        "console.log(JSON.stringify({",
+        '  summary: { body: "One finding." },',
+        "  inlineFindings: [{",
+        '    title: "Bug",',
+        '    body: "This can fail.",',
+        "    path: range.path,",
+        "    rangeId: range.id,",
+        "    side: range.side,",
+        "    startLine: range.startLine,",
+        "    endLine: range.endLine,",
+        '    severity: "high",',
+        '    category: "correctness",',
+        "    confidence: 0.9,",
+        '    evidenceSnippet: "export const value = 2;"',
+        "  }]",
+        "}));",
+        '\' -- "$@"',
+      ].join("\n"),
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.githubOutput).toContain("publication<<");
+    expect(result.githubOutput).toContain("fixture inline failed");
   });
 
   it("does not let invalid PR-head config block trusted Action execution", async () => {
@@ -443,6 +482,7 @@ async function runActionWithGitWorkspace(options: {
   headConfigYaml?: string;
   headAgentMarkdown?: string;
   headCommentYaml?: string;
+  githubFixture?: Record<string, unknown>;
   piScript?: string;
   headWorkflowYaml?: string;
   workflowYaml?: string;
@@ -491,9 +531,21 @@ async function runActionWithGitWorkspace(options: {
     const headSha = (await runCommand("git", ["rev-parse", "HEAD"], workspace)).trim();
     const eventPath = path.join(workspace, "event.json");
     const githubOutputPath = path.join(workspace, "github-output.txt");
+    const githubFixturePath = path.join(workspace, "github-fixture.json");
     const piExecutable = path.join(workspace, "fake-pi.sh");
     await writeFile(eventPath, JSON.stringify(pullRequestPayload(baseSha, headSha)));
     await writeFile(githubOutputPath, "");
+    await writeFile(
+      githubFixturePath,
+      JSON.stringify({
+        ownerLogin: "github-actions[bot]",
+        headSha,
+        issueComments: [],
+        reviewComments: [],
+        reviewCommentPayloads: [],
+        ...(options.githubFixture ?? {}),
+      }),
+    );
     await writeFile(
       piExecutable,
       options.piScript ??
@@ -511,6 +563,8 @@ async function runActionWithGitWorkspace(options: {
       GITHUB_EVENT_NAME: "pull_request",
       GITHUB_OUTPUT: githubOutputPath,
       GITHUB_WORKSPACE: workspace,
+      PIPR_ENABLE_TEST_FIXTURES: "1",
+      PIPR_GITHUB_FIXTURE_PATH: githubFixturePath,
       PIPR_PI_EXECUTABLE: piExecutable,
     });
     return {

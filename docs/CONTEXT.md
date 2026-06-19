@@ -40,6 +40,10 @@ _Avoid_: pipeline, job
 The runtime-owned `core/run-agent` primitive that creates the Diff Manifest, runs Pi, and validates Review Findings before comment rendering.
 _Avoid_: user-authored diff or validation block
 
+**Publication Kernel**:
+The runtime-owned reducer and GitHub adapter that turns workflow comment contributions into one Main Review Comment upsert and capped Inline Review Comment writes.
+_Avoid_: workflow-authored GitHub comment writes
+
 **Review Finding**:
 An actionable issue found in a pull request and anchored to a validated diff range.
 _Avoid_: nit, alert

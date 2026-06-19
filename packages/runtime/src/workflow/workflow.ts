@@ -75,7 +75,7 @@ export async function executeWorkflow(
   const state: WorkflowState = {
     inputs: options.inputs ?? {},
     steps: {},
-    context: { ...(options.context ?? {}) },
+    context: { ...(options.context ?? {}), workflowId: workflow.id },
     config: options.config ?? {},
     event: options.event,
     failures: [],

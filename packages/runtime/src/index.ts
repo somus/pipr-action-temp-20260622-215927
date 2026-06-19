@@ -12,6 +12,7 @@ export * from "./registry/registry.js";
 export * from "./review/comment.js";
 export * from "./review/contract.js";
 export * from "./review/github.js";
+export * from "./review/publish.js";
 export * from "./review/review.js";
 export * from "./review/runtime.js";
 export * from "./types.js";

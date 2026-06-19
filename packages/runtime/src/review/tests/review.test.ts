@@ -1,58 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { DiffManifest, PrReview } from "../../types.js";
+import type { PrReview } from "../../types.js";
 import {
   parsePrReview,
   prReviewJsonSchema,
   reviewSchemaExample,
   validatePrReview,
 } from "../review.js";
+import { reviewTestManifest } from "./fixtures.js";
 
-const manifest: DiffManifest = {
-  baseSha: "base",
-  headSha: "head",
-  mergeBaseSha: "base",
-  files: [
-    {
-      path: "src/a.ts",
-      status: "modified",
-      additions: 1,
-      deletions: 0,
-      hunks: [
-        {
-          hunkIndex: 1,
-          header: "@@ -9,1 +10,3 @@",
-          oldStart: 9,
-          oldLines: 1,
-          newStart: 10,
-          newLines: 3,
-          contentHash: "deadbeefcafe",
-        },
-      ],
-      commentableRanges: [
-        {
-          id: "range-1",
-          path: "src/a.ts",
-          side: "RIGHT",
-          startLine: 10,
-          endLine: 12,
-          kind: "added",
-          hunkIndex: 1,
-          hunkHeader: "@@ -9,1 +10,3 @@",
-          hunkContentHash: "deadbeefcafe",
-        },
-      ],
-    },
-    {
-      path: "bun.lock",
-      status: "modified",
-      additions: 1,
-      deletions: 1,
-      excludedReason: "lock file",
-      hunks: [],
-      commentableRanges: [],
-    },
-  ],
-};
+const manifest = reviewTestManifest({ includeExcludedLock: true });
 
 const baseReview: PrReview = {
   summary: { body: "Looks fine." },
@@ -139,8 +95,8 @@ describe("validatePrReview", () => {
 
   it("keeps findings inside a commentable range", () => {
     const validated = validatePrReview(baseReview, manifest, {
-      maxInlineComments: 5,
       minConfidence: 0.75,
+      expectedHeadSha: "head",
     });
 
     expect(validated.validFindings).toHaveLength(1);
@@ -157,7 +113,6 @@ describe("validatePrReview", () => {
     };
 
     const validated = validatePrReview(review, manifest, {
-      maxInlineComments: 5,
       minConfidence: 0.75,
     });
 
@@ -168,15 +123,64 @@ describe("validatePrReview", () => {
     ]);
   });
 
-  it("honors a zero inline comment cap", () => {
-    const validated = validatePrReview(baseReview, manifest, {
-      maxInlineComments: 0,
+  it("drops semantic mismatches and duplicate fingerprints", () => {
+    const review: PrReview = {
+      ...baseReview,
+      inlineFindings: [
+        { ...baseFinding, side: "LEFT" },
+        { ...baseFinding, path: "src/other.ts" },
+        { ...baseFinding, rangeId: "missing" },
+        { ...baseFinding, evidenceSnippet: "not near target" },
+        baseFinding,
+        baseFinding,
+      ],
+    };
+
+    const validated = validatePrReview(review, manifest, {
       minConfidence: 0.75,
+      expectedHeadSha: "head",
     });
 
-    expect(validated.validFindings).toHaveLength(0);
+    expect(validated.validFindings).toHaveLength(1);
     expect(validated.droppedFindings.map((drop) => drop.reason)).toEqual([
-      "inline comment cap 0 reached",
+      "finding side does not match range side",
+      "finding path does not match range path",
+      "unknown rangeId 'missing'",
+      "finding evidenceSnippet was not found near the target range",
+      "duplicate finding fingerprint",
     ]);
+  });
+
+  it("keeps repeated semantic findings when they target different ranges", () => {
+    const review: PrReview = {
+      ...baseReview,
+      inlineFindings: [
+        { ...baseFinding, fingerprintHint: "same-root-cause" },
+        {
+          ...baseFinding,
+          rangeId: "range-2",
+          startLine: 20,
+          endLine: 21,
+          fingerprintHint: "same-root-cause",
+        },
+      ],
+    };
+
+    const validated = validatePrReview(review, manifest, {
+      minConfidence: 0.75,
+      expectedHeadSha: "head",
+    });
+
+    expect(validated.validFindings).toHaveLength(2);
+    expect(validated.droppedFindings).toHaveLength(0);
+  });
+
+  it("fails validation when the Diff Manifest head is stale", () => {
+    expect(() =>
+      validatePrReview(baseReview, manifest, {
+        minConfidence: 0.75,
+        expectedHeadSha: "new-head",
+      }),
+    ).toThrow("does not match expected head SHA");
   });
 });

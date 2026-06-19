@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject } from "../../config/init.js";
+import type { GitHubPublicationClient } from "../../review/publish.js";
 import type { GitHubCommandClient } from "../command-router.js";
 import { runActionCommand } from "../commands.js";
 
@@ -99,6 +100,7 @@ describe("runActionCommand issue_comment dispatch", () => {
           dryRun: false,
           env: issueCommentEnv(workspace.rootDir, eventPath),
           githubClient: failingGitHubClient(),
+          githubPublicationClient: failingGitHubPublicationClient(),
           piExecutable: workspace.piExecutable,
         }),
       ).resolves.toMatchObject({
@@ -143,8 +145,7 @@ describe("runActionCommand issue_comment dispatch", () => {
         command: "review",
       });
       expect(result.kind === "review" ? result.review.validated.validFindings : []).toEqual([]);
-      await expectPiCalled(workspace);
-      expect(currentGitHead(workspace.rootDir)).toBe(workspace.headSha);
+      await expectReviewRanAtHead(result, workspace);
     } finally {
       await rm(workspace.rootDir, { recursive: true, force: true });
     }
@@ -165,12 +166,12 @@ describe("runActionCommand pull_request dispatch", () => {
         eventPath,
         dryRun: false,
         env: pullRequestEnv(workspace.rootDir, eventPath),
+        githubPublicationClient: fakeGitHubPublicationClient(workspace),
         piExecutable: workspace.piExecutable,
       });
 
       expect(result).toMatchObject({ kind: "review" });
-      await expectPiCalled(workspace);
-      expect(currentGitHead(workspace.rootDir)).toBe(workspace.headSha);
+      await expectReviewRanAtHead(result, workspace);
     } finally {
       await rm(workspace.rootDir, { recursive: true, force: true });
     }
@@ -238,6 +239,7 @@ async function runIssueCommentCommand(
     dryRun: false,
     env: issueCommentEnv(workspace.rootDir, eventPath),
     githubClient: fakeGitHubClient(workspace, permission),
+    githubPublicationClient: fakeGitHubPublicationClient(workspace),
     piExecutable: workspace.piExecutable,
   });
 }
@@ -248,6 +250,15 @@ async function expectPiNotCalled(workspace: CommandWorkspace): Promise<void> {
 
 async function expectPiCalled(workspace: CommandWorkspace): Promise<void> {
   await expect(readFile(path.join(workspace.rootDir, "pi-called"), "utf8")).resolves.toBe("");
+}
+
+async function expectReviewRanAtHead(
+  result: Awaited<ReturnType<typeof runActionCommand>>,
+  workspace: CommandWorkspace,
+): Promise<void> {
+  expect(result).toMatchObject({ kind: "review" });
+  await expectPiCalled(workspace);
+  expect(currentGitHead(workspace.rootDir)).toBe(workspace.headSha);
 }
 
 function commandWorkflowYaml(): string {
@@ -373,6 +384,58 @@ function failingGitHubClient(): GitHubCommandClient {
     },
     async getRepositoryPermission() {
       throw new Error("GitHub should not be called");
+    },
+  };
+}
+
+function fakeGitHubPublicationClient(workspace: CommandWorkspace): GitHubPublicationClient {
+  return {
+    async getAuthenticatedUserLogin() {
+      return "github-actions[bot]";
+    },
+    async getPullRequestHeadSha() {
+      return workspace.headSha;
+    },
+    async listIssueComments() {
+      return [];
+    },
+    async createIssueComment() {
+      return { id: 1 };
+    },
+    async updateIssueComment() {
+      return { id: 1 };
+    },
+    async listReviewComments() {
+      return [];
+    },
+    async createReviewComment() {
+      return { id: 2 };
+    },
+  };
+}
+
+function failingGitHubPublicationClient(): GitHubPublicationClient {
+  return {
+    async getAuthenticatedUserLogin() {
+      throw new Error("GitHub publication should not be called");
+    },
+    async getPullRequestHeadSha() {
+      throw new Error("GitHub publication should not be called");
+    },
+    async listIssueComments() {
+      throw new Error("GitHub publication should not be called");
+    },
+    async createIssueComment() {
+      throw new Error("GitHub publication should not be called");
+    },
+    async updateIssueComment() {
+      throw new Error("GitHub publication should not be called");
+    },
+    async listReviewComments() {
+      throw new Error("GitHub publication should not be called");
+    },
+    async createReviewComment() {
+      throw new Error("GitHub publication should not be called");
     },
   };
 }

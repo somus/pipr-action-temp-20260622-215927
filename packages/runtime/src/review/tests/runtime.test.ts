@@ -5,8 +5,9 @@ import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject } from "../../config/init.js";
 import { type LoadedRuntimeProject, loadRuntimeProject } from "../../config/project.js";
 import { createRuntimeRegistry } from "../../registry/registry.js";
-import type { DiffManifest, PullRequestEventContext } from "../../types.js";
+import type { PullRequestEventContext } from "../../types.js";
 import { type PiRunner, type RunReviewRuntimeOptions, runReviewRuntime } from "../runtime.js";
+import { reviewTestManifest } from "./fixtures.js";
 
 const event: PullRequestEventContext = {
   eventName: "pull_request",
@@ -18,43 +19,7 @@ const event: PullRequestEventContext = {
   workspace: "/tmp/pipr",
 };
 
-const manifest: DiffManifest = {
-  baseSha: "base",
-  headSha: "head",
-  mergeBaseSha: "base",
-  files: [
-    {
-      path: "src/a.ts",
-      status: "modified",
-      additions: 1,
-      deletions: 0,
-      hunks: [
-        {
-          hunkIndex: 1,
-          header: "@@ -9,1 +10,3 @@",
-          oldStart: 9,
-          oldLines: 1,
-          newStart: 10,
-          newLines: 3,
-          contentHash: "deadbeefcafe",
-        },
-      ],
-      commentableRanges: [
-        {
-          id: "range-1",
-          path: "src/a.ts",
-          side: "RIGHT",
-          startLine: 10,
-          endLine: 12,
-          kind: "added",
-          hunkIndex: 1,
-          hunkHeader: "@@ -9,1 +10,3 @@",
-          hunkContentHash: "deadbeefcafe",
-        },
-      ],
-    },
-  ],
-};
+const manifest = reviewTestManifest();
 
 const noFindingsReview = JSON.stringify({
   summary: { body: "No findings." },
@@ -201,6 +166,38 @@ describe("runReviewRuntime", () => {
     ).rejects.toThrow("must include reserved step id(s): review");
   });
 
+  it("rejects review workflows that bind reserved step ids to other blocks", async () => {
+    const registry = createRuntimeRegistry({
+      modules: {
+        blocks: [{ id: "test/pass", description: "Pass-through", source: "test" }],
+        workflows: [
+          {
+            id: "pipr/review",
+            description: "Custom review workflow",
+            source: "test",
+            events: ["pull_request.opened"],
+            steps: [
+              { id: "review", block: "test/pass" },
+              { id: "main-comment", block: "core/main-comment" },
+              { id: "inline-comments", block: "core/inline-comments" },
+            ],
+          },
+        ],
+      },
+    });
+
+    await expect(
+      runReviewRuntime({
+        workspace: "/tmp/pipr",
+        config: (await loadOfficialRuntimeProject()).resolved.config,
+        event,
+        registry,
+        piRunner: fakePiRunner([]).run,
+        diffManifestBuilder: () => manifest,
+      }),
+    ).rejects.toThrow("reserved step(s) must use runtime block(s): review -> core/run-agent");
+  });
+
   it("runs the materialized Official Minimal Distribution Review Workflow", async () => {
     const { rootDir, runtime } = await createOfficialRuntimeProject();
     const pi = noFindingsPiRunner();
@@ -272,6 +269,46 @@ describe("runReviewRuntime", () => {
 
     expect(result.mainComment).toContain("<!-- pipr:custom-main pr=1 -->");
     expect(result.mainComment).toContain("# Configured Review");
+  });
+
+  it("keeps template selection on the reserved main-comment step", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "workflows", "review.yaml"),
+      [
+        "apiVersion: pipr.dev/v1",
+        "kind: Workflow",
+        "id: pipr/review",
+        "on:",
+        "  events:",
+        "    - pull_request.opened",
+        "steps:",
+        "  - id: review",
+        "    uses: core/run-agent",
+        "    with:",
+        "      agent: pipr/reviewer",
+        "  - id: main-comment",
+        "    uses: core/main-comment",
+        "    with:",
+        `      review: ${expr("steps.review.outputs.result")}`,
+        "      template: custom/main",
+        "  - id: inline-comments",
+        "    uses: core/inline-comments",
+        "    with:",
+        `      review: ${expr("steps.review.outputs.result")}`,
+        "  - id: later-main-comment",
+        "    uses: core/main-comment",
+        "    with:",
+        `      review: ${expr("steps.review.outputs.result")}`,
+        "      template: custom/later",
+      ].join("\n"),
+    );
+    await writeCommentTemplate(rootDir, "custom.yaml", "custom/main", "Configured Review");
+    await writeCommentTemplate(rootDir, "later.yaml", "custom/later", "Later Review");
+    const result = await runProjectReview(rootDir);
+
+    expect(result.mainComment).toContain("# Configured Review");
+    expect(result.mainComment).not.toContain("# Later Review");
   });
 
   it("uses the materialized Agent provider for Pi and review metadata", async () => {

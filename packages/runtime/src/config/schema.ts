@@ -121,7 +121,7 @@ const commentTemplateComponentSchema = z.strictObject({
   heading: z.string().min(1),
   sections: z.array(
     z.strictObject({
-      id: z.enum(["summary", "findings", "metadata"]),
+      id: z.string().min(1),
       title: z.string().min(1),
       order: z.number().int(),
       empty: z.string().optional(),

@@ -10,6 +10,7 @@ import type {
   PullRequestEventContext,
   RuntimeRegistry,
   ValidatedReview,
+  WorkflowRegistryEntry,
 } from "../types.js";
 import {
   parseDiffManifest,
@@ -24,10 +25,15 @@ import {
   type WorkflowState,
 } from "../workflow/workflow.js";
 import {
+  buildPublicationPlan,
   type InlineCommentDraft,
-  parseInlineCommentDrafts,
-  prepareInlineCommentDrafts,
-  renderMainComment,
+  type MainSectionContribution,
+  type PublicationPlan,
+  parseInlinePublicationItems,
+  parseMainSectionContributions,
+  prepareInlinePublicationItems,
+  reviewToMainSectionContributions,
+  runtimeVersion,
 } from "./comment.js";
 import {
   parsePrReview,
@@ -49,6 +55,8 @@ export type RunReviewRuntimeOptions = {
   providerOverride?: ProviderConfig;
   workflowId?: string;
   workflowInputs?: unknown;
+  trustedConfigSha?: string;
+  trustedConfigHash?: string;
   piExecutable?: string;
   piRunner?: PiRunner;
   diffManifestBuilder?: DiffManifestBuilder;
@@ -59,6 +67,7 @@ export type ReviewRuntimeResult = {
   diffManifest: DiffManifest;
   review: PrReview;
   validated: ValidatedReview;
+  publicationPlan: PublicationPlan;
   mainComment: string;
   inlineCommentDrafts: InlineCommentDraft[];
   repairAttempted: boolean;
@@ -92,6 +101,7 @@ export async function runReviewRuntime(
       setDiffManifest: (manifest) => {
         diffManifest = manifest;
       },
+      getDiffManifest: () => diffManifest,
       setProvider: (selectedProvider) => {
         provider = selectedProvider;
       },
@@ -101,18 +111,42 @@ export async function runReviewRuntime(
   const validated = parseValidatedReview(
     requireStepResult<ValidatedReview>(workflow.state, "review"),
   );
-  const mainComment = requireStepResult<string>(workflow.state, "main-comment");
-  const inlineCommentDrafts = parseInlineCommentDrafts(
+  const mainContributions = parseMainSectionContributions(
+    requireStepResult<MainSectionContribution[]>(workflow.state, "main-comment"),
+  );
+  const inlineCommentDrafts = parseInlinePublicationItems(
     requireStepResult<InlineCommentDraft[]>(workflow.state, "inline-comments"),
   );
+  const publicationPlan = buildPublicationPlan({
+    event: options.event,
+    template: resolveCommentTemplate(
+      options.project,
+      readMainCommentStepTemplateId(workflow.workflow),
+    ),
+    mainContributions,
+    inlineItems: inlineCommentDrafts,
+    maxInlineComments: config.publication.maxInlineComments,
+    metadata: {
+      runtimeVersion,
+      trustedConfigSha: options.trustedConfigSha,
+      trustedConfigHash: options.trustedConfigHash,
+      reviewedHeadSha: options.event.headSha,
+      providerModel: provider.model,
+      selectedWorkflows: [workflow.workflow.id],
+      failedWorkflows: workflow.failures.length > 0 ? [workflow.workflow.id] : [],
+      validFindings: validated.validFindings.length,
+      droppedFindings: validated.droppedFindings.length,
+    },
+  });
 
   return {
     provider,
     diffManifest: requireWorkflowValue(diffManifest, "diff_manifest"),
     review: validated.review,
     validated,
-    mainComment,
-    inlineCommentDrafts,
+    publicationPlan,
+    mainComment: publicationPlan.mainComment,
+    inlineCommentDrafts: publicationPlan.inlineItems,
     repairAttempted,
   };
 }
@@ -137,7 +171,23 @@ function assertReviewWorkflowContract(
       `Review workflow '${workflow.id}' must include reserved step id(s): ${missing.join(", ")}`,
     );
   }
+  const invalid = reservedReviewSteps.filter((reserved) =>
+    workflow.steps.some((step) => step.id === reserved.id && step.block !== reserved.block),
+  );
+  if (invalid.length > 0) {
+    throw new Error(
+      `Review workflow '${workflow.id}' reserved step(s) must use runtime block(s): ${invalid
+        .map((reserved) => `${reserved.id} -> ${reserved.block}`)
+        .join(", ")}`,
+    );
+  }
 }
+
+const reservedReviewSteps = [
+  { id: "review", block: "core/run-agent" },
+  { id: "main-comment", block: "core/main-comment" },
+  { id: "inline-comments", block: "core/inline-comments" },
+];
 
 function reviewWorkflowHandlers(options: {
   options: RunReviewRuntimeOptions;
@@ -146,6 +196,7 @@ function reviewWorkflowHandlers(options: {
   setDiffManifest: (manifest: DiffManifest) => void;
   setProvider: (provider: ProviderConfig) => void;
   getProvider: () => ProviderConfig;
+  getDiffManifest: () => DiffManifest | undefined;
 }): WorkflowBlockHandlers {
   const runtime = options.options;
   return {
@@ -180,24 +231,24 @@ function reviewWorkflowHandlers(options: {
         options.markRepairAttempted();
       }
       return validatePrReview(result.review, manifest, {
-        maxInlineComments: runtime.config.publication.maxInlineComments,
         minConfidence: runtime.config.publication.minConfidence,
+        expectedHeadSha: runtime.event.headSha,
       });
     },
-    "core/main-comment": (input) => {
+    "core/main-comment": (input, context) => {
       const value = requireRecord(input, "core/main-comment input");
       const validated = readValidatedReview(value, "core/main-comment input");
-      return renderMainComment({
-        event: runtime.event,
-        review: validated.review,
-        validFindings: validated.validFindings,
-        droppedCount: validated.droppedFindings.length,
-        providerModel: options.getProvider().model,
-        template: resolveCommentTemplate(runtime.project, readOptionalTemplateId(value)),
+      return reviewToMainSectionContributions({
+        workflowId: readWorkflowId(context),
+        validated,
       });
     },
     "core/inline-comments": (input) =>
-      prepareInlineCommentDrafts(readValidatedReview(input, "core/inline-comments input")),
+      prepareInlinePublicationItems({
+        validated: readValidatedReview(input, "core/inline-comments input"),
+        manifest: requireWorkflowValue(options.getDiffManifest(), "diff_manifest"),
+        reviewedHeadSha: runtime.event.headSha,
+      }),
   };
 }
 
@@ -255,6 +306,18 @@ function readOptionalTemplateId(input: Record<string, unknown>): string | undefi
     throw new Error("core/main-comment template must be a CommentTemplate id string");
   }
   return input.template;
+}
+
+function readMainCommentStepTemplateId(workflow: WorkflowRegistryEntry): string | undefined {
+  const step = workflow.steps.find((item) => item.id === "main-comment");
+  const input = step?.with;
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? readOptionalTemplateId(input as Record<string, unknown>)
+    : undefined;
+}
+
+function readWorkflowId(context: Record<string, unknown>): string {
+  return typeof context.workflowId === "string" ? context.workflowId : "pipr/review";
 }
 
 function resolveCommentTemplate(
