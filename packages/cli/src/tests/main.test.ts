@@ -24,12 +24,13 @@ describe("pipr CLI", () => {
       const validate = await runCli(["validate"], {}, workspace);
 
       expect(init.exitCode).toBe(0);
-      expect(init.stdout).toContain("created 5 file(s) in .pipr");
+      expect(init.stdout).toContain("created 4 file(s) in .pipr");
       expect(validate.exitCode).toBe(0);
       expect(validate.stdout).toContain("valid:");
       const configYaml = await readFile(path.join(workspace, ".pipr", "config.yaml"), "utf8");
       expect(configYaml).toContain("- pipr/review");
       expect(configYaml).toContain("timeoutSeconds: 300");
+      await expect(access(path.join(workspace, ".pipr", "schemas"))).rejects.toThrow();
     } finally {
       await removeWorkspace(workspace);
     }
@@ -352,7 +353,7 @@ describe("pipr CLI", () => {
         "id: pipr/reviewer",
         "provider: deepseek",
         "output:",
-        "  schema: pipr/pr-review",
+        "  schema: core/pr-review",
         "---",
         "",
         "HEAD CONTROLLED PROMPT",

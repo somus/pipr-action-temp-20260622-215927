@@ -20,7 +20,7 @@ describe("loadRuntimeProjectFromGitCommit", () => {
         "id: pipr/reviewer-copy",
         "provider: deepseek",
         "output:",
-        "  schema: pipr/pr-review",
+        "  schema: core/pr-review",
         "---",
         "",
         "Review copy.",

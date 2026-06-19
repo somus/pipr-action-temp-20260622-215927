@@ -20,7 +20,6 @@ describe("initOfficialMinimalProject", () => {
     expect(project.config.publication?.maxInlineComments).toBeUndefined();
     expect(project.components.map((component) => component.id).sort()).toEqual([
       "pipr/main",
-      "pipr/pr-review",
       "pipr/review",
       "pipr/reviewer",
     ]);
@@ -28,6 +27,7 @@ describe("initOfficialMinimalProject", () => {
     expect(validation.resolved.config.defaultProvider).toBe("deepseek");
     expect(validation.resolved.config.limits?.timeoutSeconds).toBe(300);
     expect(validation.resolved.config.publication.maxInlineComments).toBe(5);
+    expect(validation.registry.schemas.map((schema) => schema.id)).toContain("core/pr-review");
   });
 
   it("refuses to overwrite existing pipr files without force", async () => {

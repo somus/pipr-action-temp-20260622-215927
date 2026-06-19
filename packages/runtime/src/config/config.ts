@@ -59,7 +59,6 @@ export async function loadMaterializedProject(
     throw new Error(`${configDir}/config.yaml is required. Run pipr init to create it.`);
   }
   await assertNotSymlink(configPath);
-  await assertNoObsoleteCommandsDirectory(projectDir);
 
   const configValue = await readYamlObject(configPath);
   const config = validatePiprConfigDocument(configPath, configValue);
@@ -83,15 +82,6 @@ export async function loadMaterializedProject(
       ),
     },
   };
-}
-
-async function assertNoObsoleteCommandsDirectory(projectDir: string): Promise<void> {
-  const commandsDir = path.join(projectDir, "commands");
-  if (await fileExists(commandsDir)) {
-    throw new Error(
-      `${commandsDir}: CommandSet files are not supported; define commands under Workflow on.commands`,
-    );
-  }
 }
 
 function inlineConfigComponents(

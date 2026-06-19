@@ -6,6 +6,7 @@ import {
   parsePrReview,
   prReviewJsonSchema,
   prReviewSchema,
+  prReviewSchemaId,
   type ReviewFinding,
   reviewFindingSchema,
   reviewSchemaExample,
@@ -15,6 +16,7 @@ export {
   parsePrReview,
   prReviewJsonSchema,
   prReviewSchema,
+  prReviewSchemaId,
   reviewFindingSchema,
   reviewSchemaExample,
 };

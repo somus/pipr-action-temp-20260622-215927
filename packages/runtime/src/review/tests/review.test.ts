@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DiffManifest, PrReview } from "../../types.js";
 import {
@@ -66,28 +64,19 @@ if (!baseFinding) {
 }
 
 describe("validatePrReview", () => {
-  it("uses one Review Output Contract for examples and distribution schema", async () => {
-    const schemaDocument = JSON.parse(
-      await readFile(
-        path.join(
-          import.meta.dirname,
-          "..",
-          "..",
-          "..",
-          "distribution",
-          "official-minimal",
-          ".pipr",
-          "schemas",
-          "pr-review.schema.json",
-        ),
-        "utf8",
-      ),
-    );
-
+  it("uses one Review Output Contract for examples and runtime schema", () => {
     expect(parsePrReview(reviewSchemaExample()).summary.body).toBe(
       "Concise pull request review summary.",
     );
-    expect(schemaDocument.schema).toEqual(prReviewJsonSchema);
+    expect(prReviewJsonSchema).toMatchObject({
+      type: "object",
+      properties: {
+        nonInlineFindings: {
+          type: "array",
+          prefixItems: [],
+        },
+      },
+    });
   });
 
   it("rejects reviewer output outside the published schema contract", () => {
@@ -107,6 +96,29 @@ describe("validatePrReview", () => {
         summary: { body: "Looks fine." },
         inlineFindings: [],
         extra: true,
+      }),
+    ).toThrow();
+  });
+
+  it("reserves non-inline findings as empty-only", () => {
+    expect(
+      parsePrReview({
+        summary: { body: "Looks fine." },
+        inlineFindings: [],
+      }).nonInlineFindings,
+    ).toBeUndefined();
+    expect(
+      parsePrReview({
+        summary: { body: "Looks fine." },
+        inlineFindings: [],
+        nonInlineFindings: [],
+      }).nonInlineFindings,
+    ).toEqual([]);
+    expect(() =>
+      parsePrReview({
+        summary: { body: "Looks fine." },
+        inlineFindings: [],
+        nonInlineFindings: [{ title: "Later" }],
       }),
     ).toThrow();
   });

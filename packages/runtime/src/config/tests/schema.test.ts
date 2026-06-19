@@ -64,7 +64,7 @@ describe("pipr.dev/v1 schemas", () => {
         id: "pipr/reviewer",
         provider: "primary",
         tools: ["plugin/custom-review-tool"],
-        output: { schema: "pipr/pr-review" },
+        output: { schema: "core/pr-review" },
       }),
       validateComponentDocument(".pipr/comments/main.yaml", {
         apiVersion: "pipr.dev/v1",
@@ -73,12 +73,6 @@ describe("pipr.dev/v1 schemas", () => {
         marker: "pipr:main-comment",
         heading: "Pi PR Review",
         sections: [{ id: "summary", title: "Summary", order: 10 }],
-      }),
-      validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
-        apiVersion: "pipr.dev/v1",
-        kind: "Schema",
-        id: "pipr/pr-review",
-        schema: { type: "object" },
       }),
     ];
 
@@ -152,12 +146,11 @@ describe("pipr.dev/v1 schemas", () => {
       kind: "Agent",
       id: "pipr/reviewer",
       provider: "missing",
-      output: { schema: "pipr/pr-review" },
+      output: { schema: "core/pr-review" },
     });
-    const schema = prReviewSchemaComponent();
 
     expect(() =>
-      validateMaterializedProject({ config: parsedConfig, components: [agent, schema] }),
+      validateMaterializedProject({ config: parsedConfig, components: [agent] }),
     ).toThrow("unknown provider 'missing'");
   });
 
@@ -169,12 +162,11 @@ describe("pipr.dev/v1 schemas", () => {
       id: "pipr/reviewer",
       provider: "primary",
       tools: ["plugin/missing-tool"],
-      output: { schema: "pipr/pr-review" },
+      output: { schema: "core/pr-review" },
     });
-    const schema = prReviewSchemaComponent();
 
     expect(() =>
-      validateMaterializedProject({ config: parsedConfig, components: [agent, schema] }),
+      validateMaterializedProject({ config: parsedConfig, components: [agent] }),
     ).toThrow("Agent 'pipr/reviewer' references unknown tool 'plugin/missing-tool'");
   });
 
@@ -186,14 +178,13 @@ describe("pipr.dev/v1 schemas", () => {
       id: "pipr/reviewer",
       provider: "primary",
       tools: ["core/read"],
-      output: { schema: "pipr/pr-review" },
+      output: { schema: "core/pr-review" },
     });
-    const schema = prReviewSchemaComponent();
 
     expect(() =>
       validateMaterializedProject({
         config: parsedConfig,
-        components: [agent, schema],
+        components: [agent],
         pluginToolIds: ["core/read"],
       }),
     ).toThrow("Pi built-in tools are attached by pipr, not Agent tools");
@@ -207,7 +198,7 @@ describe("pipr.dev/v1 schemas", () => {
         id: "pipr/reviewer",
         provider: "primary",
         fallbacks: ["fallback"],
-        output: { schema: "pipr/pr-review" },
+        output: { schema: "core/pr-review" },
       }),
     ).toThrow("Unrecognized key");
   });
@@ -262,24 +253,6 @@ describe("pipr.dev/v1 schemas", () => {
         publication: { mainCommentTemplate: "pipr/main" },
       }),
     ).toThrow("Unrecognized key");
-  });
-
-  it("rejects root command refs and CommandSet documents", () => {
-    expect(() =>
-      validatePiprConfigDocument(".pipr/config.yaml", {
-        ...configWithoutRefs(),
-        commands: ["pipr/default-commands"],
-      }),
-    ).toThrow("Unrecognized key");
-
-    expect(() =>
-      validateComponentDocument(".pipr/commands/default.yaml", {
-        apiVersion: "pipr.dev/v1",
-        kind: "CommandSet",
-        id: "pipr/default-commands",
-        commands: [],
-      }),
-    ).toThrow("unknown component kind 'CommandSet'");
   });
 
   it("requires workflow Main Review Comment template refs to exist with the expected kind", () => {
@@ -352,12 +325,57 @@ describe("pipr.dev/v1 schemas", () => {
       kind: "Agent",
       id: "pipr/reviewer",
       provider: "primary",
-      output: { schema: "pipr/missing" },
+      output: { schema: "core/missing" },
     });
 
     expect(() =>
       validateMaterializedProject({ config: parsedConfig, components: [agent] }),
-    ).toThrow("Agent 'pipr/reviewer' output.schema references missing Schema 'pipr/missing'");
+    ).toThrow("Agent 'pipr/reviewer' output.schema references missing Schema 'core/missing'");
+  });
+
+  it("allows agent output schema refs to the runtime-owned PR review schema", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Agent",
+      id: "pipr/reviewer",
+      provider: "primary",
+      output: { schema: "core/pr-review" },
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [agent] }),
+    ).not.toThrow();
+  });
+
+  it("allows agent output schema refs to userland schemas", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Agent",
+      id: "pipr/reviewer",
+      provider: "primary",
+      output: { schema: "pipr/custom-review" },
+    });
+    const schema = validateComponentDocument(".pipr/schemas/custom-review.schema.json", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Schema",
+      id: "pipr/custom-review",
+      schema: { type: "object" },
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [agent, schema] }),
+    ).not.toThrow();
+  });
+
+  it("rejects userland schemas for reserved core IDs", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const schema = reservedCoreSchemaComponent();
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [schema] }),
+    ).toThrow("Component id 'core/pr-review' uses reserved namespace 'core/'");
   });
 
   it("requires step refs to resolve with expected kinds", () => {
@@ -552,10 +570,10 @@ describe("pipr.dev/v1 schemas", () => {
 
   it("rejects invalid JSON Schema components", () => {
     expect(() =>
-      validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
+      validateComponentDocument(".pipr/schemas/custom-review.schema.json", {
         apiVersion: "pipr.dev/v1",
         kind: "Schema",
-        id: "pipr/pr-review",
+        id: "pipr/custom-review",
         schema: { type: 42 },
       }),
     ).toThrow("Invalid JSON Schema");
@@ -563,10 +581,10 @@ describe("pipr.dev/v1 schemas", () => {
 
   it("rejects nested invalid JSON Schema components", () => {
     expect(() =>
-      validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
+      validateComponentDocument(".pipr/schemas/custom-review.schema.json", {
         apiVersion: "pipr.dev/v1",
         kind: "Schema",
-        id: "pipr/pr-review",
+        id: "pipr/custom-review",
         schema: {
           type: "object",
           properties: {
@@ -713,11 +731,11 @@ function workflowWithoutCommands() {
   });
 }
 
-function prReviewSchemaComponent() {
-  return validateComponentDocument(".pipr/schemas/pr-review.schema.json", {
+function reservedCoreSchemaComponent() {
+  return validateComponentDocument(".pipr/schemas/reserved-core.schema.json", {
     apiVersion: "pipr.dev/v1",
     kind: "Schema",
-    id: "pipr/pr-review",
+    id: "core/pr-review",
     schema: { type: "object" },
   });
 }

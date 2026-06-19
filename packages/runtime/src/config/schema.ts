@@ -1,6 +1,7 @@
 import { type ZodType, z } from "zod";
 import { commandPatternInputIds } from "../commands/grammar.js";
 import { piProviderIdSchema, piProviderProfileSchema } from "../pi/contract.js";
+import { prReviewSchemaId } from "../review/contract.js";
 import { isRecord } from "../shared/record.js";
 import { workflowCommandSchema, workflowInputsSchema } from "../types.js";
 import { validateWorkflowExpressions } from "../workflow/expression.js";
@@ -301,6 +302,9 @@ function assertAgentSchemaRef(
   component: PiprComponent,
 ): void {
   if (!isAgentComponent(component)) {
+    return;
+  }
+  if (component.output.schema === prReviewSchemaId) {
     return;
   }
   assertComponentRef(

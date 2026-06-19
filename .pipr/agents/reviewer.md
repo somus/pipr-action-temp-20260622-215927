@@ -4,7 +4,7 @@ kind: Agent
 id: pipr/reviewer
 provider: deepseek
 output:
-  schema: pipr/pr-review
+  schema: core/pr-review
 ---
 
 Review the pull request diff for correctness, security, maintainability, and test risk.

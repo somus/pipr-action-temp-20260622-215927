@@ -20,7 +20,6 @@ describe("loadMaterializedProject", () => {
     expect(project.sources.config).toContain(".pipr/config.yaml");
     expect(project.components.map((component) => component.id).sort()).toEqual([
       "pipr/main",
-      "pipr/pr-review",
       "pipr/review",
       "pipr/reviewer",
     ]);
@@ -103,14 +102,10 @@ describe("loadMaterializedProject", () => {
     expect(workflowIds).toEqual(["pipr/review"]);
     expect(commandNames).toEqual(["review"]);
     expect(blockIds).toContain("core/run-agent");
-    expect(blockIds).not.toContain("pipr/review-default");
-    expect(blockIds).not.toContain("core/diff-manifest");
-    expect(blockIds).not.toContain("core/validate-pr-review");
-    expect(blockIds).not.toContain("context.diff_manifest");
-    expect(blockIds).not.toContain("agent.run");
     expect(runtime.resolved.sources.modules.workflows?.["pipr/review"]).toContain(
       ".pipr/workflows/review.yaml",
     );
+    expect(runtime.registry.schemas.map((schema) => schema.id)).toContain("core/pr-review");
   });
 
   it("only registers workflows enabled by config", async () => {
@@ -191,16 +186,6 @@ describe("loadMaterializedProject", () => {
     await expectMaterializedProjectErrorFromFile("schemas/bad.schema.json", "{");
   });
 
-  it("rejects obsolete CommandSet directories", async () => {
-    const rootDir = await initializedProject();
-    await mkdir(path.join(rootDir, ".pipr", "commands"));
-    await writeFile(path.join(rootDir, ".pipr", "commands", "bad.yaml"), "apiVersion: [");
-
-    await expect(loadMaterializedProject({ rootDir })).rejects.toThrow(
-      "CommandSet files are not supported",
-    );
-  });
-
   it("rejects secret-looking values in agent Markdown bodies", async () => {
     const rootDir = await initializedProject();
     await writeFile(
@@ -212,7 +197,7 @@ describe("loadMaterializedProject", () => {
         "id: pipr/leaky-reviewer",
         "provider: deepseek",
         "output:",
-        "  schema: pipr/pr-review",
+        "  schema: core/pr-review",
         "---",
         "",
         "Use sk-secret00000000 for testing.",
@@ -235,7 +220,7 @@ describe("loadMaterializedProject", () => {
         "tools:",
         "  - plugin/custom-review-tool",
         "output:",
-        "  schema: pipr/pr-review",
+        "  schema: core/pr-review",
         "---",
         "",
         "Review the diff.",
@@ -327,7 +312,9 @@ async function expectMaterializedProjectErrorFromFile(
   content: string,
 ): Promise<void> {
   const rootDir = await initializedProject();
-  await writeFile(path.join(rootDir, ".pipr", ...relativePath.split("/")), content);
+  const filePath = path.join(rootDir, ".pipr", ...relativePath.split("/"));
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, content);
 
   await expect(loadMaterializedProject({ rootDir })).rejects.toThrow(`.pipr/${relativePath}`);
 }

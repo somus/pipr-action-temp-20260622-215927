@@ -27,7 +27,7 @@ pipr init
 pipr validate
 ```
 
-`pipr init` creates editable files under `.pipr/` for config, workflows, the reviewer agent, comment templates, and PR review schemas. Workflow-owned command triggers live under `Workflow.on.commands`. The minimal distribution does not create custom blocks; the default review flow calls `core/run-agent` directly. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
+`pipr init` creates editable files under `.pipr/` for config, workflows, the reviewer agent, and comment templates. Workflow-owned command triggers live under `Workflow.on.commands`. The PR review schema is runtime-owned as `core/pr-review`. The minimal distribution does not create custom blocks; the default review flow calls `core/run-agent` directly. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
 
 ## GitHub Action shape
 
@@ -76,7 +76,7 @@ Provider secrets stay env-only through `apiKeyEnv`; pipr does not pass raw keys 
 read-only workspace without `bash`, `write`, or `edit`.
 
 The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load the
-materialized workflow, agent, schema, comment-template, and optional block registry from
+materialized workflow, agent, comment-template, optional custom schema, and optional block registry from
 the pull request base commit. That base-commit `.pipr/` tree is trusted review authority, while
 runtime-owned `core/run-agent` owns deterministic diff creation, Pi execution, and review
 validation. Runtime-owned comment handlers own comment preparation. Invalid or deleted PR-head
@@ -140,8 +140,8 @@ The materialized `.pipr/` tree contains conventional component files:
 - `.pipr/workflows/*.yaml`
 - `.pipr/agents/*.md`
 - `.pipr/comments/*.yaml`
-- `.pipr/schemas/*.json`
+- `.pipr/schemas/*.json` for optional user schemas
 
-Custom `.pipr/blocks/*.yaml` files are supported for explicit user extensions, but the minimal distribution does not include one. Bundled product components use the `pipr/*` namespace. Runtime primitive blocks use the reserved `core/*` namespace.
+Custom `.pipr/blocks/*.yaml` files are supported for explicit user extensions, but the minimal distribution does not include one. Bundled product components use the `pipr/*` namespace. Runtime internals use the reserved `core/*` namespace, including the canonical `core/pr-review` schema.
 
 `pipr validate` checks the generated tree and reports source-file errors before model or GitHub publishing work starts.

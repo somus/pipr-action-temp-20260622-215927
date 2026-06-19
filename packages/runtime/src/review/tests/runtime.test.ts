@@ -214,7 +214,7 @@ describe("runReviewRuntime", () => {
     expect(pi.prompts[0]).toContain(
       "Do not use bash, write, edit, GitHub APIs, or comment publishing tools.",
     );
-    expect(pi.prompts[0]).toContain("Output Schema ID: pipr/pr-review");
+    expect(pi.prompts[0]).toContain("Output Schema ID: core/pr-review");
   });
 
   it("uses the materialized CommentTemplate for the Main Review Comment", async () => {
@@ -292,7 +292,7 @@ describe("runReviewRuntime", () => {
         "id: pipr/reviewer",
         "provider: backup",
         "output:",
-        "  schema: pipr/pr-review",
+        "  schema: core/pr-review",
         "---",
         "",
         "Use backup provider.",

@@ -1,4 +1,5 @@
 import { commandLabels, piprHelpCommandLine } from "../commands/grammar.js";
+import { prReviewSchemaId } from "../review/contract.js";
 import type {
   BlockRegistryEntry,
   RegistryCollectionName,
@@ -35,7 +36,13 @@ export function createCoreRegistry(): RuntimeRegistry {
       { id: "core/inline-comments", description: "Publish validated inline comments", source },
     ],
     agents: [],
-    schemas: [],
+    schemas: [
+      {
+        id: prReviewSchemaId,
+        description: "Core PR review output schema",
+        source,
+      },
+    ],
     comments: [],
     tools: [],
   };

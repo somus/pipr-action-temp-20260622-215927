@@ -29,7 +29,12 @@ import {
   prepareInlineCommentDrafts,
   renderMainComment,
 } from "./comment.js";
-import { parsePrReview, reviewSchemaExample, validatePrReview } from "./review.js";
+import {
+  parsePrReview,
+  prReviewSchemaId,
+  reviewSchemaExample,
+  validatePrReview,
+} from "./review.js";
 
 export type PiRunner = (options: PiRunOptions) => Promise<PiRunResult>;
 export type DiffManifestBuilder = (options: BuildDiffManifestOptions) => DiffManifest;
@@ -226,7 +231,7 @@ function resolveReviewerAgent(
   if (agent.document.kind !== "Agent") {
     throw new Error(`Reviewer Agent '${agentId}' resolved to ${agent.document.kind}`);
   }
-  if (agent.document.output.schema !== "pipr/pr-review") {
+  if (agent.document.output.schema !== prReviewSchemaId) {
     throw new Error(
       `Reviewer Agent '${agentId}' uses unsupported output schema '${agent.document.output.schema}'`,
     );
@@ -357,7 +362,7 @@ export function buildReviewerPrompt(options: {
   agentInstructions?: string;
   outputSchemaId?: string;
 }): string {
-  const outputSchemaId = options.outputSchemaId ?? "pipr/pr-review";
+  const outputSchemaId = options.outputSchemaId ?? prReviewSchemaId;
   return [
     "You are pipr's reviewer agent for a GitHub pull request.",
     options.agentInstructions ? `Agent Instructions:\n\n${options.agentInstructions}` : undefined,

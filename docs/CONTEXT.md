@@ -17,11 +17,11 @@ The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads ex
 _Avoid_: PR-authored runtime authority
 
 **Official Minimal Distribution**:
-The editable `.pipr/` tree created by `pipr init` as the normal starting point for a repository. It ships config, workflows with command triggers, agents, comments, and schemas, but no custom blocks.
+The editable `.pipr/` tree created by `pipr init` as the normal starting point for a repository. It ships config, workflows with command triggers, agents, and comments, but no custom blocks or core review schemas.
 _Avoid_: hidden runtime defaults
 
 **Component Namespace**:
-Use `pipr/*` for product components shipped in the editable distribution. Use `core/*` only for runtime primitive blocks owned by pipr internals.
+Use `pipr/*` for product components shipped in the editable distribution. Use `core/*` only for runtime-owned internals such as primitive blocks and core schemas.
 _Avoid_: `official/*`
 
 **@pipr**:
