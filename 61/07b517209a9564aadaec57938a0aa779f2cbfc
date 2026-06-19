@@ -1,0 +1,154 @@
+packages/runtime/src/config/schema.ts
+  s_e3682c1e6e7dd6::t_3da71c88cd071f 50,53-54,60-61,79,91-92,103-104,114-115,132
+  s_e3682c1e6e7dd6::t_21e3d659b9f004 472
+  s_e3682c1e6e7dd6::t_6790c5adc3af4f 2
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 131,186-187,242-243,511-512,529-530
+  s_e3682c1e6e7dd6::t_a7a66c8a66249b 445-447,449-467,470-471,473-479,481-482
+  s_e3682c1e6e7dd6::t_34c77e0675cf2f 10
+  s_e3682c1e6e7dd6::t_8b2a5cd70ed144 5,76-78,155-156,177,182-185,235-241,296,438-444,448,480,483-510,513-514,527-528
+  s_e3682c1e6e7dd6::t_9b4dcc3af559ec 51-52,55-59,62-75,80-90,93-102,105-113,116-130,133-137
+packages/runtime/src/action/tests/commands.test.ts
+  s_e3682c1e6e7dd6::t_f4958e50326a06 62-87,146-171,333-350,384-392
+  s_e3682c1e6e7dd6::t_77afb713e295af 88-112,133,135,173,187-189,221-223,313-317,321,400-403
+  s_e3682c1e6e7dd6::t_3bb0f4710c8a75 329-332
+  s_e3682c1e6e7dd6::t_bfbce0185eeabe 46-48,116-118,136-138,225-242
+  s_e3682c1e6e7dd6::t_bf8b2ed5d18120 56,126,243-246
+  s_e3682c1e6e7dd6::t_f115aa46d98373 1-5,7-45,49-55,57-61,113-115,119-125,127-130,178-186,190-202,207-220,224,251-269,297-312,318-320,322-328,351-383,393-399,404-408
+  s_e3682c1e6e7dd6::t_9d6a54a5b4fbf0 6
+  s_e3682c1e6e7dd6::t_7241eb5ca3d13e 131-132,134,139-145,172,174-177,203-206,247-250,270-296
+packages/runtime/src/action/event.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 109-110
+  s_e3682c1e6e7dd6::t_e9fba43d972d19 62-73,92-108
+  s_e3682c1e6e7dd6::t_9b4dcc3af559ec 7-34,39-61
+  s_e3682c1e6e7dd6::t_56a118c2bcbbb5 6,38
+packages/runtime/src/review/runtime.ts
+  s_e3682c1e6e7dd6::t_b24d2df4bb982c 45-46,74,77,79,118,120-122
+packages/runtime/src/pi/contract.ts
+  s_e3682c1e6e7dd6::t_9b4dcc3af559ec 38-43,46-51
+  s_e3682c1e6e7dd6::t_b29a1b1c4f7d28 37,45
+packages/runtime/src/registry/tests/registry.test.ts
+  s_e3682c1e6e7dd6::t_31a19dbe48ff55 115
+packages/runtime/src/review/contract.ts
+  s_e3682c1e6e7dd6::t_9b4dcc3af559ec 4-27,30-35
+  s_e3682c1e6e7dd6::t_ea72146dab96a6 3,29
+.pipr/workflows/review.yaml
+  s_e3682c1e6e7dd6::t_b95f6da237ba04 6-14
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_6e80b4f4b2c8cc 20
+  s_e3682c1e6e7dd6::t_b4d521de054ee4 16
+  s_e3682c1e6e7dd6::t_9c52cb08de7c48 28
+README.md
+  s_e3682c1e6e7dd6::t_6e80b4f4b2c8cc 30,41-42,59,111-120,134
+  s_e3682c1e6e7dd6::t_b4d521de054ee4 79
+packages/runtime/src/commands/grammar.ts
+  s_e3682c1e6e7dd6::t_17b99ab1d60996 1-9,11-144
+  s_e3682c1e6e7dd6::t_3810c736c7efe0 10
+packages/runtime/src/config/tests/schema.test.ts
+  s_e3682c1e6e7dd6::t_18f29b587037a5 157,174,191,240,371
+  s_e3682c1e6e7dd6::t_48c8f881b5379f 484,487-494,496
+  s_e3682c1e6e7dd6::t_23975e18a00a73 42-45,267-282,415,418,424-426,429,432-435,442,444,446,449-452,457-458,513,522-527,532-533,535,537-542,550
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 283-284,455-456,459-460,714-715
+  s_e3682c1e6e7dd6::t_44423d481f3e60 546-549,707-713
+  s_e3682c1e6e7dd6::t_cbc6387e519e35 461-468,470-480,482-483,497-510
+  s_e3682c1e6e7dd6::t_4e4c16b1a6c8b9 716-735
+docs/adr/0003-materialized-pipr-component-control-plane.md
+  s_e3682c1e6e7dd6::t_6e80b4f4b2c8cc 3,14
+packages/runtime/src/commands/tests/grammar.test.ts
+  s_e3682c1e6e7dd6::t_0be9a9418b2051 1-38,40-76
+packages/runtime/src/review/comment.ts
+  s_e3682c1e6e7dd6::t_cd65aab583f6be 98
+  s_e3682c1e6e7dd6::t_9b4dcc3af559ec 99-105
+packages/runtime/src/action/commands.ts
+  s_e3682c1e6e7dd6::t_34c77e0675cf2f 159
+  s_e3682c1e6e7dd6::t_a7cc46785e8aa7 199
+  s_e3682c1e6e7dd6::t_556a72cb657865 24-31,33,74,85-87,93-94,97-98,104,165-171,175-177,205-211,235-237,241,243-271,274,279,286-289,294-295,297-298,303-305,313-314,316,324-347
+  s_e3682c1e6e7dd6::t_8b37bdc6cf4188 1,238-240,242,307,448-476
+  s_e3682c1e6e7dd6::t_853b8a35e089db 7-12,418-419
+  s_e3682c1e6e7dd6::t_9ad879cafa5753 32,34-38,212-234,272-273,275-278,280-285,290-293,296,299-302,306,310-312,315,317-319
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 84,95-96,99,308-309,348-349,420-421,477
+packages/runtime/src/review/tests/runtime.test.ts
+  s_e3682c1e6e7dd6::t_930177190ecc5b 223,258,362-368
+  s_e3682c1e6e7dd6::t_9bcd84c851236e 105-107,195-197,304-306
+  s_e3682c1e6e7dd6::t_998d79c69df676 6,9,46-50,95,115,192-193,206,208,221-222,231,257,265,302,315,317-319,326,328,355-358,361,369-415
+  s_e3682c1e6e7dd6::t_acbcc21fc1c55e 239-240
+packages/runtime/src/action/tests/command-router.test.ts
+  s_e3682c1e6e7dd6::t_9d6a54a5b4fbf0 2,98-100
+  s_e3682c1e6e7dd6::t_1c163457b46334 1,3,5-80,85-97,119-120
+  s_e3682c1e6e7dd6::t_1bc717e883b70c 81-84
+  s_e3682c1e6e7dd6::t_1420ae6f6178fb 106-107
+  s_e3682c1e6e7dd6::t_00cca8574df207 4,101-105,108-118
+packages/runtime/src/config/tests/materialized-config.test.ts
+  s_e3682c1e6e7dd6::t_851501836547c7 99-101,125-129,144,147,150-156,158,164,166-167,194
+  s_e3682c1e6e7dd6::t_d86c148c4aebf5 117,145,195,205,226,251,272,298
+  s_e3682c1e6e7dd6::t_da6c4da288440f 329,334-338
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 339
+  s_e3682c1e6e7dd6::t_c4f7464a8b9238 104
+  s_e3682c1e6e7dd6::t_2eadbf26278b38 44-81
+  s_e3682c1e6e7dd6::t_6ac46d4336e48a 165
+  s_e3682c1e6e7dd6::t_0a6546a4f93d92 196-197,199-200
+packages/cli/src/main.ts
+  s_e3682c1e6e7dd6::t_0930642774744c 13,367-373,378
+  s_e3682c1e6e7dd6::t_9bcd84c851236e 137,150
+  s_e3682c1e6e7dd6::t_f9173b443e3dfc 6,102-105
+  s_e3682c1e6e7dd6::t_b65e70c7e2f840 32,129-136,138-149,151,164-166
+  s_e3682c1e6e7dd6::t_9f426b9babb1ae 109
+  s_e3682c1e6e7dd6::t_67d9be829c02e0 106-108,110-113,115,118-128
+packages/cli/src/tests/main.test.ts
+  s_e3682c1e6e7dd6::t_45707cda5b56ac 27,408-409
+  s_e3682c1e6e7dd6::t_acbcc21fc1c55e 280-281,318-319
+packages/runtime/src/config/project.ts
+  s_e3682c1e6e7dd6::t_9f626bcc6c5758 115-117
+.github/workflows/pipr-local.yml
+  s_e3682c1e6e7dd6::t_d02ba9367116b1 5-6,23
+packages/runtime/src/config/config.ts
+  s_e3682c1e6e7dd6::t_ca2f21306832ef 7,64-69,95-106
+  s_e3682c1e6e7dd6::t_d6de4a9e0f00c5 62,88-94
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 107-108
+packages/runtime/src/registry/registry.ts
+  s_e3682c1e6e7dd6::t_80590ded504448 77,104
+  s_e3682c1e6e7dd6::t_49de8dd978721d 1
+  s_e3682c1e6e7dd6::t_b0dc5b871de4d8 15-16
+  s_e3682c1e6e7dd6::t_c054378ecc6e55 102
+  s_e3682c1e6e7dd6::t_34c77e0675cf2f 111,113-114
+  s_e3682c1e6e7dd6::t_9ea22e4295f15a 60,99,101,103,105-110,112,115
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_9b4dcc3af559ec 18-29,42-49,52-55,58-65,72-81,84-94,97-101,104-106,109-112,115-119,132-136,175-195,198-203,206-213,216-223,226-231
+  s_e3682c1e6e7dd6::t_cd317eb37bee08 123-129,138,142,144-146,249-252,256
+  s_e3682c1e6e7dd6::t_9e35659d8d9ff7 159,162
+  s_e3682c1e6e7dd6::t_cb3790d7181f43 2,140,150,172
+  s_e3682c1e6e7dd6::t_197a078cc2aff5 258
+  s_e3682c1e6e7dd6::t_717edf67120338 147
+  s_e3682c1e6e7dd6::t_e7ebcb9fb556b5 17,41,51,57,71,83,96,103,108,114,131,143,174,197,205,215,225
+  s_e3682c1e6e7dd6::t_a5ccfa0541f7a9 149,151-158,160-161,163-171
+packages/runtime/distribution/official-minimal/.pipr/workflows/review.yaml
+  s_e3682c1e6e7dd6::t_b95f6da237ba04 6-14
+packages/runtime/src/action/command-router.ts
+  s_e3682c1e6e7dd6::t_db8f48ae76976c 99
+  s_e3682c1e6e7dd6::t_86cdea6a688030 161
+  s_e3682c1e6e7dd6::t_b23136ba083ace 25,29,39
+  s_e3682c1e6e7dd6::t_9ea4994c741b5f 2-8,121,148,166
+  s_e3682c1e6e7dd6::t_80590ded504448 150,168,200,219
+  s_e3682c1e6e7dd6::t_76dd97672ffeb6 1,9-19,21-22,24,38,43-52,57-81,85-96,107-117,119-120,122-147,149,151-152,154-160,162-165,167,169,171-199,201-218,220-276,278-291,293,303-311,317,334-336,338-339,351,356-367,373-387,389-390,404-416
+  s_e3682c1e6e7dd6::t_7453ea7fd570af 153,170,277,292
+  s_e3682c1e6e7dd6::t_9d6a54a5b4fbf0 20,53-56,82-84,294-302,368-372
+  s_e3682c1e6e7dd6::t_298f4d5bf99b32 23,97-98,100-106,388,391-403
+  s_e3682c1e6e7dd6::t_1078f7a52cde57 312-316,318-333,337,340-350,352-355
+  s_e3682c1e6e7dd6::t_4246cc1a62fc0d 118
+  s_e3682c1e6e7dd6::t_9b4dcc3af559ec 26-28,30-37,40-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "6107b517209a9564aadaec57938a0aa779f2cbfc",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
