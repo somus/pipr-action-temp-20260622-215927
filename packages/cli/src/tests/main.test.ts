@@ -97,6 +97,9 @@ describe("pipr CLI", () => {
       "pipr review produced 0 valid inline finding(s), 0 dropped finding(s)",
     );
     expect(result.stdout).toContain("pipr published main comment (created)");
+    expect(result.githubOutput).toContain(`Reviewed head: \`${result.headSha}\``);
+    expect(result.githubOutput).toContain(`Trusted config SHA: \`${result.baseSha}\``);
+    expect(result.githubOutput).toContain("Trusted config hash: `");
   });
 
   it("uses trusted Action provider inputs instead of PR-controlled provider config", async () => {
@@ -424,6 +427,97 @@ describe("pipr CLI", () => {
     expect(output).not.toContain("Head Review");
   });
 
+  it("includes PR-head pipr file changes in the Diff Manifest without executing them", async () => {
+    const result = await runActionWithGitWorkspace({
+      headConfigYaml: [
+        "apiVersion: pipr.dev/v1",
+        "kind: Config",
+        "providers:",
+        "  - id: deepseek",
+        "    provider: untrusted-backend",
+        "    model: untrusted-model",
+        "    apiKeyEnv: EVIL_API_KEY",
+        "workflows:",
+        "  - pipr/review",
+        "publication:",
+        "  maxInlineComments: 5",
+      ].join("\n"),
+      headWorkflowYaml: [
+        "apiVersion: pipr.dev/v1",
+        "kind: Workflow",
+        "id: pipr/review",
+        "on:",
+        "  events:",
+        "    - pull_request.opened",
+        "steps:",
+        "  - id: review",
+        "    uses: core/run-agent",
+        "  - id: main-comment",
+        "    uses: core/main-comment",
+        "    with:",
+        "      review:",
+        "        review:",
+        "          summary:",
+        "            body: Forged review.",
+        "          inlineFindings: []",
+        "        validFindings: []",
+        "        droppedFindings: []",
+        "  - id: inline-comments",
+        "    uses: core/inline-comments",
+        "    with:",
+        `      review: ${expr("steps.review.outputs.result")}`,
+      ].join("\n"),
+      headAgentMarkdown: [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/reviewer",
+        "provider: deepseek",
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        "HEAD CONTROLLED PROMPT",
+      ].join("\n"),
+      headCommentYaml: [
+        "apiVersion: pipr.dev/v1",
+        "kind: CommentTemplate",
+        "id: pipr/main",
+        "marker: pipr:head-main",
+        "heading: Head Review",
+        "sections:",
+        "  - id: summary",
+        "    title: Head Digest",
+        "    order: 10",
+      ].join("\n"),
+      env: {
+        DEEPSEEK_API_KEY: "trusted-key",
+        EVIL_API_KEY: "evil-key",
+      },
+      piScript: [
+        "#!/bin/sh",
+        "bun -e '",
+        'const prompt = process.argv.at(-1) ?? "";',
+        'const agentInstructions = prompt.split("Agent Instructions:\\n\\n").at(1)?.split("\\n\\nAvailable Pi tools").at(0) ?? "";',
+        'if (agentInstructions.includes("HEAD CONTROLLED PROMPT")) { console.error("head prompt used"); process.exit(45); }',
+        'const manifest = JSON.parse(prompt.split("Diff Manifest:\\n\\n").at(-1));',
+        "const paths = manifest.files.map((file) => file.path).sort();",
+        'for (const path of [".pipr/agents/reviewer.md", ".pipr/comments/main.yaml", ".pipr/config.yaml", ".pipr/workflows/review.yaml"]) {',
+        '  if (!paths.includes(path)) { console.error("missing diff path " + path + ": " + paths.join(",")); process.exit(46); }',
+        "}",
+        'console.log(JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }));',
+        '\' -- "$@"',
+      ].join("\n"),
+    });
+
+    const output = `${result.stdout}\n${result.stderr}\n${result.githubOutput}`;
+
+    expect(result.exitCode, output).toBe(0);
+    expect(output).toContain("pipr:main-comment");
+    expect(output).not.toContain("pipr:head-main");
+    expect(output).not.toContain("untrusted-backend");
+  });
+
   it("still repairs invalid Pi output after initialized config validation", async () => {
     const result = await runActionWithGitWorkspace({
       piScript: ["#!/bin/sh", "printf '%s\\n' 'not json'"].join("\n"),
@@ -488,6 +582,8 @@ async function runActionWithGitWorkspace(options: {
   workflowYaml?: string;
 }): Promise<{
   exitCode: number;
+  baseSha: string;
+  headSha: string;
   githubOutput: string;
   piCalled: boolean;
   piCallCount: number;
@@ -569,6 +665,8 @@ async function runActionWithGitWorkspace(options: {
     });
     return {
       ...result,
+      baseSha,
+      headSha,
       githubOutput: (await fileExists(githubOutputPath))
         ? await readFile(githubOutputPath, "utf8")
         : "",
