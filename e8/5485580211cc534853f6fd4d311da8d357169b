@@ -1,0 +1,98 @@
+packages/runtime/src/workflow/workflow.ts
+  s_e3682c1e6e7dd6::t_75b8dddfb3d6e5 78
+packages/cli/src/tests/main.test.ts
+  s_e3682c1e6e7dd6::t_5405704515dea0 96-99,262-264
+  s_e3682c1e6e7dd6::t_32ae3331d72e0f 240
+  s_e3682c1e6e7dd6::t_c476a6c17764c1 529
+  s_e3682c1e6e7dd6::t_cd18a767b00c16 499,503-511,530
+packages/runtime/src/config/schema.ts
+  s_e3682c1e6e7dd6::t_0ccc1f302ffc94 124
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_d8e565a2c2cc01 43-46
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_c5e026fcd2a8d2 21
+packages/runtime/src/action/tests/commands.test.ts
+  s_e3682c1e6e7dd6::t_ceda2f063926fa 148,174,255-261
+  s_e3682c1e6e7dd6::t_4ccc746e3bb499 391-436
+  s_e3682c1e6e7dd6::t_5c0d4b943bc0a7 7,103,169,242
+README.md
+  s_e3682c1e6e7dd6::t_b6ae0e7c7bc145 3,82-83,148
+packages/runtime/src/review/comment.ts
+  s_e3682c1e6e7dd6::t_5d12ca79e2e382 172
+  s_e3682c1e6e7dd6::t_3fd6003ee04a44 318-335,342,344-351,354-363,365-370
+  s_e3682c1e6e7dd6::t_0cf02a7c98445d 364
+  s_e3682c1e6e7dd6::t_bee8bd66bf3844 185-187,194-196,317,371-373,378-379,395-397
+  s_e3682c1e6e7dd6::t_0e3471b8f3e9db 56,251,401
+  s_e3682c1e6e7dd6::t_16c16826625fde 411
+  s_e3682c1e6e7dd6::t_be9b491110c36e 11,34
+  s_e3682c1e6e7dd6::t_aae8c1bd6ae5f1 4,10,16-33,35-55,57-83,94-95,98-99,102-103,106-130,133-140,143-149,151-164,166-171,173-175,178-184,188-193,197,199,205-207,213-214,222-230,233-234,237-241,247-250,252-316,336-341,343,352-353,374-377,380-394,398-400,402-410,412-439,441,443
+docs/adr/0005-runtime-owned-publication-kernel.md
+  s_e3682c1e6e7dd6::t_46c0aa82242bca 1-16
+packages/runtime/src/review/runtime.ts
+  s_e3682c1e6e7dd6::t_bee8bd66bf3844 297-299
+  s_e3682c1e6e7dd6::t_d978da80d86b80 27,29-35,57-58,69,113-116,119,121-128,131-136,143-145,215,218,221-228,232-233,235-236,296,300-303
+  s_e3682c1e6e7dd6::t_1e0b55170bc4bf 103,120,129,179,234
+  s_e3682c1e6e7dd6::t_c7e559a8c39217 130
+packages/runtime/src/review/tests/review.test.ts
+  s_e3682c1e6e7dd6::t_821f4452ac278c 2,9,11
+  s_e3682c1e6e7dd6::t_b0f68a8df34edc 99,126-139,141,144,146-150,153-160
+packages/runtime/src/config/tests/schema.test.ts
+  s_e3682c1e6e7dd6::t_ae19fc7a31830f 308-309,318
+packages/runtime/src/config/project.ts
+  s_e3682c1e6e7dd6::t_eb29d5b01146da 83
+packages/runtime/src/action/commands.ts
+  s_e3682c1e6e7dd6::t_bee8bd66bf3844 359-360,371,376
+  s_e3682c1e6e7dd6::t_7dbcb42da3b789 370,375
+  s_e3682c1e6e7dd6::t_257550ae250796 14-19,81,113,213,321,328,332,339-340,354-355,358,361-369,372-374
+packages/runtime/src/config/tests/init.test.ts
+  s_e3682c1e6e7dd6::t_2f9d74e2206eee 29
+packages/runtime/src/index.ts
+  s_e3682c1e6e7dd6::t_4a0cc4f30b2b74 15
+packages/runtime/src/review/tests/publish.test.ts
+  s_e3682c1e6e7dd6::t_0bae61136cc5d3 265-268
+  s_e3682c1e6e7dd6::t_35947891a246ea 1-134,140-165,173,176-264,269-271
+  s_e3682c1e6e7dd6::t_bee8bd66bf3844 135-139,166-172,174-175
+packages/runtime/src/review/tests/comment.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 262
+  s_e3682c1e6e7dd6::t_bee8bd66bf3844 165-206
+  s_e3682c1e6e7dd6::t_7ab09a32e0e155 4,8,10,35-72,117,119,123-124,132-139,153-157,162-164,207-261
+packages/cli/src/main.ts
+  s_e3682c1e6e7dd6::t_2c46ea820026d7 158,161-165,172
+  s_e3682c1e6e7dd6::t_f051d5e570c5b1 2,5,352-353,358-408
+  s_e3682c1e6e7dd6::t_4100cdc21b3f4c 102-105,347-351,354-357
+packages/runtime/src/review/review.ts
+  s_e3682c1e6e7dd6::t_e69d6a83e8fda1 2,54-61,79-169
+  s_e3682c1e6e7dd6::t_3dbbae88254328 26,34-38,47,53,68,180-183,187-194
+packages/runtime/src/review/publish.ts
+  s_e3682c1e6e7dd6::t_bee8bd66bf3844 31-32,116-118
+  s_e3682c1e6e7dd6::t_c7677fd63ffff1 1-30,33-115,119-312
+packages/runtime/src/config/tests/config.test.ts
+  s_e3682c1e6e7dd6::t_778617cb0a6d5a 40
+packages/runtime/src/review/tests/runtime.test.ts
+  s_e3682c1e6e7dd6::t_bff4fad87cd93a 8,10,22
+packages/runtime/src/review/contract.ts
+  s_e3682c1e6e7dd6::t_ddf3e821c034ab 33,55
+packages/runtime/src/action/git-project.ts
+  s_e3682c1e6e7dd6::t_3143ba29027e62 1,19,30,39-43,45,47-48,53-56
+  s_e3682c1e6e7dd6::t_bee8bd66bf3844 49-52
+action.yml
+  s_e3682c1e6e7dd6::t_1f6b2e95afee07 28,31-32
+packages/runtime/src/review/tests/fixtures.ts
+  s_e3682c1e6e7dd6::t_8a065f7b168eaa 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "e85485580211cc534853f6fd4d311da8d357169b",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
