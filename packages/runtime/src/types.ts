@@ -14,6 +14,14 @@ const nonEmptyStringSchema = z.string().min(1);
 
 export const providerConfigSchema = piProviderProfileSchema;
 
+export const diffManifestLimitsConfigSchema = z.strictObject({
+  fullMaxBytes: z.number().int().positive().optional(),
+  fullMaxEstimatedTokens: z.number().int().positive().optional(),
+  condensedMaxBytes: z.number().int().positive().optional(),
+  condensedMaxEstimatedTokens: z.number().int().positive().optional(),
+  toolResponseMaxBytes: z.number().int().positive().optional(),
+});
+
 export const piprConfigSchema = z.strictObject({
   defaultProvider: nonEmptyStringSchema,
   providers: z.array(providerConfigSchema).min(1),
@@ -23,7 +31,8 @@ export const piprConfigSchema = z.strictObject({
   }),
   limits: z
     .strictObject({
-      timeoutSeconds: z.number().int().positive().max(3600),
+      timeoutSeconds: z.number().int().positive().max(3600).optional(),
+      diffManifest: diffManifestLimitsConfigSchema.optional(),
     })
     .optional(),
 });
@@ -111,6 +120,11 @@ export const diffManifestSchema = z.strictObject({
   headSha: nonEmptyStringSchema,
   mergeBaseSha: nonEmptyStringSchema,
   files: z.array(diffManifestFileSchema),
+});
+
+export const diffManifestPromptMetricsSchema = z.strictObject({
+  bytes: z.number().int().min(0),
+  estimatedTokens: z.number().int().min(0),
 });
 
 export const droppedFindingSchema = z.strictObject({
@@ -244,6 +258,7 @@ export const resolvedConfigSchema = z.strictObject({
 });
 
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
+export type DiffManifestLimitsConfig = z.infer<typeof diffManifestLimitsConfigSchema>;
 export type PiprConfig = z.infer<typeof piprConfigSchema>;
 export type RegistryCollectionName = z.infer<typeof registryCollectionNameSchema>;
 export type SourceMap = z.infer<typeof sourceMapSchema>;
@@ -256,6 +271,7 @@ export type CommentableRange = z.infer<typeof commentableRangeSchema>;
 export type DiffHunk = z.infer<typeof diffHunkSchema>;
 export type DiffManifestFile = z.infer<typeof diffManifestFileSchema>;
 export type DiffManifest = z.infer<typeof diffManifestSchema>;
+export type DiffManifestPromptMetrics = z.infer<typeof diffManifestPromptMetricsSchema>;
 export type DroppedFinding = z.infer<typeof droppedFindingSchema>;
 export type ValidatedReview = z.infer<typeof validatedReviewSchema>;
 export type RegistryEntry = z.infer<typeof registryEntrySchema>;

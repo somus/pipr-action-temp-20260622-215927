@@ -388,29 +388,8 @@ describe("pipr CLI", () => {
 
   it("pins Action agent and main comment template content to the base commit", async () => {
     const result = await runActionWithGitWorkspace({
-      headAgentMarkdown: [
-        "---",
-        "apiVersion: pipr.dev/v1",
-        "kind: Agent",
-        "id: pipr/reviewer",
-        "provider: deepseek",
-        "output:",
-        "  schema: core/pr-review",
-        "---",
-        "",
-        "HEAD CONTROLLED PROMPT",
-      ].join("\n"),
-      headCommentYaml: [
-        "apiVersion: pipr.dev/v1",
-        "kind: CommentTemplate",
-        "id: pipr/main",
-        "marker: pipr:head-main",
-        "heading: Head Review",
-        "sections:",
-        "  - id: summary",
-        "    title: Head Digest",
-        "    order: 10",
-      ].join("\n"),
+      headAgentMarkdown: headControlledAgentMarkdown(),
+      headCommentYaml: headControlledCommentYaml(),
       piScript: [
         "#!/bin/sh",
         'case " $* " in *"Agent Instructions:"*"HEAD CONTROLLED PROMPT"*"Return only valid JSON"*) echo "head prompt used" >&2; exit 45;; esac',
@@ -419,12 +398,7 @@ describe("pipr CLI", () => {
       ].join("\n"),
     });
 
-    const output = `${result.stdout}\n${result.stderr}\n${result.githubOutput}`;
-
-    expect(result.exitCode, output).toBe(0);
-    expect(output).toContain("pipr:main-comment");
-    expect(output).not.toContain("pipr:head-main");
-    expect(output).not.toContain("Head Review");
+    expectHeadControlledFilesIgnored(result, "Head Review");
   });
 
   it("includes PR-head pipr file changes in the Diff Manifest without executing them", async () => {
@@ -467,29 +441,8 @@ describe("pipr CLI", () => {
         "    with:",
         `      review: ${expr("steps.review.outputs.result")}`,
       ].join("\n"),
-      headAgentMarkdown: [
-        "---",
-        "apiVersion: pipr.dev/v1",
-        "kind: Agent",
-        "id: pipr/reviewer",
-        "provider: deepseek",
-        "output:",
-        "  schema: core/pr-review",
-        "---",
-        "",
-        "HEAD CONTROLLED PROMPT",
-      ].join("\n"),
-      headCommentYaml: [
-        "apiVersion: pipr.dev/v1",
-        "kind: CommentTemplate",
-        "id: pipr/main",
-        "marker: pipr:head-main",
-        "heading: Head Review",
-        "sections:",
-        "  - id: summary",
-        "    title: Head Digest",
-        "    order: 10",
-      ].join("\n"),
+      headAgentMarkdown: headControlledAgentMarkdown(),
+      headCommentYaml: headControlledCommentYaml(),
       env: {
         DEEPSEEK_API_KEY: "trusted-key",
         EVIL_API_KEY: "evil-key",
@@ -510,12 +463,7 @@ describe("pipr CLI", () => {
       ].join("\n"),
     });
 
-    const output = `${result.stdout}\n${result.stderr}\n${result.githubOutput}`;
-
-    expect(result.exitCode, output).toBe(0);
-    expect(output).toContain("pipr:main-comment");
-    expect(output).not.toContain("pipr:head-main");
-    expect(output).not.toContain("untrusted-backend");
+    expectHeadControlledFilesIgnored(result, "untrusted-backend");
   });
 
   it("still repairs invalid Pi output after initialized config validation", async () => {
@@ -810,6 +758,46 @@ function pullRequestPayload(baseSha = "base", headSha = "head"): unknown {
       },
     },
   };
+}
+
+function headControlledAgentMarkdown(): string {
+  return [
+    "---",
+    "apiVersion: pipr.dev/v1",
+    "kind: Agent",
+    "id: pipr/reviewer",
+    "provider: deepseek",
+    "output:",
+    "  schema: core/pr-review",
+    "---",
+    "",
+    "HEAD CONTROLLED PROMPT",
+  ].join("\n");
+}
+
+function headControlledCommentYaml(): string {
+  return [
+    "apiVersion: pipr.dev/v1",
+    "kind: CommentTemplate",
+    "id: pipr/main",
+    "marker: pipr:head-main",
+    "heading: Head Review",
+    "sections:",
+    "  - id: summary",
+    "    title: Head Digest",
+    "    order: 10",
+  ].join("\n");
+}
+
+function expectHeadControlledFilesIgnored(
+  result: Awaited<ReturnType<typeof runActionWithGitWorkspace>>,
+  forbiddenText: string,
+): void {
+  const output = `${result.stdout}\n${result.stderr}\n${result.githubOutput}`;
+  expect(result.exitCode, output).toBe(0);
+  expect(output).toContain("pipr:main-comment");
+  expect(output).not.toContain("pipr:head-main");
+  expect(output).not.toContain(forbiddenText);
 }
 
 function expr(source: string): string {

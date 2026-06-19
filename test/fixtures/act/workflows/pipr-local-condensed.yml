@@ -1,0 +1,47 @@
+name: pipr local condensed-flow fixture
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  pipr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Prepare fake GitHub fixture
+        shell: bash
+        run: |
+          cat > test/fixtures/act/github-publication-condensed.json <<JSON
+          {
+            "ownerLogin": "github-actions[bot]",
+            "headSha": "${{ github.event.pull_request.head.sha }}",
+            "issueComments": [],
+            "reviewComments": [],
+            "reviewCommentPayloads": []
+          }
+          JSON
+          chmod 666 test/fixtures/act/github-publication-condensed.json
+      - uses: ./
+        env:
+          DEEPSEEK_API_KEY: local-fixture-key
+          GITHUB_TOKEN: local-fixture-token
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: safe.directory
+          GIT_CONFIG_VALUE_0: ${{ github.workspace }}
+          PIPR_ENABLE_TEST_FIXTURES: "1"
+          PIPR_GITHUB_FIXTURE_PATH: ${{ github.workspace }}/test/fixtures/act/github-publication-condensed.json
+          PIPR_PI_EXECUTABLE: ${{ github.workspace }}/test/fixtures/act/fake-pi-condensed
+        with:
+          config-dir: packages/runtime/distribution/official-minimal/.pipr
+      - name: Assert fake GitHub fixture
+        shell: bash
+        run: |
+          node scripts/assert-act-condensed-fixture.mjs \
+            test/fixtures/act/github-publication-condensed.json

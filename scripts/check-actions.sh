@@ -6,3 +6,4 @@ bun scripts/check-pi-contract.ts --image pipr-action:contract
 bun run test:act-fixture
 bun run act:pr
 bun run act:pr-full
+bun run act:pr-condensed

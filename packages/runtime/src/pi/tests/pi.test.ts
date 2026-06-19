@@ -12,6 +12,7 @@ import {
 } from "../contract.js";
 import { toPiProviderInvocation } from "../provider.js";
 import { buildPiArgs, createReadOnlyWorkspace, runPi } from "../runner.js";
+import { piRuntimeReadToolNames } from "../runtime-tools.js";
 
 describe("Pi contract", () => {
   it("tracks the Pi CLI contract pipr depends on", () => {
@@ -26,6 +27,7 @@ describe("Pi contract", () => {
       "--no-session",
       "--session-dir",
       "--tools",
+      "--extension",
       "--no-context-files",
       "--no-approve",
       "--no-extensions",
@@ -153,6 +155,34 @@ describe("buildPiArgs", () => {
         thinking: "off",
       }).thinking,
     ).toBe("off");
+  });
+
+  it("adds runtime-owned read tools through an explicit extension", () => {
+    const args = buildPiArgs(
+      {
+        id: "backup",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        thinking: "high",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+      },
+      "Review this diff.",
+      "/tmp/pipr-session",
+      {
+        extensionPath: "/tmp/pipr-runtime-tools.mjs",
+        toolNames: piRuntimeReadToolNames,
+      },
+    );
+
+    expect(args).toContain("--no-extensions");
+    expect(args).toContain("--extension");
+    expect(args[args.indexOf("--extension") + 1]).toBe("/tmp/pipr-runtime-tools.mjs");
+    expect(args[args.indexOf("--tools") + 1]).toBe(
+      "read,grep,find,ls,pipr_read_diff,pipr_read_at_ref",
+    );
+    expect(args[args.indexOf("--tools") + 1]).not.toContain("bash");
+    expect(args[args.indexOf("--tools") + 1]).not.toContain("edit");
+    expect(args[args.indexOf("--tools") + 1]).not.toContain("write");
   });
 
   it("drops symlinks from the read-only workspace copy", async () => {

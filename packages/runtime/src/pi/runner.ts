@@ -2,8 +2,9 @@ import { spawn } from "node:child_process";
 import { chmod, cp, lstat, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ProviderConfig } from "../types.js";
+import type { DiffManifest, ProviderConfig } from "../types.js";
 import { toPiProviderInvocation } from "./provider.js";
+import { type PreparedPiRuntimeReadTools, preparePiRuntimeReadTools } from "./runtime-tools.js";
 
 export type PiRunOptions = {
   workspace: string;
@@ -12,6 +13,10 @@ export type PiRunOptions = {
   env?: NodeJS.ProcessEnv;
   piExecutable?: string;
   timeoutSeconds?: number;
+  runtimeTools?: {
+    manifest: DiffManifest;
+    toolResponseMaxBytes: number;
+  };
 };
 
 export type PiRunResult = {
@@ -33,7 +38,14 @@ export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
   const started = Date.now();
   const sandbox = await createPiRunSandbox(options.workspace);
   try {
-    const args = buildPiArgs(options.provider, options.prompt, sandbox.sessionDir);
+    const runtimeTools = options.runtimeTools
+      ? await preparePiRuntimeReadTools({
+          root: sandbox.root,
+          sourceWorkspace: options.workspace,
+          request: options.runtimeTools,
+        })
+      : undefined;
+    const args = buildPiArgs(options.provider, options.prompt, sandbox.sessionDir, runtimeTools);
     return await runProcess(options.piExecutable ?? "pi", args, {
       cwd: sandbox.workspace,
       env: buildPiEnv(options.provider, sandbox, options.env),
@@ -50,8 +62,10 @@ export function buildPiArgs(
   provider: ProviderConfig,
   prompt: string,
   sessionDir = ".pipr/pi-sessions",
+  runtimeTools?: PreparedPiRuntimeReadTools,
 ): string[] {
   const invocation = toPiProviderInvocation(provider);
+  const toolNames = [...invocation.tools, ...(runtimeTools?.toolNames ?? [])];
   return [
     "--provider",
     invocation.provider,
@@ -64,7 +78,8 @@ export function buildPiArgs(
     "--session-dir",
     sessionDir,
     "--tools",
-    invocation.tools.join(","),
+    toolNames.join(","),
+    ...(runtimeTools ? ["--extension", runtimeTools.extensionPath] : []),
     "--no-context-files",
     "--no-approve",
     "--no-extensions",

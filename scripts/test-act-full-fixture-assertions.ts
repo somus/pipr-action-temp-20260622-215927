@@ -1,35 +1,51 @@
 #!/usr/bin/env bun
 import { strict as assert } from "node:assert";
+import { assertActCondensedFixture } from "./assert-act-condensed-fixture.mjs";
 import { assertActFullFixture } from "./assert-act-full-fixture.mjs";
 
 const headSha = "head-sha";
 
-assert.doesNotThrow(() => assertActFullFixture(validFixture(), headSha));
+assert.doesNotThrow(() => assertActFullFixture(validFullFixture(), headSha));
+assert.doesNotThrow(() => assertActCondensedFixture(validCondensedFixture()));
 
 expectFailure("main comment marker missing", {
-  ...validFixture(),
+  ...validFullFixture(),
   issueComments: [{ body: "manual comment" }],
 });
 
 expectFailure("expected 1 inline payload, got 0", {
-  ...validFixture(),
+  ...validFullFixture(),
   reviewCommentPayloads: [],
 });
 
 expectFailure("unexpected inline commit_id", {
-  ...validFixture(),
+  ...validFullFixture(),
   reviewCommentPayloads: [{ ...validInlinePayload(), commit_id: "stale-head" }],
 });
 
 expectFailure("inline marker missing", {
-  ...validFixture(),
+  ...validFullFixture(),
   reviewCommentPayloads: [{ ...validInlinePayload(), body: "missing marker" }],
 });
 
-console.log("act full fixture assertion tests ok");
+expectCondensedFailure("condensed summary missing", {
+  ...validCondensedFixture(),
+  issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->" }],
+});
+
+expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
+  ...validCondensedFixture(),
+  reviewCommentPayloads: [validInlinePayload()],
+});
+
+console.log("act fixture assertion tests ok");
 
 function expectFailure(message: string, fixture: PublicationFixture): void {
   assert.throws(() => assertActFullFixture(fixture, headSha), { message });
+}
+
+function expectCondensedFailure(message: string, fixture: PublicationFixture): void {
+  assert.throws(() => assertActCondensedFixture(fixture), { message });
 }
 
 type ReviewCommentPayload = {
@@ -43,12 +59,25 @@ type ReviewCommentPayload = {
 type PublicationFixture = {
   issueComments?: Array<{ body?: string }>;
   reviewCommentPayloads?: ReviewCommentPayload[];
+  reviewComments?: ReviewCommentPayload[];
 };
 
-function validFixture(): PublicationFixture {
+function validFullFixture(): PublicationFixture {
   return {
     issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->\n\n# pipr Review" }],
     reviewCommentPayloads: [validInlinePayload()],
+  };
+}
+
+function validCondensedFixture(): PublicationFixture {
+  return {
+    issueComments: [
+      {
+        body: "<!-- pipr:main-comment pr=1 -->\n\nCondensed act fixture reached Pi after runtime tools passed.",
+      },
+    ],
+    reviewCommentPayloads: [],
+    reviewComments: [],
   };
 }
 

@@ -11,6 +11,7 @@ export const piRequiredCliFlags = [
   "--no-session",
   "--session-dir",
   "--tools",
+  "--extension",
   "--no-context-files",
   "--no-approve",
   "--no-extensions",

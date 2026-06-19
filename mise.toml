@@ -13,7 +13,7 @@ description = "Run repository checks"
 run = "bun run check"
 
 [tasks.check-actions]
-description = "Build Docker Action, verify Pi contract, and run dry-run and full-flow act fixtures"
+description = "Build Docker Action, verify Pi contract, and run dry-run, full-flow, and condensed act fixtures"
 run = "bun run check:actions"
 
 [tasks.check-pi-contract]
@@ -27,3 +27,7 @@ run = "bun run act:pr"
 [tasks.act-pr-full]
 description = "Run the local pull_request full-flow action fixture through act"
 run = "bun run act:pr-full"
+
+[tasks.act-pr-condensed]
+description = "Run the local pull_request condensed manifest action fixture through act"
+run = "bun run act:pr-condensed"

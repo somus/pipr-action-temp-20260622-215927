@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject } from "../../config/init.js";
 import { type LoadedRuntimeProject, loadRuntimeProject } from "../../config/project.js";
 import { createRuntimeRegistry } from "../../registry/registry.js";
-import type { PullRequestEventContext } from "../../types.js";
+import type { BlockRegistryEntry, PullRequestEventContext, WorkflowStep } from "../../types.js";
 import { type PiRunner, type RunReviewRuntimeOptions, runReviewRuntime } from "../runtime.js";
 import { reviewTestManifest } from "./fixtures.js";
 
@@ -136,66 +136,29 @@ describe("runReviewRuntime", () => {
   });
 
   it("rejects review workflows that do not expose reserved runtime step ids", async () => {
-    const registry = createRuntimeRegistry({
-      modules: {
-        workflows: [
-          {
-            id: "pipr/review",
-            description: "Custom review workflow",
-            source: "test",
-            events: ["pull_request.opened"],
-            steps: [
-              { id: "custom-review", block: "core/run-agent" },
-              { id: "main-comment", block: "core/main-comment" },
-              { id: "inline-comments", block: "core/inline-comments" },
-            ],
-          },
-        ],
-      },
-    });
+    const registry = createReviewRegistry([
+      { id: "custom-review", block: "core/run-agent" },
+      { id: "main-comment", block: "core/main-comment" },
+      { id: "inline-comments", block: "core/inline-comments" },
+    ]);
 
-    await expect(
-      runReviewRuntime({
-        workspace: "/tmp/pipr",
-        config: (await loadOfficialRuntimeProject()).resolved.config,
-        event,
-        registry,
-        piRunner: fakePiRunner([]).run,
-        diffManifestBuilder: () => manifest,
-      }),
-    ).rejects.toThrow("must include reserved step id(s): review");
+    await expectRuntimeRejection(registry, "must include reserved step id(s): review");
   });
 
   it("rejects review workflows that bind reserved step ids to other blocks", async () => {
-    const registry = createRuntimeRegistry({
-      modules: {
-        blocks: [{ id: "test/pass", description: "Pass-through", source: "test" }],
-        workflows: [
-          {
-            id: "pipr/review",
-            description: "Custom review workflow",
-            source: "test",
-            events: ["pull_request.opened"],
-            steps: [
-              { id: "review", block: "test/pass" },
-              { id: "main-comment", block: "core/main-comment" },
-              { id: "inline-comments", block: "core/inline-comments" },
-            ],
-          },
-        ],
-      },
-    });
+    const registry = createReviewRegistry(
+      [
+        { id: "review", block: "test/pass" },
+        { id: "main-comment", block: "core/main-comment" },
+        { id: "inline-comments", block: "core/inline-comments" },
+      ],
+      [{ id: "test/pass", description: "Pass-through", source: "test" }],
+    );
 
-    await expect(
-      runReviewRuntime({
-        workspace: "/tmp/pipr",
-        config: (await loadOfficialRuntimeProject()).resolved.config,
-        event,
-        registry,
-        piRunner: fakePiRunner([]).run,
-        diffManifestBuilder: () => manifest,
-      }),
-    ).rejects.toThrow("reserved step(s) must use runtime block(s): review -> core/run-agent");
+    await expectRuntimeRejection(
+      registry,
+      "reserved step(s) must use runtime block(s): review -> core/run-agent",
+    );
   });
 
   it("runs the materialized Official Minimal Distribution Review Workflow", async () => {
@@ -227,6 +190,94 @@ describe("runReviewRuntime", () => {
     expect(pi.prompts[0]).toContain("Output Schema ID: core/pr-review");
   });
 
+  it("marks full Diff Manifest prompts without attaching runtime tools", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
+
+    await runReviewRuntime(reviewRuntimeOptions(runtime, pi));
+
+    expect(pi.prompts[0]).toContain('"mode": "full"');
+    expect(pi.prompts[0]).toContain(
+      "Runtime-owned pipr read tools are not attached because the full Diff Manifest is available.",
+    );
+    expect(promptManifest(pi.prompts[0] ?? "")).toEqual(manifest);
+    expect(pi.runtimeTools).toEqual([undefined]);
+  });
+
+  it("sends condensed Diff Manifest prompts with runtime read tools", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
+    const largeManifest = {
+      ...manifest,
+      files: manifest.files.map((file) => ({
+        ...file,
+        signals: ["large signal"],
+        changedSymbols: ["changedSymbol"],
+        commentableRanges: file.commentableRanges.map((range) => ({
+          ...range,
+          preview: (range.preview ?? "").repeat(300),
+        })),
+      })),
+    };
+
+    await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, {
+        config: {
+          ...runtime.resolved.config,
+          limits: {
+            ...runtime.resolved.config.limits,
+            diffManifest: {
+              fullMaxBytes: 128,
+              fullMaxEstimatedTokens: 100_000,
+              condensedMaxBytes: 100_000,
+              condensedMaxEstimatedTokens: 100_000,
+              toolResponseMaxBytes: 4096,
+            },
+          },
+        },
+        diffManifestBuilder: () => largeManifest,
+      }),
+    );
+
+    const prompt = pi.prompts[0] ?? "";
+    expect(prompt).toContain('"mode": "condensed"');
+    expect(prompt).toContain("pipr_read_diff(path?, rangeId?)");
+    expect(prompt).toContain(
+      "Available Pi tools: read, grep, find, ls, pipr_read_diff, pipr_read_at_ref.",
+    );
+    expect(promptManifest(prompt).files[0]?.commentableRanges[0]).not.toHaveProperty("preview");
+    expect(promptManifest(prompt).files[0]).not.toHaveProperty("signals");
+    expect(pi.runtimeTools[0]).toMatchObject({
+      manifest: largeManifest,
+      toolResponseMaxBytes: 4096,
+    });
+  });
+
+  it("fails before Pi when the condensed manifest exceeds configured limits", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
+
+    await expect(
+      runReviewRuntime(
+        reviewRuntimeOptions(runtime, pi, {
+          config: {
+            ...runtime.resolved.config,
+            limits: {
+              ...runtime.resolved.config.limits,
+              diffManifest: {
+                fullMaxBytes: 1,
+                fullMaxEstimatedTokens: 1,
+                condensedMaxBytes: 1,
+                condensedMaxEstimatedTokens: 1,
+              },
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow("exceeds condensed limit before Pi execution");
+    expect(pi.prompts).toEqual([]);
+  });
+
   it("uses the materialized CommentTemplate for the Main Review Comment", async () => {
     const { rootDir } = await createOfficialRuntimeProject();
     await writeCommentTemplate(rootDir, "main.yaml", "pipr/main", "Custom Review");
@@ -241,28 +292,7 @@ describe("runReviewRuntime", () => {
     const { rootDir } = await createOfficialRuntimeProject();
     await writeFile(
       path.join(rootDir, ".pipr", "workflows", "review.yaml"),
-      [
-        "apiVersion: pipr.dev/v1",
-        "kind: Workflow",
-        "id: pipr/review",
-        "on:",
-        "  events:",
-        "    - pull_request.opened",
-        "steps:",
-        "  - id: review",
-        "    uses: core/run-agent",
-        "    with:",
-        "      agent: pipr/reviewer",
-        "  - id: main-comment",
-        "    uses: core/main-comment",
-        "    with:",
-        `      review: ${expr("steps.review.outputs.result")}`,
-        "      template: custom/main",
-        "  - id: inline-comments",
-        "    uses: core/inline-comments",
-        "    with:",
-        `      review: ${expr("steps.review.outputs.result")}`,
-      ].join("\n"),
+      templatedReviewWorkflowYaml({ mainTemplate: "custom/main" }),
     );
     await writeCommentTemplate(rootDir, "custom.yaml", "custom/main", "Configured Review");
     const result = await runProjectReview(rootDir);
@@ -275,33 +305,10 @@ describe("runReviewRuntime", () => {
     const { rootDir } = await createOfficialRuntimeProject();
     await writeFile(
       path.join(rootDir, ".pipr", "workflows", "review.yaml"),
-      [
-        "apiVersion: pipr.dev/v1",
-        "kind: Workflow",
-        "id: pipr/review",
-        "on:",
-        "  events:",
-        "    - pull_request.opened",
-        "steps:",
-        "  - id: review",
-        "    uses: core/run-agent",
-        "    with:",
-        "      agent: pipr/reviewer",
-        "  - id: main-comment",
-        "    uses: core/main-comment",
-        "    with:",
-        `      review: ${expr("steps.review.outputs.result")}`,
-        "      template: custom/main",
-        "  - id: inline-comments",
-        "    uses: core/inline-comments",
-        "    with:",
-        `      review: ${expr("steps.review.outputs.result")}`,
-        "  - id: later-main-comment",
-        "    uses: core/main-comment",
-        "    with:",
-        `      review: ${expr("steps.review.outputs.result")}`,
-        "      template: custom/later",
-      ].join("\n"),
+      templatedReviewWorkflowYaml({
+        mainTemplate: "custom/main",
+        laterTemplate: "custom/later",
+      }),
     );
     await writeCommentTemplate(rootDir, "custom.yaml", "custom/main", "Configured Review");
     await writeCommentTemplate(rootDir, "later.yaml", "custom/later", "Later Review");
@@ -383,6 +390,37 @@ describe("runReviewRuntime", () => {
     expect(result.validated.validFindings).toHaveLength(0);
   });
 
+  it("keeps runtime read tools attached during condensed repair attempts", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = fakePiRunner([reviewSummary(""), noFindingsReview]);
+
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, {
+        config: {
+          ...runtime.resolved.config,
+          limits: {
+            ...runtime.resolved.config.limits,
+            diffManifest: {
+              fullMaxBytes: 1,
+              fullMaxEstimatedTokens: 1,
+              condensedMaxBytes: 100_000,
+              condensedMaxEstimatedTokens: 100_000,
+              toolResponseMaxBytes: 4096,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(result.repairAttempted).toBe(true);
+    expect(pi.prompts).toHaveLength(2);
+    expect(pi.prompts[0]).toContain('"mode": "condensed"');
+    expect(pi.prompts[1]).toContain('"mode": "condensed"');
+    expect(pi.runtimeTools).toHaveLength(2);
+    expect(pi.runtimeTools[0]).toMatchObject({ toolResponseMaxBytes: 4096 });
+    expect(pi.runtimeTools[1]).toMatchObject({ toolResponseMaxBytes: 4096 });
+  });
+
   it("fails when repair output is still invalid", async () => {
     const runtime = await loadOfficialRuntimeProject();
     const pi = fakePiRunner(["not json", "also not json"]);
@@ -403,6 +441,39 @@ describe("runReviewRuntime", () => {
 
 async function loadOfficialRuntimeProject() {
   return (await createOfficialRuntimeProject()).runtime;
+}
+
+function createReviewRegistry(steps: WorkflowStep[], blocks: BlockRegistryEntry[] = []) {
+  return createRuntimeRegistry({
+    modules: {
+      blocks,
+      workflows: [
+        {
+          id: "pipr/review",
+          description: "Custom review workflow",
+          source: "test",
+          events: ["pull_request.opened"],
+          steps,
+        },
+      ],
+    },
+  });
+}
+
+async function expectRuntimeRejection(
+  registry: RunReviewRuntimeOptions["registry"],
+  message: string,
+) {
+  await expect(
+    runReviewRuntime({
+      workspace: "/tmp/pipr",
+      config: (await loadOfficialRuntimeProject()).resolved.config,
+      event,
+      registry,
+      piRunner: fakePiRunner([]).run,
+      diffManifestBuilder: () => manifest,
+    }),
+  ).rejects.toThrow(message);
 }
 
 async function createOfficialRuntimeProject() {
@@ -465,26 +536,68 @@ function reviewSummary(body: string): string {
   return JSON.stringify({ summary: { body }, inlineFindings: [] });
 }
 
+function templatedReviewWorkflowYaml(options: {
+  mainTemplate: string;
+  laterTemplate?: string;
+}): string {
+  const lines = [
+    "apiVersion: pipr.dev/v1",
+    "kind: Workflow",
+    "id: pipr/review",
+    "on:",
+    "  events:",
+    "    - pull_request.opened",
+    "steps:",
+    "  - id: review",
+    "    uses: core/run-agent",
+    "    with:",
+    "      agent: pipr/reviewer",
+    "  - id: main-comment",
+    "    uses: core/main-comment",
+    "    with:",
+    `      review: ${expr("steps.review.outputs.result")}`,
+    `      template: ${options.mainTemplate}`,
+    "  - id: inline-comments",
+    "    uses: core/inline-comments",
+    "    with:",
+    `      review: ${expr("steps.review.outputs.result")}`,
+  ];
+  if (options.laterTemplate !== undefined) {
+    lines.push(
+      "  - id: later-main-comment",
+      "    uses: core/main-comment",
+      "    with:",
+      `      review: ${expr("steps.review.outputs.result")}`,
+      `      template: ${options.laterTemplate}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 function fakePiRunner(outputs: string[]): {
   run: PiRunner;
   envs: Array<NodeJS.ProcessEnv | undefined>;
   prompts: string[];
   providerIds: string[];
+  runtimeTools: Array<Parameters<PiRunner>[0]["runtimeTools"]>;
   timeoutSeconds: Array<number | undefined>;
 } {
   const envs: Array<NodeJS.ProcessEnv | undefined> = [];
   const prompts: string[] = [];
   const providerIds: string[] = [];
+  const runtimeTools: Array<Parameters<PiRunner>[0]["runtimeTools"]> = [];
   const timeoutSeconds: Array<number | undefined> = [];
   return {
     envs,
     prompts,
     providerIds,
+    runtimeTools,
     timeoutSeconds,
     run: async (options) => {
       envs.push(options.env);
       prompts.push(options.prompt);
       providerIds.push(options.provider.id);
+      runtimeTools.push(options.runtimeTools);
       timeoutSeconds.push(options.timeoutSeconds);
       return {
         stdout: outputs.shift() ?? "",
@@ -498,4 +611,8 @@ function fakePiRunner(outputs: string[]): {
 
 function expr(source: string): string {
   return ["$", "{{ ", source, " }}"].join("");
+}
+
+function promptManifest(prompt: string) {
+  return JSON.parse(prompt.split("Diff Manifest:\n\n").at(-1) ?? "{}");
 }

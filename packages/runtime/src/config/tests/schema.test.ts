@@ -121,6 +121,23 @@ describe("pipr.dev/v1 schemas", () => {
     ).toThrow("50");
   });
 
+  it("accepts explicit Diff Manifest prompt limits", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", {
+      ...configWithoutRefs(),
+      limits: {
+        diffManifest: {
+          fullMaxBytes: 1024,
+          fullMaxEstimatedTokens: 256,
+          condensedMaxBytes: 2048,
+          condensedMaxEstimatedTokens: 512,
+          toolResponseMaxBytes: 4096,
+        },
+      },
+    });
+
+    expect(parsedConfig.limits?.diffManifest?.fullMaxBytes).toBe(1024);
+  });
+
   it("rejects unknown fields", () => {
     expect(() =>
       validatePiprConfigDocument(".pipr/config.yaml", {

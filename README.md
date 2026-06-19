@@ -75,6 +75,13 @@ Provider secrets stay env-only through `apiKeyEnv`; pipr does not pass raw keys 
 `--api-key`. Pi runs with `--tools read,grep,find,ls`, so the reviewer can inspect the
 read-only workspace without `bash`, `write`, or `edit`.
 
+For small pull requests, pipr sends the full Diff Manifest in the reviewer prompt. If the
+serialized manifest exceeds configured byte or estimated-token limits, pipr sends a condensed
+manifest that preserves deterministic mapping fields and attaches runtime-owned read tools:
+`pipr_read_diff(path?, rangeId?)` and `pipr_read_at_ref(path, ref, rangeId)`. These are not
+`.pipr/` plugin tools and never expose GitHub APIs, shell access, writes, comment publishing, or
+path-only base file reads.
+
 The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load the
 materialized workflow, agent, comment-template, optional custom schema, and optional block registry from
 the pull request base commit. That base-commit `.pipr/` tree is trusted review authority, while
@@ -104,6 +111,20 @@ workflows:
 
 limits:
   timeoutSeconds: 300
+```
+
+Diff Manifest prompt limits are optional. Defaults are `128 KiB` or `32k` estimated tokens for
+the full manifest, then `256 KiB` or `64k` estimated tokens for the condensed manifest:
+
+```yaml
+limits:
+  timeoutSeconds: 300
+  diffManifest:
+    fullMaxBytes: 131072
+    fullMaxEstimatedTokens: 32000
+    condensedMaxBytes: 262144
+    condensedMaxEstimatedTokens: 64000
+    toolResponseMaxBytes: 65536
 ```
 
 The bundled workflow calls the safe review primitive directly, then renders comments:

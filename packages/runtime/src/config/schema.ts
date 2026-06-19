@@ -3,7 +3,11 @@ import { commandPatternInputIds } from "../commands/grammar.js";
 import { piProviderIdSchema, piProviderProfileSchema } from "../pi/contract.js";
 import { prReviewSchemaId } from "../review/contract.js";
 import { isRecord } from "../shared/record.js";
-import { workflowCommandSchema, workflowInputsSchema } from "../types.js";
+import {
+  diffManifestLimitsConfigSchema,
+  workflowCommandSchema,
+  workflowInputsSchema,
+} from "../types.js";
 import { validateWorkflowExpressions } from "../workflow/expression.js";
 
 export const piprApiVersion = "pipr.dev/v1";
@@ -49,7 +53,8 @@ const failurePolicySchema = z.enum(["fail", "continue", "skip-output"]);
 const providerProfileSchema = piProviderProfileSchema;
 
 const limitsSchema = z.strictObject({
-  timeoutSeconds: z.number().int().positive().max(3600),
+  timeoutSeconds: z.number().int().positive().max(3600).optional(),
+  diffManifest: diffManifestLimitsConfigSchema.optional(),
 });
 
 const stepSchema = z.strictObject({

@@ -2,8 +2,10 @@ import type { MaterializedProject } from "../config/config.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "../diff/diff.js";
 import { piReadOnlyToolNames } from "../pi/contract.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../pi/runner.js";
+import { piRuntimeReadToolNames } from "../pi/runtime-tools.js";
 import type {
   DiffManifest,
+  DiffManifestLimitsConfig,
   PiprConfig,
   ProviderConfig,
   PrReview,
@@ -35,6 +37,7 @@ import {
   reviewToMainSectionContributions,
   runtimeVersion,
 } from "./comment.js";
+import { type PreparedDiffManifestPrompt, prepareDiffManifestPrompt } from "./manifest-payload.js";
 import {
   parsePrReview,
   prReviewSchemaId,
@@ -218,6 +221,7 @@ function reviewWorkflowHandlers(options: {
       const result = await runReviewerAgent({
         provider,
         diffManifest: manifest,
+        diffManifestLimits: runtime.config.limits?.diffManifest,
         event: runtime.event,
         env: runtime.env,
         workspace: runtime.workspace,
@@ -368,6 +372,7 @@ function hasOwn(value: object, key: string): boolean {
 export async function runReviewerAgent(options: {
   provider: ProviderConfig;
   diffManifest: DiffManifest;
+  diffManifestLimits?: DiffManifestLimitsConfig;
   event: PullRequestEventContext;
   env?: NodeJS.ProcessEnv;
   workspace: string;
@@ -378,9 +383,13 @@ export async function runReviewerAgent(options: {
   timeoutSeconds?: number;
 }): Promise<{ review: PrReview; repairAttempted: boolean }> {
   const piRunner = options.piRunner ?? runPi;
+  const manifestPrompt = prepareDiffManifestPrompt(
+    options.diffManifest,
+    options.diffManifestLimits,
+  );
   const prompt = buildReviewerPrompt({
     event: options.event,
-    diffManifest: options.diffManifest,
+    diffManifestPrompt: manifestPrompt,
     agentInstructions: options.agentInstructions,
     outputSchemaId: options.outputSchemaId,
   });
@@ -390,6 +399,13 @@ export async function runReviewerAgent(options: {
     prompt,
     env: options.env,
     piExecutable: options.piExecutable,
+    runtimeTools:
+      manifestPrompt.mode === "condensed"
+        ? {
+            manifest: options.diffManifest,
+            toolResponseMaxBytes: manifestPrompt.limits.toolResponseMaxBytes,
+          }
+        : undefined,
     timeoutSeconds: options.timeoutSeconds,
   });
   const parsed = parseReviewOutput(first.stdout);
@@ -407,6 +423,13 @@ export async function runReviewerAgent(options: {
     }),
     env: options.env,
     piExecutable: options.piExecutable,
+    runtimeTools:
+      manifestPrompt.mode === "condensed"
+        ? {
+            manifest: options.diffManifest,
+            toolResponseMaxBytes: manifestPrompt.limits.toolResponseMaxBytes,
+          }
+        : undefined,
     timeoutSeconds: options.timeoutSeconds,
   });
   const repaired = parseReviewOutput(repair.stdout);
@@ -421,15 +444,24 @@ export async function runReviewerAgent(options: {
 
 export function buildReviewerPrompt(options: {
   event: PullRequestEventContext;
-  diffManifest: DiffManifest;
+  diffManifestPrompt: PreparedDiffManifestPrompt;
   agentInstructions?: string;
   outputSchemaId?: string;
 }): string {
   const outputSchemaId = options.outputSchemaId ?? prReviewSchemaId;
+  const runtimeToolText =
+    options.diffManifestPrompt.mode === "condensed"
+      ? "Runtime-owned tools attached: pipr_read_diff(path?, rangeId?) and pipr_read_at_ref(path, ref, rangeId). Use them when the condensed manifest lacks needed context. Ref reads are range-scoped and may return unavailable for opposite-side ranges."
+      : "Runtime-owned pipr read tools are not attached because the full Diff Manifest is available.";
+  const availableTools =
+    options.diffManifestPrompt.mode === "condensed"
+      ? [...piReadOnlyToolNames, ...piRuntimeReadToolNames]
+      : piReadOnlyToolNames;
   return [
     "You are pipr's reviewer agent for a GitHub pull request.",
     options.agentInstructions ? `Agent Instructions:\n\n${options.agentInstructions}` : undefined,
-    `Available Pi tools: ${piReadOnlyToolNames.join(", ")}.`,
+    `Available Pi tools: ${availableTools.join(", ")}.`,
+    runtimeToolText,
     "Do not use bash, write, edit, GitHub APIs, or comment publishing tools.",
     "Return only valid JSON. Do not include Markdown fences or prose outside JSON.",
     `Output Schema ID: ${outputSchemaId}`,
@@ -452,8 +484,20 @@ export function buildReviewerPrompt(options: {
       null,
       2,
     ),
+    "Diff Manifest Payload:",
+    JSON.stringify(
+      {
+        mode: options.diffManifestPrompt.mode,
+        fullBytes: options.diffManifestPrompt.metrics.full.bytes,
+        fullEstimatedTokens: options.diffManifestPrompt.metrics.full.estimatedTokens,
+        selectedBytes: options.diffManifestPrompt.metrics.selected.bytes,
+        selectedEstimatedTokens: options.diffManifestPrompt.metrics.selected.estimatedTokens,
+      },
+      null,
+      2,
+    ),
     "Diff Manifest:",
-    JSON.stringify(options.diffManifest, null, 2),
+    JSON.stringify(options.diffManifestPrompt.manifest, null, 2),
   ]
     .filter((part) => part !== undefined)
     .join("\n\n");
