@@ -1,0 +1,146 @@
+.pipr/workflows/review.yaml
+  s_e3682c1e6e7dd6::t_42f0cebed4018c 11-13
+  s_e3682c1e6e7dd6::t_1b8c81eaaedc11 17,22
+packages/cli/tsconfig.json
+  s_e3682c1e6e7dd6::t_38058148f5eaff 8
+docs/adr/0002-docker-action-with-read-only-pi-workspace.md
+  s_e3682c1e6e7dd6::t_045b0caed6472d 5
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_fd22e4571d1429 179-184
+  s_e3682c1e6e7dd6::t_3437281d11196e 46,58,149-151,154,157,164,171-172,174-178,185-188,200,213,243,247-249
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 6-7,14
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 2-5
+packages/runtime/src/review/runtime.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 4,26-32
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-3,13,19-25,72,76,93,95,97,111-129,140-141,157,170,267-270,272
+packages/runtime/src/config/config.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 4,20
+docs/adr/0003-materialized-pipr-component-control-plane.md
+  s_e3682c1e6e7dd6::t_d5423a61af934e 1-17
+packages/runtime/src/diff/tests/diff.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-220
+packages/runtime/src/action/tests/git-project.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-4,6-67
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 5
+packages/runtime/src/action/event.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-123
+packages/runtime/tsconfig.json
+  s_e3682c1e6e7dd6::t_56b234c540d437 8
+AGENTS.md
+  s_e3682c1e6e7dd6::t_6d71bbdb63f0e1 35
+  s_e3682c1e6e7dd6::t_387ee300033f94 46,50,54-55,57
+  s_e3682c1e6e7dd6::t_3d19575e9e0c45 65
+packages/cli/src/main.ts
+  s_e3682c1e6e7dd6::t_e1038f62ee46df 45,59,314-317,320
+scripts/check-pi-contract.ts
+  s_e3682c1e6e7dd6::t_4fac5669c0ed31 9
+packages/cli/package.json
+  s_e3682c1e6e7dd6::t_64e53a3a587855 13-14
+packages/runtime/src/pi/runner.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-5,7-225
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 6
+packages/runtime/distribution/official-minimal/.pipr/config.yaml
+  s_e3682c1e6e7dd6::t_1683af79c99410 11-12
+packages/runtime/src/config/tests/materialized-config.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 5-7,22,62,65,67-69,75-77,92-93,105-128,139,143-144,150-151,153-167,296-306
+packages/runtime/src/workflow/tests/workflow.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 5-8,10-14,16-27,32-35,37,41,43-44,48-50,52-66,69-76,78-79,81-97,115-119,124,128,156-159,162,191-229,232,255,259,282,286-304,316,346,348,358-359,361-362,364,372,376-407
+packages/runtime/src/config/tests/config.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-58
+packages/runtime/src/config/tests/schema.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 6,26,45,49,53,56-57,75-86,309,328,399,406-410,418,422-428,432-576,732-735
+packages/runtime/src/registry/registry.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 13
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 3,11-12,22,32,35,40,59-61,87-91,95-120,129-136,140,145,157,162,165,169,177-180,197-198,201,203,206-227,237,240-252
+packages/runtime/src/review/tests/review.test.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 4
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-3,5-74,77-156
+  s_e3682c1e6e7dd6::t_07a08c63dd6ec5 75-76
+packages/runtime/src/config/schema.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 2-3,9-16,68,83,114-123,180,191,198,229,304-306,309,311-312,316-319,345-351,367-376,401,403-406,409-414,418-424,426,429-456,508-511
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 4-5
+packages/runtime/src/index.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-2,4,8-9,11,13,15,17
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 3,5-7,10,12,14
+packages/runtime/src/config/tests/init.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 5-7,22
+packages/runtime/src/action/commands.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 1-4,18-19
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 5-7,16-17,126-129,170
+packages/runtime/src/config/project.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-11,111,118,125-126,128-129,136-141,147,169-172,189-201,218-223,225,228,262-267
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 16
+README.md
+  s_e3682c1e6e7dd6::t_3b4ef44944630a 30,76-81,107,111-114,134
+  s_e3682c1e6e7dd6::t_2a1a4b468af2af 75
+  s_e3682c1e6e7dd6::t_02f752cde9d6ba 100-101,118,131
+  s_e3682c1e6e7dd6::t_3b4b28f0674776 122-123
+.pipr/config.yaml
+  s_e3682c1e6e7dd6::t_d5eeb8595fd355 11-12
+docs/adr/0004-runtime-owned-review-kernel.md
+  s_e3682c1e6e7dd6::t_d5423a61af934e 1-16
+packages/runtime/src/registry/tests/registry.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 2,6,8,11,15,18,21,25,27,31-38,43-44,47,59,63,66,75-78,81,83,94,100,107,115-118,121-123,125-126,128-134,139-145
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 3
+packages/runtime/src/review/tests/runtime.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 5-8,119,131-132,134,136,139,141,162,166-196,296-298,302,307,498-501
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 9
+packages/runtime/distribution/official-minimal/.pipr/workflows/review.yaml
+  s_e3682c1e6e7dd6::t_47447ab7f7cc38 11-13
+  s_e3682c1e6e7dd6::t_8c5ec4b070ffde 17,22
+packages/runtime/src/action/git-project.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-4,7-97
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 5-6
+packages/runtime/distribution/official-minimal/.pipr/commands/default.yaml
+  s_e3682c1e6e7dd6::t_d1b3deaa1850b8 2-5,7-22
+packages/runtime/src/diff/diff.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-10,12-397
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 11
+packages/runtime/src/tests/types.test.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 2,9,38,43-44,51,153
+packages/runtime/src/pi/tests/pi.test.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 14
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1,5-13,15-36,39-67,70-89,91,93-95,97-101,103-104,107-134,137-155,158-163,165,167-175,178-182,184-200,203-210,212-214,218-219,221,223-247,252-271,273-277,279,281-286,289-298
+packages/runtime/package.json
+  s_e3682c1e6e7dd6::t_f27879e0e08ae7 18-19
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_583634c7d767c7 16,20,39-41
+  s_e3682c1e6e7dd6::t_7a94a45d2e510f 28
+packages/runtime/src/review/review.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1,4-101
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 2-3
+packages/runtime/src/pi/provider.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 1
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 2-21
+packages/runtime/src/workflow/workflow.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 10
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1,4,9,11-12,16-20,23-25,42-43,50-51,54-59,75-94,100-111,113-132,134-144,150-169,175-177,184-188,191-256,311-317,321-339
+packages/runtime/src/review/comment.ts
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1-2,9,11-169
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 3-8,10
+.pipr/commands/default.yaml
+  s_e3682c1e6e7dd6::t_192e639d465b88 2-5,7-22
+packages/runtime/src/config/init.ts
+  s_e3682c1e6e7dd6::t_a1a8e02333eae6 113
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 2-25,27-106,116-166
+  s_e3682c1e6e7dd6::t_b6bdbe73d7c832 1,26,107-112,114-115
+packages/runtime/src/review/tests/comment.test.ts
+  s_e3682c1e6e7dd6::t_bfa54d224180ee 2
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 1,3-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "4a44b1e80e24d8d1c2d856d62a4f076c783fa804",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
