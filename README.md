@@ -159,6 +159,32 @@ steps:
 Review workflows must expose the reserved runtime step ids `review`, `main-comment`, and `inline-comments`.
 Command triggers run only for `issue_comment` events that target pull requests. pipr checks `github.event.issue.pull_request`, fetches PR metadata, checks the commenter with GitHub's collaborator permission API, parses command arguments, and only then starts the workflow. Permissions are ordered `read < triage < write < maintain < admin`; `requiredPermission` defaults to `write`.
 
+Agents may declare `string` or `json` inputs. `core/run-agent` validates those inputs before Pi runs, and Agent markdown can embed them with `${{ inputs.name }}`. Objects and arrays render as stable pretty JSON. Agent `provider` may also be `${{ inputs.provider }}` or an inline provider object without an `id`; string providers must resolve to a configured provider id. Independent `core/run-agent` steps are scheduled from workflow `steps.*` dependencies, so specialist reviewers can run before a final reserved `review` orchestrator step.
+
+```yaml
+steps:
+  - id: correctness
+    uses: core/run-agent
+    with:
+      agent: pipr/specialist-reviewer
+      inputs:
+        focus: correctness
+  - id: security
+    uses: core/run-agent
+    with:
+      agent: pipr/specialist-reviewer
+      inputs:
+        focus: security
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/review-orchestrator
+      inputs:
+        reviews:
+          correctness: ${{ steps.correctness.outputs.result }}
+          security: ${{ steps.security.outputs.result }}
+```
+
 ## Registry modules
 
 The materialized `.pipr/` tree contains conventional component files:

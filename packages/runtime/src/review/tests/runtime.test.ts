@@ -6,7 +6,12 @@ import { initOfficialMinimalProject } from "../../config/init.js";
 import { type LoadedRuntimeProject, loadRuntimeProject } from "../../config/project.js";
 import { createRuntimeRegistry } from "../../registry/registry.js";
 import type { BlockRegistryEntry, PullRequestEventContext, WorkflowStep } from "../../types.js";
-import { type PiRunner, type RunReviewRuntimeOptions, runReviewRuntime } from "../runtime.js";
+import {
+  type PiRunner,
+  type ReviewRuntimeResult,
+  type RunReviewRuntimeOptions,
+  runReviewRuntime,
+} from "../runtime.js";
 import { reviewTestManifest } from "./fixtures.js";
 
 const event: PullRequestEventContext = {
@@ -25,6 +30,8 @@ const noFindingsReview = JSON.stringify({
   summary: { body: "No findings." },
   inlineFindings: [],
 });
+
+type PiRunnerSpy = ReturnType<typeof fakePiRunner>;
 
 describe("runReviewRuntime", () => {
   it("runs Pi, validates findings, and renders comment drafts", async () => {
@@ -130,9 +137,25 @@ describe("runReviewRuntime", () => {
       },
     });
 
-    expect(manifestBuilds).toBe(2);
+    expect(manifestBuilds).toBe(1);
     expect(pi.prompts).toHaveLength(2);
     expect(result.validated.validFindings).toHaveLength(0);
+  });
+
+  it("fails before Pi when Diff Manifest build fails", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
+
+    await expect(
+      runReviewRuntime(
+        reviewRuntimeOptions(runtime, pi, {
+          diffManifestBuilder: () => {
+            throw new Error("diff failed");
+          },
+        }),
+      ),
+    ).rejects.toThrow("diff failed");
+    expect(pi.prompts).toEqual([]);
   });
 
   it("rejects review workflows that do not expose reserved runtime step ids", async () => {
@@ -188,6 +211,296 @@ describe("runReviewRuntime", () => {
       "Do not use bash, write, edit, GitHub APIs, or comment publishing tools.",
     );
     expect(pi.prompts[0]).toContain("Output Schema ID: core/pr-review");
+  });
+
+  it("renders Agent inputs into provider and prompt body", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "config.yaml"),
+      [
+        "apiVersion: pipr.dev/v1",
+        "kind: Config",
+        "providers:",
+        "  - id: primary",
+        "    provider: deepseek",
+        "    model: primary-model",
+        "    apiKeyEnv: PRIMARY_API_KEY",
+        "  - id: backup",
+        "    provider: deepseek",
+        "    model: backup-model",
+        "    apiKeyEnv: BACKUP_API_KEY",
+        "workflows:",
+        "  - pipr/review",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(rootDir, ".pipr", "agents", "reviewer.md"),
+      [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/reviewer",
+        "inputs:",
+        "  focus:",
+        "    type: string",
+        "    required: true",
+        "    enum: [security, correctness]",
+        "  provider:",
+        "    type: string",
+        "    default: backup",
+        "  reviews:",
+        "    type: json",
+        "    required: true",
+        `provider: ${expr("inputs.provider")}`,
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        ["Focus: ", expr("inputs.focus")].join(""),
+        "Prior reviews:",
+        expr("inputs.reviews"),
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(rootDir, ".pipr", "workflows", "review.yaml"),
+      templatedReviewWorkflowYaml({
+        agentInputLines: [
+          "      inputs:",
+          "        focus: security",
+          "        reviews:",
+          "          correctness:",
+          "            summary:",
+          "              body: ok",
+          "            inlineFindings: []",
+        ],
+      }),
+    );
+    const { result, pi } = await runProjectReviewWithRunner(rootDir);
+
+    expectBackupProviderUsed(result, pi);
+    expect(pi.prompts[0]).toContain("Focus: security");
+    expect(pi.prompts[0]).toContain('"correctness"');
+    expect(pi.prompts[0]).toContain('"inlineFindings": []');
+  });
+
+  it("accepts dynamic inline Agent provider objects without id", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "agents", "reviewer.md"),
+      [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/reviewer",
+        "inputs:",
+        "  model:",
+        "    type: string",
+        "    required: true",
+        "provider:",
+        "  provider: deepseek",
+        `  model: ${expr("inputs.model")}`,
+        "  apiKeyEnv: DEEPSEEK_API_KEY",
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        "Use inline provider.",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(rootDir, ".pipr", "workflows", "review.yaml"),
+      templatedReviewWorkflowYaml({
+        agentInputLines: ["      inputs:", "        model: dynamic-model"],
+      }),
+    );
+    const { result, pi } = await runProjectReviewWithRunner(rootDir);
+
+    expect(result.provider).toMatchObject({
+      id: "inline_pipr_reviewer",
+      model: "dynamic-model",
+    });
+    expect(pi.providerIds).toEqual(["inline_pipr_reviewer"]);
+  });
+
+  it("keeps provider override ahead of dynamic Agent provider", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "agents", "reviewer.md"),
+      [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/reviewer",
+        "inputs:",
+        "  provider:",
+        "    type: string",
+        "    default: deepseek",
+        `provider: ${expr("inputs.provider")}`,
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        "Use configured provider unless overridden.",
+      ].join("\n"),
+    );
+    const runtime = await loadRuntimeProject({ rootDir });
+    const pi = noFindingsPiRunner();
+
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, {
+        workspace: rootDir,
+        providerOverride: {
+          id: "override",
+          provider: "deepseek",
+          model: "override-model",
+          apiKeyEnv: "OVERRIDE_API_KEY",
+        },
+      }),
+    );
+
+    expect(result.provider.id).toBe("override");
+    expect(pi.providerIds).toEqual(["override"]);
+  });
+
+  it("feeds specialist Agent outputs into the orchestrator Agent", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "agents", "specialist.md"),
+      [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/specialist-reviewer",
+        "inputs:",
+        "  focus:",
+        "    type: string",
+        "    required: true",
+        "provider: deepseek",
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        ["Focus: ", expr("inputs.focus")].join(""),
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(rootDir, ".pipr", "agents", "orchestrator.md"),
+      [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/review-orchestrator",
+        "inputs:",
+        "  reviews:",
+        "    type: json",
+        "    required: true",
+        "provider: deepseek",
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        "Specialist reviews:",
+        expr("inputs.reviews"),
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(rootDir, ".pipr", "workflows", "review.yaml"),
+      [
+        "apiVersion: pipr.dev/v1",
+        "kind: Workflow",
+        "id: pipr/review",
+        "on:",
+        "  events:",
+        "    - pull_request.opened",
+        "steps:",
+        "  - id: correctness",
+        "    uses: core/run-agent",
+        "    with:",
+        "      agent: pipr/specialist-reviewer",
+        "      inputs:",
+        "        focus: correctness",
+        "  - id: security",
+        "    uses: core/run-agent",
+        "    with:",
+        "      agent: pipr/specialist-reviewer",
+        "      inputs:",
+        "        focus: security",
+        "  - id: tests",
+        "    uses: core/run-agent",
+        "    with:",
+        "      agent: pipr/specialist-reviewer",
+        "      inputs:",
+        "        focus: tests",
+        "  - id: review",
+        "    uses: core/run-agent",
+        "    with:",
+        "      agent: pipr/review-orchestrator",
+        "      inputs:",
+        "        reviews:",
+        `          correctness: ${expr("steps.correctness.outputs.result")}`,
+        `          security: ${expr("steps.security.outputs.result")}`,
+        `          tests: ${expr("steps.tests.outputs.result")}`,
+        "  - id: main-comment",
+        "    uses: core/main-comment",
+        "    with:",
+        `      review: ${expr("steps.review.outputs.result")}`,
+        "      template: pipr/main",
+        "  - id: inline-comments",
+        "    uses: core/inline-comments",
+        "    with:",
+        `      review: ${expr("steps.review.outputs.result")}`,
+      ].join("\n"),
+    );
+    const runtime = await loadRuntimeProject({ rootDir });
+    const pi = fakePiRunner([
+      reviewSummary("Correctness review."),
+      reviewSummary("Security review."),
+      reviewSummary("Test review."),
+      noFindingsReview,
+    ]);
+
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, { workspace: rootDir }),
+    );
+
+    expect(pi.prompts).toHaveLength(4);
+    expect(pi.prompts[0]).toContain("Focus: correctness");
+    expect(pi.prompts[1]).toContain("Focus: security");
+    expect(pi.prompts[2]).toContain("Focus: tests");
+    expect(pi.prompts[3]).toContain('"body": "Correctness review."');
+    expect(pi.prompts[3]).toContain('"body": "Security review."');
+    expect(pi.prompts[3]).toContain('"body": "Test review."');
+    expect(result.validated.validFindings).toEqual([]);
+  });
+
+  it("rejects missing Agent inputs before Pi", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "agents", "reviewer.md"),
+      [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/reviewer",
+        "inputs:",
+        "  focus:",
+        "    type: string",
+        "    required: true",
+        "provider: deepseek",
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        ["Focus: ", expr("inputs.focus")].join(""),
+      ].join("\n"),
+    );
+    const runtime = await loadRuntimeProject({ rootDir });
+    const pi = noFindingsPiRunner();
+
+    await expect(
+      runReviewRuntime(reviewRuntimeOptions(runtime, pi, { workspace: rootDir })),
+    ).rejects.toThrow("input 'focus' is required");
+    expect(pi.prompts).toEqual([]);
   });
 
   it("marks full Diff Manifest prompts without attaching runtime tools", async () => {
@@ -355,15 +668,9 @@ describe("runReviewRuntime", () => {
         "Use backup provider.",
       ].join("\n"),
     );
-    const runtime = await loadRuntimeProject({ rootDir });
-    const pi = noFindingsPiRunner();
+    const { result, pi } = await runProjectReviewWithRunner(rootDir);
 
-    const result = await runReviewRuntime(
-      reviewRuntimeOptions(runtime, pi, { workspace: rootDir }),
-    );
-
-    expect(result.provider.id).toBe("backup");
-    expect(pi.providerIds).toEqual(["backup"]);
+    expectBackupProviderUsed(result, pi);
     expect(result.mainComment).toContain("Model: `backup-model`");
   });
 
@@ -483,10 +790,13 @@ async function createOfficialRuntimeProject() {
 }
 
 async function runProjectReview(rootDir: string) {
+  return (await runProjectReviewWithRunner(rootDir)).result;
+}
+
+async function runProjectReviewWithRunner(rootDir: string, pi = noFindingsPiRunner()) {
   const runtime = await loadRuntimeProject({ rootDir });
-  return await runReviewRuntime(
-    reviewRuntimeOptions(runtime, noFindingsPiRunner(), { workspace: rootDir }),
-  );
+  const result = await runReviewRuntime(reviewRuntimeOptions(runtime, pi, { workspace: rootDir }));
+  return { result, pi };
 }
 
 function noFindingsPiRunner() {
@@ -536,9 +846,15 @@ function reviewSummary(body: string): string {
   return JSON.stringify({ summary: { body }, inlineFindings: [] });
 }
 
+function expectBackupProviderUsed(result: ReviewRuntimeResult, pi: PiRunnerSpy): void {
+  expect(result.provider.id).toBe("backup");
+  expect(pi.providerIds).toEqual(["backup"]);
+}
+
 function templatedReviewWorkflowYaml(options: {
-  mainTemplate: string;
+  mainTemplate?: string;
   laterTemplate?: string;
+  agentInputLines?: string[];
 }): string {
   const lines = [
     "apiVersion: pipr.dev/v1",
@@ -552,11 +868,12 @@ function templatedReviewWorkflowYaml(options: {
     "    uses: core/run-agent",
     "    with:",
     "      agent: pipr/reviewer",
+    ...(options.agentInputLines ?? []),
     "  - id: main-comment",
     "    uses: core/main-comment",
     "    with:",
     `      review: ${expr("steps.review.outputs.result")}`,
-    `      template: ${options.mainTemplate}`,
+    `      template: ${options.mainTemplate ?? "pipr/main"}`,
     "  - id: inline-comments",
     "    uses: core/inline-comments",
     "    with:",

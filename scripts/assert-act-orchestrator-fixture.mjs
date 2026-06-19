@@ -5,18 +5,19 @@ import { assert, assertEqual, readOnlyMainComment } from "./assert-act-fixture-h
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [fixturePath] = process.argv.slice(2);
   if (!fixturePath) {
-    throw new Error("usage: assert-act-condensed-fixture.mjs <fixture-path>");
+    throw new Error("usage: assert-act-orchestrator-fixture.mjs <fixture-path>");
   }
-  assertActCondensedFixture(JSON.parse(await readFile(fixturePath, "utf8")));
+  assertActOrchestratorFixture(JSON.parse(await readFile(fixturePath, "utf8")));
 }
 
-export function assertActCondensedFixture(fixture) {
+export function assertActOrchestratorFixture(fixture) {
   const mainComment = readOnlyMainComment(fixture);
   assert(mainComment.includes("<!-- pipr:main-comment pr=1 -->"), "main comment marker missing");
   assert(
-    mainComment.includes("Condensed act fixture reached Pi after runtime tools passed."),
-    "condensed summary missing",
+    mainComment.includes(
+      "Orchestrated review combined correctness, security, and tests specialist outputs.",
+    ),
+    "orchestrated summary missing",
   );
   assertEqual((fixture.reviewCommentPayloads ?? []).length, 0, "unexpected inline payloads");
-  assertEqual((fixture.reviewComments ?? []).length, 0, "unexpected inline comments");
 }

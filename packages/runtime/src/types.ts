@@ -164,6 +164,30 @@ export const workflowInputSchema = z.strictObject({
 
 export const workflowInputsSchema = z.record(z.string(), workflowInputSchema);
 
+export const agentInputSchema = z
+  .strictObject({
+    type: z.enum(["string", "json"]),
+    required: z.boolean().optional(),
+    default: z.unknown().optional(),
+    enum: z.array(z.string().min(1)).optional(),
+  })
+  .superRefine((input, context) => {
+    if (input.type === "string") {
+      if (input.default !== undefined && typeof input.default !== "string") {
+        context.addIssue({ code: "custom", path: ["default"], message: "must be string" });
+      }
+      return;
+    }
+    if (input.enum !== undefined) {
+      context.addIssue({ code: "custom", path: ["enum"], message: "is only supported for string" });
+    }
+    if (input.default !== undefined && !z.json().safeParse(input.default).success) {
+      context.addIssue({ code: "custom", path: ["default"], message: "must be JSON value" });
+    }
+  });
+
+export const agentInputsSchema = z.record(z.string(), agentInputSchema);
+
 const reservedWorkflowCommandLabels = new Set([piprHelpCommandLine]);
 
 export const workflowCommandSchema = z
@@ -219,6 +243,11 @@ export const blockRegistryEntrySchema = registryEntrySchema.extend({
   steps: z.array(workflowStepSchema).optional(),
   output: z.record(z.string(), z.unknown()).optional(),
   failurePolicy: failurePolicySchema.optional(),
+  execution: z
+    .strictObject({
+      mode: z.literal("parallel-dag"),
+    })
+    .optional(),
 });
 
 export const workflowCommandInvocationSchema = z.strictObject({
@@ -279,6 +308,8 @@ export type FailurePolicy = z.infer<typeof failurePolicySchema>;
 export type CommandPermissionLevel = z.infer<typeof commandPermissionLevelSchema>;
 export type WorkflowInput = z.infer<typeof workflowInputSchema>;
 export type WorkflowInputs = z.infer<typeof workflowInputsSchema>;
+export type AgentInput = z.infer<typeof agentInputSchema>;
+export type AgentInputs = z.infer<typeof agentInputsSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;
 export type WorkflowRegistryEntry = z.infer<typeof workflowRegistryEntrySchema>;

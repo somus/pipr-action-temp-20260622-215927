@@ -19,7 +19,11 @@ function main(): void {
   const version = runPi(options, ["--version"]).trim();
   const dockerfileVersion = readDockerfilePiVersion();
 
-  assertEqual(version, dockerfileVersion, "Dockerfile Pi package version must match pi --version");
+  if (version !== dockerfileVersion) {
+    throw new Error(
+      `Dockerfile Pi package version must match pi --version: expected '${dockerfileVersion}', got '${version}'`,
+    );
+  }
   assertContainsAll(help, piRequiredCliFlags, "Pi CLI flag");
   assertContainsAll(help, piThinkingLevels, "Pi thinking level");
   assertContainsAll(help, piBuiltinToolNames, "Pi built-in tool");
@@ -94,12 +98,6 @@ function readDockerfilePiVersion(): string {
     throw new Error("Dockerfile does not pin @earendil-works/pi-coding-agent");
   }
   return match[1];
-}
-
-function assertEqual(actual: string, expected: string, label: string): void {
-  if (actual !== expected) {
-    throw new Error(`${label}: expected '${expected}', got '${actual}'`);
-  }
 }
 
 function assertContainsAll(haystack: string, needles: readonly string[], label: string): void {

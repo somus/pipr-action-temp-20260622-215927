@@ -1,14 +1,19 @@
-import { type ZodType, z } from "zod";
+import { type JSONType, type ZodType, z } from "zod";
 import { commandPatternInputIds } from "../commands/grammar.js";
-import { piProviderIdSchema, piProviderProfileSchema } from "../pi/contract.js";
+import {
+  piProviderIdSchema,
+  piProviderProfileSchema,
+  piThinkingLevelSchema,
+} from "../pi/contract.js";
 import { prReviewSchemaId } from "../review/contract.js";
 import { isRecord } from "../shared/record.js";
 import {
+  agentInputsSchema,
   diffManifestLimitsConfigSchema,
   workflowCommandSchema,
   workflowInputsSchema,
 } from "../types.js";
-import { validateWorkflowExpressions } from "../workflow/expression.js";
+import { isWholeWorkflowExpression, validateWorkflowExpressions } from "../workflow/expression.js";
 
 export const piprApiVersion = "pipr.dev/v1";
 
@@ -29,28 +34,25 @@ const jsonSchemaTypeNames = new Set([
   "integer",
   "string",
 ]);
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
-const jsonValueSchema: ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-);
+const agentExpressionRoots = ["inputs"] as const;
 
 const stringMapSchema = z.record(z.string(), z.unknown());
 const componentKindSchema = z.enum(componentKindValues);
 const componentIdSchema = z.string().regex(componentIdRegex);
-const providerIdSchema = piProviderIdSchema;
 const commandIdSchema = z.string().regex(commandIdRegex);
 const failurePolicySchema = z.enum(["fail", "continue", "skip-output"]);
 
 const providerProfileSchema = piProviderProfileSchema;
+const inlineProviderSchema = piProviderProfileSchema.omit({ id: true });
+const templateExpressionStringSchema = z.string().refine(isWholeWorkflowExpression);
+const agentProviderRefSchema = z.union([piProviderIdSchema, templateExpressionStringSchema]);
+const agentInlineProviderSchema = z.strictObject({
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  apiKeyEnv: z.string().min(1),
+  thinking: z.union([piThinkingLevelSchema, templateExpressionStringSchema]).optional(),
+});
+const agentProviderSchema = z.union([agentProviderRefSchema, agentInlineProviderSchema]);
 
 const limitsSchema = z.strictObject({
   timeoutSeconds: z.number().int().positive().max(3600).optional(),
@@ -111,7 +113,8 @@ const agentComponentSchema = z.strictObject({
   apiVersion: z.literal(piprApiVersion),
   kind: z.literal("Agent"),
   id: componentIdSchema,
-  provider: providerIdSchema,
+  inputs: agentInputsSchema.optional(),
+  provider: agentProviderSchema,
   tools: z.array(componentIdSchema).optional(),
   output: z.strictObject({
     schema: componentIdSchema,
@@ -142,11 +145,9 @@ const schemaComponentSchema = z.strictObject({
   schema: stringMapSchema,
 });
 
-const jsonSchemaDocumentSchema = z
-  .record(z.string(), jsonValueSchema)
-  .superRefine((schema, context) => {
-    validateJsonSchemaShape(schema, context, []);
-  });
+const jsonSchemaDocumentSchema = z.record(z.string(), z.json()).superRefine((schema, context) => {
+  validateJsonSchemaShape(schema, context, []);
+});
 
 const componentValidators = {
   Workflow: workflowComponentSchema,
@@ -364,7 +365,11 @@ function assertCoreStepInputRefs(
   component: StepContainerComponent,
   step: { id: string; uses: string; with?: unknown },
 ): void {
-  if (step.uses !== "core/main-comment" || !isRecord(step.with) || !hasOwn(step.with, "template")) {
+  if (
+    step.uses !== "core/main-comment" ||
+    !isRecord(step.with) ||
+    !Object.hasOwn(step.with, "template")
+  ) {
     return;
   }
   const template = step.with.template;
@@ -391,9 +396,13 @@ function assertSafeMaterializedStep(
   );
 }
 
-function assertSafeMaterializedExpressions(label: string, value: unknown): void {
+function assertSafeMaterializedExpressions(
+  label: string,
+  value: unknown,
+  options: { allowedRoots?: readonly string[] } = {},
+): void {
   try {
-    validateWorkflowExpressions(value);
+    validateWorkflowExpressions(value, options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${label} has invalid expression: ${message}`);
@@ -424,8 +433,32 @@ function isExternalComponentRef(componentId: string): boolean {
 function assertAgentProviderRefs(config: PiprV1Config, components: PiprComponent[]): void {
   const providerIds = new Set(config.providers.map((provider) => provider.id));
   for (const agent of components.filter(isAgentComponent)) {
-    assertKnownProvider(agent.id, agent.provider, providerIds);
+    assertSafeMaterializedExpressions(`Agent '${agent.id}' provider`, agent.provider, {
+      allowedRoots: agentExpressionRoots,
+    });
+    if (typeof agent.provider === "string") {
+      if (!hasTemplateExpression(agent.provider)) {
+        assertKnownProvider(agent.id, agent.provider, providerIds);
+      }
+      continue;
+    }
+    if (!hasTemplateExpression(agent.provider)) {
+      assertSchemaValid(`Agent '${agent.id}' provider`, inlineProviderSchema, agent.provider);
+    }
   }
+}
+
+function hasTemplateExpression(value: unknown): boolean {
+  if (typeof value === "string") {
+    return value.includes("${{") || value.includes("}}");
+  }
+  if (Array.isArray(value)) {
+    return value.some(hasTemplateExpression);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value).some(hasTemplateExpression);
+  }
+  return false;
 }
 
 function assertAgentToolRefs(options: ValidateMaterializedProjectOptions): void {
@@ -537,10 +570,6 @@ function isInlineWorkflow(value: string | WorkflowComponent): value is WorkflowC
   return typeof value !== "string";
 }
 
-function hasOwn(value: object, key: string): boolean {
-  return Object.hasOwn(value, key);
-}
-
 function assertJsonSchema(filePath: string, schema: Record<string, unknown>): void {
   const parsed = jsonSchemaDocumentSchema.safeParse(schema);
   if (parsed.success) {
@@ -552,7 +581,7 @@ function assertJsonSchema(filePath: string, schema: Record<string, unknown>): vo
 }
 
 function validateJsonSchemaShape(
-  schema: Record<string, JsonValue>,
+  schema: Record<string, JSONType>,
   context: z.RefinementCtx,
   path: Array<string | number>,
 ): void {
@@ -565,7 +594,7 @@ function validateJsonSchemaShape(
 }
 
 function validateJsonSchemaType(
-  value: JsonValue | undefined,
+  value: JSONType | undefined,
   context: z.RefinementCtx,
   path: Array<string | number>,
 ): void {
@@ -590,7 +619,7 @@ function validateJsonSchemaType(
 }
 
 function validateStringArray(
-  value: JsonValue | undefined,
+  value: JSONType | undefined,
   context: z.RefinementCtx,
   path: Array<string | number>,
 ): void {
@@ -603,7 +632,7 @@ function validateStringArray(
 }
 
 function validateSchemaMap(
-  value: JsonValue | undefined,
+  value: JSONType | undefined,
   context: z.RefinementCtx,
   path: Array<string | number>,
 ): void {
@@ -620,7 +649,7 @@ function validateSchemaMap(
 }
 
 function validateNestedSchema(
-  value: JsonValue | undefined,
+  value: JSONType | undefined,
   context: z.RefinementCtx,
   path: Array<string | number>,
 ): void {
@@ -640,7 +669,7 @@ function validateNestedSchema(
   addJsonSchemaIssue(context, path, "must be a JSON Schema object or boolean");
 }
 
-function isJsonObject(value: JsonValue): value is Record<string, JsonValue> {
+function isJsonObject(value: JSONType): value is Record<string, JSONType> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

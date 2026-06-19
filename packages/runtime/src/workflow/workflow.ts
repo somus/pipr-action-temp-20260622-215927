@@ -1,4 +1,4 @@
-import { isRecord } from "../shared/record.js";
+import { isRecord, requireRecord } from "../shared/record.js";
 import type {
   BlockRegistryEntry,
   FailurePolicy,
@@ -7,7 +7,11 @@ import type {
   WorkflowRegistryEntry,
   WorkflowStep,
 } from "../types.js";
-import { resolveWorkflowValue, type WorkflowExpressionRoots } from "./expression.js";
+import {
+  collectWorkflowStepDependencies,
+  resolveWorkflowValue,
+  type WorkflowExpressionRoots,
+} from "./expression.js";
 
 export { resolveWorkflowValue } from "./expression.js";
 
@@ -26,7 +30,11 @@ export type WorkflowState = WorkflowExpressionRoots & {
 
 export type WorkflowBlockHandler = {
   validate?: (input: unknown, context: WorkflowContext) => void;
-  run: (input: unknown, context: WorkflowContext) => unknown | Promise<unknown>;
+  run: (
+    input: unknown,
+    context: WorkflowContext,
+    meta: WorkflowStepMeta,
+  ) => unknown | Promise<unknown>;
 };
 
 export type WorkflowBlockHandlers = Record<
@@ -56,6 +64,11 @@ type ExecuteStepOptions = {
   state: WorkflowState;
   blocks: WorkflowBlockHandlers;
   failurePolicy: FailurePolicy;
+};
+
+export type WorkflowStepMeta = {
+  stepId: string;
+  block: string;
 };
 
 export function selectWorkflowForEvent(
@@ -90,9 +103,89 @@ export async function executeWorkflow(
 }
 
 async function executeSteps(steps: WorkflowStep[], options: ExecuteStepOptions): Promise<void> {
-  for (const step of steps) {
-    await executeStep(step, options);
+  for (let index = 0; index < steps.length; ) {
+    const step = steps[index] as WorkflowStep;
+    if (!isParallelDagStep(step, options.registry)) {
+      await executeStep(step, options);
+      index += 1;
+      continue;
+    }
+
+    const parallelDagSteps: WorkflowStep[] = [];
+    while (steps[index] && isParallelDagStep(steps[index] as WorkflowStep, options.registry)) {
+      parallelDagSteps.push(steps[index] as WorkflowStep);
+      index += 1;
+    }
+    await executeParallelDagSteps(parallelDagSteps, options);
   }
+}
+
+async function executeParallelDagSteps(
+  steps: WorkflowStep[],
+  options: ExecuteStepOptions,
+): Promise<void> {
+  const pending = new Map(steps.map((step) => [step.id, step]));
+  const completed = new Set<string>();
+  while (pending.size > 0) {
+    const ready = [...pending.values()].filter((step) =>
+      isStepReady(step, pending, options.state, completed),
+    );
+    if (ready.length === 0) {
+      const waiting = [...pending.values()]
+        .map(
+          (step) =>
+            `${step.id} waits for ${[...missingStepDependencies(step, options.state, completed)].join(", ")}`,
+        )
+        .join("; ");
+      throw new Error(`Unable to resolve parallel step dependencies: ${waiting}`);
+    }
+    for (const step of ready) {
+      pending.delete(step.id);
+    }
+    await Promise.all(
+      ready.map(async (step) => {
+        try {
+          await executeStep(step, options);
+        } finally {
+          completed.add(step.id);
+        }
+      }),
+    );
+  }
+}
+
+function isStepReady(
+  step: WorkflowStep,
+  pending: Map<string, WorkflowStep>,
+  state: WorkflowState,
+  completed: ReadonlySet<string>,
+): boolean {
+  for (const dependency of collectWorkflowStepDependencies(step.with)) {
+    if (Object.hasOwn(state.steps, dependency) || completed.has(dependency)) {
+      continue;
+    }
+    if (pending.has(dependency)) {
+      return false;
+    }
+    return false;
+  }
+  return true;
+}
+
+function missingStepDependencies(
+  step: WorkflowStep,
+  state: WorkflowState,
+  completed: ReadonlySet<string>,
+): Set<string> {
+  return new Set(
+    [...collectWorkflowStepDependencies(step.with)].filter(
+      (dependency) => !Object.hasOwn(state.steps, dependency) && !completed.has(dependency),
+    ),
+  );
+}
+
+function isParallelDagStep(step: WorkflowStep, registry: RuntimeRegistry): boolean {
+  return findBlock(registry, step.block).execution?.mode === "parallel-dag";
 }
 
 async function executeStep(
@@ -118,7 +211,7 @@ async function executeResolvedStep(
   const input = resolveWorkflowValue(step.with ?? {}, options.state);
   return isDeclarativeBlock(block)
     ? await executeDeclarativeBlock(input, block, options)
-    : await executeHandlerBlock(input, block, options);
+    : await executeHandlerBlock(step, input, block, options);
 }
 
 function handleStepFailure(
@@ -170,19 +263,23 @@ async function executeDeclarativeBlock(
 }
 
 async function executeHandlerBlock(
+  step: WorkflowStep,
   input: unknown,
   block: BlockRegistryEntry,
   options: ExecuteStepOptions,
 ): Promise<Record<string, unknown>> {
   validateSchemaMap(input, block.inputs, `${block.id} input`);
-  const handler = hasOwn(options.blocks, block.id) ? options.blocks[block.id] : undefined;
+  const handler = Object.hasOwn(options.blocks, block.id) ? options.blocks[block.id] : undefined;
   if (!handler) {
     throw new Error(`No handler registered for block '${block.id}'`);
   }
 
   const normalized = normalizeHandler(handler);
   normalized.validate?.(input, options.state.context);
-  const result = await normalized.run(input, options.state.context);
+  const result = await normalized.run(input, options.state.context, {
+    stepId: step.id,
+    block: step.block,
+  });
   const outputs = { result };
   validateSchemaMap(outputs, block.outputs, `${block.id} output`);
   return outputs;
@@ -219,7 +316,7 @@ function validateSchemaMap(
   const record = requireRecord(value, label);
   const expectedKeys = new Set(Object.keys(schemaMap));
   for (const key of expectedKeys) {
-    if (!hasOwn(record, key)) {
+    if (!Object.hasOwn(record, key)) {
       throw new Error(`${label}.${key} is required`);
     }
     validateJsonSchemaValue(record[key], schemaMap[key], `${label}.${key}`);
@@ -306,17 +403,6 @@ function workflowEventCandidates(
   }
 
   return [event.eventName];
-}
-
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value;
-}
-
-function hasOwn(value: object, key: string): boolean {
-  return Object.hasOwn(value, key);
 }
 
 function freezeWorkflowValue<T>(value: T, seen = new WeakSet<object>()): T {

@@ -2,11 +2,13 @@
 import { strict as assert } from "node:assert";
 import { assertActCondensedFixture } from "./assert-act-condensed-fixture.mjs";
 import { assertActFullFixture } from "./assert-act-full-fixture.mjs";
+import { assertActOrchestratorFixture } from "./assert-act-orchestrator-fixture.mjs";
 
 const headSha = "head-sha";
 
 assert.doesNotThrow(() => assertActFullFixture(validFullFixture(), headSha));
 assert.doesNotThrow(() => assertActCondensedFixture(validCondensedFixture()));
+assert.doesNotThrow(() => assertActOrchestratorFixture(validOrchestratorFixture()));
 
 expectFailure("main comment marker missing", {
   ...validFullFixture(),
@@ -38,6 +40,11 @@ expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
   reviewCommentPayloads: [validInlinePayload()],
 });
 
+expectOrchestratorFailure("orchestrated summary missing", {
+  ...validOrchestratorFixture(),
+  issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->" }],
+});
+
 console.log("act fixture assertion tests ok");
 
 function expectFailure(message: string, fixture: PublicationFixture): void {
@@ -46,6 +53,10 @@ function expectFailure(message: string, fixture: PublicationFixture): void {
 
 function expectCondensedFailure(message: string, fixture: PublicationFixture): void {
   assert.throws(() => assertActCondensedFixture(fixture), { message });
+}
+
+function expectOrchestratorFailure(message: string, fixture: PublicationFixture): void {
+  assert.throws(() => assertActOrchestratorFixture(fixture), { message });
 }
 
 type ReviewCommentPayload = {
@@ -78,6 +89,17 @@ function validCondensedFixture(): PublicationFixture {
     ],
     reviewCommentPayloads: [],
     reviewComments: [],
+  };
+}
+
+function validOrchestratorFixture(): PublicationFixture {
+  return {
+    issueComments: [
+      {
+        body: "<!-- pipr:main-comment pr=1 -->\n\nOrchestrated review combined correctness, security, and tests specialist outputs.",
+      },
+    ],
+    reviewCommentPayloads: [],
   };
 }
 

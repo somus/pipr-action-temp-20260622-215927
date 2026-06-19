@@ -207,6 +207,29 @@ describe("loadMaterializedProject", () => {
     await expect(loadMaterializedProject({ rootDir })).rejects.toThrow("Raw secret-looking value");
   });
 
+  it("rejects Agent body template expressions outside Agent inputs", async () => {
+    const rootDir = await initializedProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "agents", "reviewer.md"),
+      [
+        "---",
+        "apiVersion: pipr.dev/v1",
+        "kind: Agent",
+        "id: pipr/reviewer",
+        "provider: deepseek",
+        "output:",
+        "  schema: core/pr-review",
+        "---",
+        "",
+        ["Review ", expr("steps.review.outputs.result")].join(""),
+      ].join("\n"),
+    );
+
+    await expect(loadMaterializedProject({ rootDir })).rejects.toThrow(
+      "Unknown workflow expression root 'steps'",
+    );
+  });
+
   it("rejects Agent tool refs when no plugin tool definition exists", async () => {
     const rootDir = await initializedProject();
     await writeFile(
@@ -323,4 +346,8 @@ async function initializedProject(): Promise<string> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-materialized-"));
   await initOfficialMinimalProject({ rootDir });
   return rootDir;
+}
+
+function expr(source: string): string {
+  return ["$", "{{ ", source, " }}"].join("");
 }

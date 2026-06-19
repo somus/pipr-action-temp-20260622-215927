@@ -257,11 +257,11 @@ function applyOption(options: CliOptions, args: string[], index: number): number
 }
 
 function getCommandHandler(command: string): CommandHandler | undefined {
-  return hasOwn(commandHandlers, command) ? commandHandlers[command] : undefined;
+  return Object.hasOwn(commandHandlers, command) ? commandHandlers[command] : undefined;
 }
 
 function getOptionHandler(option: string): OptionHandler | undefined {
-  return hasOwn(optionHandlers, option) ? optionHandlers[option] : undefined;
+  return Object.hasOwn(optionHandlers, option) ? optionHandlers[option] : undefined;
 }
 
 function isHelpOption(arg: string): boolean {
@@ -483,10 +483,6 @@ function listEntries(entries: RegistryEntry[]): void {
   for (const entry of entries) {
     console.log(`${entry.id}\t${entry.description}`);
   }
-}
-
-function hasOwn(value: object, key: string): boolean {
-  return Object.hasOwn(value, key);
 }
 
 main().catch((error: unknown) => {

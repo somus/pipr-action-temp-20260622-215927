@@ -7,7 +7,7 @@ case "$(uname -m)" in
 esac
 
 source_root="$(git rev-parse --show-toplevel)"
-tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/pipr-act-condensed.XXXXXX")"
+tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/pipr-act-orchestrator.XXXXXX")"
 worktree="$tmp_root/worktree"
 
 cleanup() {
@@ -19,17 +19,12 @@ git clone --quiet "$source_root" "$worktree"
 
 overlay_current_worktree() {
   local allowed_untracked_paths=(
-    "packages/runtime/src/pi/runtime-tools.ts"
-    "packages/runtime/src/pi/tests/runtime-tools.test.ts"
     "packages/runtime/src/review/agent-template.ts"
-    "packages/runtime/src/review/manifest-payload.ts"
-    "packages/runtime/src/review/tests/agent-template.test.ts"
-    "packages/runtime/src/review/tests/manifest-payload.test.ts"
     "packages/runtime/src/shared/json.ts"
     "scripts/assert-act-fixture-helpers.mjs"
-    "scripts/assert-act-condensed-fixture.mjs"
+    "scripts/assert-act-orchestrator-fixture.mjs"
     "test/fixtures/act/fake-pi"
-    "test/fixtures/act/workflows/pipr-local-condensed.yml"
+    "test/fixtures/act/workflows/pipr-local-orchestrator.yml"
   )
 
   while IFS=$'\t' read -r status first second; do
@@ -69,43 +64,105 @@ git -C "$worktree" config commit.gpgsign false
 
 mkdir -p "$worktree/.github/workflows" "$worktree/scripts" "$worktree/test/fixtures/act/project"
 cp "$source_root/scripts/assert-act-fixture-helpers.mjs" "$worktree/scripts/assert-act-fixture-helpers.mjs"
-cp "$source_root/scripts/assert-act-condensed-fixture.mjs" "$worktree/scripts/assert-act-condensed-fixture.mjs"
+cp "$source_root/scripts/assert-act-orchestrator-fixture.mjs" "$worktree/scripts/assert-act-orchestrator-fixture.mjs"
 cp "$source_root/test/fixtures/act/fake-pi" "$worktree/test/fixtures/act/fake-pi"
 cp \
-  "$source_root/test/fixtures/act/workflows/pipr-local-condensed.yml" \
-  "$worktree/.github/workflows/pipr-local-condensed.yml"
+  "$source_root/test/fixtures/act/workflows/pipr-local-orchestrator.yml" \
+  "$worktree/.github/workflows/pipr-local-orchestrator.yml"
 chmod +x "$worktree/test/fixtures/act/fake-pi"
 
-cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/config.yaml" <<'EOF'
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/agents/specialist.md" <<'EOF'
+---
 apiVersion: pipr.dev/v1
-kind: Config
-providers:
-  - id: deepseek
-    provider: deepseek
-    model: deepseek-v4-pro
-    apiKeyEnv: DEEPSEEK_API_KEY
-    thinking: high
-workflows:
-  - pipr/review
-limits:
-  timeoutSeconds: 300
-  diffManifest:
-    fullMaxBytes: 1
-    fullMaxEstimatedTokens: 1
-    condensedMaxBytes: 262144
-    condensedMaxEstimatedTokens: 65536
-    toolResponseMaxBytes: 4096
+kind: Agent
+id: pipr/specialist-reviewer
+inputs:
+  focus:
+    type: string
+    required: true
+    enum: [correctness, security, tests]
+provider: deepseek
+output:
+  schema: core/pr-review
+---
+
+Focus: ${{ inputs.focus }}
+Return a focused specialist review.
+EOF
+
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/agents/orchestrator.md" <<'EOF'
+---
+apiVersion: pipr.dev/v1
+kind: Agent
+id: pipr/review-orchestrator
+inputs:
+  reviews:
+    type: json
+    required: true
+provider: deepseek
+output:
+  schema: core/pr-review
+---
+
+Specialist reviews:
+${{ inputs.reviews }}
+EOF
+
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/workflows/review.yaml" <<'EOF'
+apiVersion: pipr.dev/v1
+kind: Workflow
+id: pipr/review
+description: Three specialist reviewers plus orchestrator fixture.
+on:
+  events:
+    - pull_request.opened
+steps:
+  - id: correctness
+    uses: core/run-agent
+    with:
+      agent: pipr/specialist-reviewer
+      inputs:
+        focus: correctness
+  - id: security
+    uses: core/run-agent
+    with:
+      agent: pipr/specialist-reviewer
+      inputs:
+        focus: security
+  - id: tests
+    uses: core/run-agent
+    with:
+      agent: pipr/specialist-reviewer
+      inputs:
+        focus: tests
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/review-orchestrator
+      inputs:
+        reviews:
+          correctness: ${{ steps.correctness.outputs.result }}
+          security: ${{ steps.security.outputs.result }}
+          tests: ${{ steps.tests.outputs.result }}
+  - id: main-comment
+    uses: core/main-comment
+    with:
+      review: ${{ steps.review.outputs.result }}
+      template: pipr/main
+  - id: inline-comments
+    uses: core/inline-comments
+    with:
+      review: ${{ steps.review.outputs.result }}
 EOF
 
 cat >"$worktree/test/fixtures/act/project/sample.ts" <<'EOF'
 export function reviewTarget(value: string): string {
-  const legacy = value.toLowerCase();
-  return legacy.trim();
+  return value.trim();
 }
 EOF
 
 git -C "$worktree" add -A
-git -C "$worktree" commit -m "test: prepare condensed act fixture base" >/dev/null
+git -C "$worktree" commit -m "test: prepare orchestrator act fixture base" >/dev/null
 base_sha="$(git -C "$worktree" rev-parse HEAD)"
 
 cat >"$worktree/test/fixtures/act/project/sample.ts" <<'EOF'
@@ -116,10 +173,10 @@ export function reviewTarget(value: string): string {
 EOF
 
 git -C "$worktree" add test/fixtures/act/project/sample.ts
-git -C "$worktree" commit -m "test: prepare condensed act fixture head" >/dev/null
+git -C "$worktree" commit -m "test: prepare orchestrator act fixture head" >/dev/null
 head_sha="$(git -C "$worktree" rev-parse HEAD)"
 
-cat >"$worktree/test/fixtures/act/pull_request_condensed.json" <<EOF
+cat >"$worktree/test/fixtures/act/pull_request_orchestrator.json" <<EOF
 {
   "action": "opened",
   "number": 1,
@@ -149,8 +206,8 @@ EOF
 (
   cd "$worktree"
   act pull_request \
-    -W .github/workflows/pipr-local-condensed.yml \
-    -e test/fixtures/act/pull_request_condensed.json \
+    -W .github/workflows/pipr-local-orchestrator.yml \
+    -e test/fixtures/act/pull_request_orchestrator.json \
     -P ubuntu-latest=catthehacker/ubuntu:act-latest \
     --container-architecture "$container_architecture"
 )

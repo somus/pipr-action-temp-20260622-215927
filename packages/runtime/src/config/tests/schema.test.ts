@@ -171,6 +171,89 @@ describe("pipr.dev/v1 schemas", () => {
     ).toThrow("unknown provider 'missing'");
   });
 
+  it("accepts Agent inputs and dynamic provider expressions", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Agent",
+      id: "pipr/reviewer",
+      inputs: {
+        provider: { type: "string", default: "primary" },
+        reviews: { type: "json", required: true },
+      },
+      provider: expr("inputs.provider"),
+      output: { schema: "core/pr-review" },
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [agent] }),
+    ).not.toThrow();
+  });
+
+  it("rejects Agent provider expressions outside Agent inputs", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Agent",
+      id: "pipr/reviewer",
+      provider: expr("steps.review.outputs.result"),
+      output: { schema: "core/pr-review" },
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [agent] }),
+    ).toThrow("Unknown workflow expression root 'steps'");
+  });
+
+  it("accepts inline Agent provider objects without id", () => {
+    const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
+    const agent = validateComponentDocument(".pipr/agents/reviewer.md", {
+      apiVersion: "pipr.dev/v1",
+      kind: "Agent",
+      id: "pipr/reviewer",
+      provider: {
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+      },
+      output: { schema: "core/pr-review" },
+    });
+
+    expect(() =>
+      validateMaterializedProject({ config: parsedConfig, components: [agent] }),
+    ).not.toThrow();
+  });
+
+  it("rejects invalid static inline Agent provider objects", () => {
+    expect(() =>
+      validateComponentDocument(".pipr/agents/reviewer.md", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Agent",
+        id: "pipr/reviewer",
+        provider: {
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+        },
+        output: { schema: "core/pr-review" },
+      }),
+    ).toThrow("/provider");
+  });
+
+  it("rejects invalid Agent input declarations", () => {
+    expect(() =>
+      validateComponentDocument(".pipr/agents/reviewer.md", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Agent",
+        id: "pipr/reviewer",
+        inputs: {
+          reviews: { type: "json", enum: ["full"] },
+        },
+        provider: "primary",
+        output: { schema: "core/pr-review" },
+      }),
+    ).toThrow("only supported for string");
+  });
+
   it("requires agent tool refs to resolve to plugin tools", () => {
     const parsedConfig = validatePiprConfigDocument(".pipr/config.yaml", configWithoutRefs());
     const agent = validateComponentDocument(".pipr/agents/reviewer.md", {

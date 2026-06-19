@@ -3,6 +3,7 @@ import { type BuildDiffManifestOptions, buildDiffManifest } from "../diff/diff.j
 import { piReadOnlyToolNames } from "../pi/contract.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../pi/runner.js";
 import { piRuntimeReadToolNames } from "../pi/runtime-tools.js";
+import { isRecord, requireRecord } from "../shared/record.js";
 import type {
   DiffManifest,
   DiffManifestLimitsConfig,
@@ -26,6 +27,11 @@ import {
   type WorkflowBlockHandlers,
   type WorkflowState,
 } from "../workflow/workflow.js";
+import {
+  bindAgentInputs,
+  renderAgentBodyTemplate,
+  resolveAgentProviderTemplate,
+} from "./agent-template.js";
 import {
   buildPublicationPlan,
   type InlineCommentDraft,
@@ -87,7 +93,14 @@ export async function runReviewRuntime(
     : undefined;
   let provider = providerOverride ?? resolveDefaultProvider(config);
   let repairAttempted = false;
-  let diffManifest: DiffManifest | undefined;
+  const diffManifest = parseDiffManifest(
+    (options.diffManifestBuilder ?? buildDiffManifest)({
+      cwd: options.workspace,
+      baseSha: options.event.baseSha,
+      headSha: options.event.headSha,
+    }),
+  );
+  const selectedProviders = new Map<string, ProviderConfig>();
   assertReviewWorkflowContract(options.registry, options.event, options.workflowId);
   const workflow = await executeWorkflow({
     registry: options.registry,
@@ -98,19 +111,16 @@ export async function runReviewRuntime(
     blocks: reviewWorkflowHandlers({
       options: { ...options, config, providerOverride },
       provider,
+      diffManifest,
       markRepairAttempted: () => {
         repairAttempted = true;
       },
-      setDiffManifest: (manifest) => {
-        diffManifest = manifest;
+      setStepProvider: (stepId, selectedProvider) => {
+        selectedProviders.set(stepId, selectedProvider);
       },
-      getDiffManifest: () => diffManifest,
-      setProvider: (selectedProvider) => {
-        provider = selectedProvider;
-      },
-      getProvider: () => provider,
     }),
   });
+  provider = selectedProviders.get("review") ?? provider;
   const validated = parseValidatedReview(
     requireStepResult<ValidatedReview>(workflow.state, "review"),
   );
@@ -144,7 +154,7 @@ export async function runReviewRuntime(
 
   return {
     provider,
-    diffManifest: requireWorkflowValue(diffManifest, "diff_manifest"),
+    diffManifest,
     review: validated.review,
     validated,
     publicationPlan,
@@ -195,37 +205,34 @@ const reservedReviewSteps = [
 function reviewWorkflowHandlers(options: {
   options: RunReviewRuntimeOptions;
   provider: ProviderConfig;
+  diffManifest: DiffManifest;
   markRepairAttempted: () => void;
-  setDiffManifest: (manifest: DiffManifest) => void;
-  setProvider: (provider: ProviderConfig) => void;
-  getProvider: () => ProviderConfig;
-  getDiffManifest: () => DiffManifest | undefined;
+  setStepProvider: (stepId: string, provider: ProviderConfig) => void;
 }): WorkflowBlockHandlers {
   const runtime = options.options;
   return {
-    "core/run-agent": async (input) => {
+    "core/run-agent": async (input, _context, meta) => {
       const agentInput = readAgentInput(input);
-      const manifest = parseDiffManifest(
-        (runtime.diffManifestBuilder ?? buildDiffManifest)({
-          cwd: runtime.workspace,
-          baseSha: runtime.event.baseSha,
-          headSha: runtime.event.headSha,
-        }),
-      );
-      options.setDiffManifest(manifest);
       const agent = resolveReviewerAgent(runtime.project, agentInput.agent);
+      const agentInputs = agent
+        ? bindAgentInputs(agent.document, agentInput.inputs)
+        : readNoAgentInputs(agentInput.inputs);
       const provider =
         runtime.providerOverride ??
-        (agent ? resolveProvider(runtime.config, agent.document.provider) : options.provider);
-      options.setProvider(provider);
+        (agent
+          ? resolveAgentProvider(runtime.config, agent.document, agentInputs)
+          : options.provider);
+      options.setStepProvider(meta.stepId, provider);
       const result = await runReviewerAgent({
         provider,
-        diffManifest: manifest,
+        diffManifest: options.diffManifest,
         diffManifestLimits: runtime.config.limits?.diffManifest,
         event: runtime.event,
         env: runtime.env,
         workspace: runtime.workspace,
-        agentInstructions: agent?.body,
+        agentInstructions: agent
+          ? renderAgentBodyTemplate(agent.document.id, agent.body, agentInputs)
+          : undefined,
         outputSchemaId: agent?.document.output.schema,
         piExecutable: runtime.piExecutable,
         piRunner: runtime.piRunner,
@@ -234,7 +241,7 @@ function reviewWorkflowHandlers(options: {
       if (result.repairAttempted) {
         options.markRepairAttempted();
       }
-      return validatePrReview(result.review, manifest, {
+      return validatePrReview(result.review, options.diffManifest, {
         minConfidence: runtime.config.publication.minConfidence,
         expectedHeadSha: runtime.event.headSha,
       });
@@ -250,7 +257,7 @@ function reviewWorkflowHandlers(options: {
     "core/inline-comments": (input) =>
       prepareInlinePublicationItems({
         validated: readValidatedReview(input, "core/inline-comments input"),
-        manifest: requireWorkflowValue(options.getDiffManifest(), "diff_manifest"),
+        manifest: options.diffManifest,
         reviewedHeadSha: runtime.event.headSha,
       }),
   };
@@ -258,13 +265,22 @@ function reviewWorkflowHandlers(options: {
 
 type AgentRunInput = {
   agent?: string;
+  inputs?: unknown;
 };
 
 function readAgentInput(input: unknown): AgentRunInput {
   const value = requireRecord(input, "core/run-agent input");
   return {
     agent: typeof value.agent === "string" ? value.agent : undefined,
+    inputs: Object.hasOwn(value, "inputs") ? value.inputs : undefined,
   };
+}
+
+function readNoAgentInputs(inputs: unknown): Record<string, never> {
+  if (inputs !== undefined) {
+    throw new Error("core/run-agent inputs require an Agent id");
+  }
+  return {};
 }
 
 function resolveReviewerAgent(
@@ -297,13 +313,38 @@ function resolveReviewerAgent(
   };
 }
 
+function resolveAgentProvider(
+  config: PiprConfig,
+  agent: Extract<MaterializedProject["components"][number], { kind: "Agent" }>,
+  inputs: ReturnType<typeof bindAgentInputs>,
+): ProviderConfig {
+  const provider = resolveAgentProviderTemplate(agent.provider, inputs);
+  if (typeof provider === "string") {
+    return resolveProvider(config, provider);
+  }
+  if (!isRecord(provider)) {
+    throw new Error(`Agent '${agent.id}' provider must resolve to provider id or provider object`);
+  }
+  if (Object.hasOwn(provider, "id")) {
+    throw new Error(`Agent '${agent.id}' inline provider must not include id`);
+  }
+  return parseProviderConfig({
+    id: inlineProviderId(agent.id),
+    ...provider,
+  });
+}
+
+function inlineProviderId(agentId: string): string {
+  return `inline_${agentId.replace(/[^a-z0-9_-]/g, "_")}`;
+}
+
 function readValidatedReview(input: unknown, label: string): ValidatedReview {
   const value = requireRecord(input, label);
   return parseValidatedReview(value.review);
 }
 
 function readOptionalTemplateId(input: Record<string, unknown>): string | undefined {
-  if (!hasOwn(input, "template")) {
+  if (!Object.hasOwn(input, "template")) {
     return undefined;
   }
   if (typeof input.template !== "string") {
@@ -349,24 +390,6 @@ function requireStepResult<T>(state: WorkflowState, stepId: string): T {
     throw new Error(`Review workflow did not produce step '${stepId}' result`);
   }
   return output as T;
-}
-
-function requireWorkflowValue<T>(value: T | undefined, key: string): T {
-  if (value === undefined) {
-    throw new Error(`Review workflow did not produce '${key}'`);
-  }
-  return value;
-}
-
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function hasOwn(value: object, key: string): boolean {
-  return Object.hasOwn(value, key);
 }
 
 export async function runReviewerAgent(options: {

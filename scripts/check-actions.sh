@@ -7,3 +7,4 @@ bun run test:act-fixture
 bun run act:pr
 bun run act:pr-full
 bun run act:pr-condensed
+bun run act:pr-orchestrator

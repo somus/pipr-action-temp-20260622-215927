@@ -31,7 +31,12 @@ export function createCoreRegistry(): RuntimeRegistry {
     presets: [{ id: "core/default", description: "Default single-reviewer PR workflow", source }],
     workflows: [],
     blocks: [
-      { id: "core/run-agent", description: "Build diff and run one validated Pi review", source },
+      {
+        id: "core/run-agent",
+        description: "Build diff and run one validated Pi review",
+        source,
+        execution: { mode: "parallel-dag" },
+      },
       { id: "core/main-comment", description: "Create or update main review comment", source },
       { id: "core/inline-comments", description: "Publish validated inline comments", source },
     ],

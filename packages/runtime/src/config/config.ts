@@ -1,6 +1,7 @@
 import { access, lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
+import { validateWorkflowTemplateString } from "../workflow/expression.js";
 import { resolveContainedConfigDir } from "./paths.js";
 import {
   assertNoRawSecrets,
@@ -163,6 +164,7 @@ async function loadAgentMarkdownComponent(
 ): Promise<LoadedMaterializedComponent> {
   const { frontmatter, body } = parseMarkdownFrontmatter(source, await readFile(source, "utf8"));
   assertNoRawSecrets(source, body);
+  assertAgentBodyTemplate(source, body);
   const document = validateComponentDocument(source, frontmatter);
   assertMaterializedDirectoryKind(source, document, expectedKind);
   return {
@@ -172,6 +174,18 @@ async function loadAgentMarkdownComponent(
     source,
     body,
   };
+}
+
+function assertAgentBodyTemplate(source: string, body: string): void {
+  try {
+    validateWorkflowTemplateString(body, {
+      allowedRoots: ["inputs"],
+      invalidMessage: "invalid embedded expression",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${source}: Agent body has invalid expression: ${message}`);
+  }
 }
 
 function assertMaterializedDirectoryKind(

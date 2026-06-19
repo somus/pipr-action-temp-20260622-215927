@@ -20,6 +20,7 @@ git -C "$worktree" config user.email "pipr-act@example.invalid"
 git -C "$worktree" config user.name "pipr act fixture"
 
 mkdir -p "$worktree/.github/workflows" "$worktree/scripts" "$worktree/test/fixtures/act/project"
+cp "$source_root/scripts/assert-act-fixture-helpers.mjs" "$worktree/scripts/assert-act-fixture-helpers.mjs"
 cp "$source_root/scripts/assert-act-full-fixture.mjs" "$worktree/scripts/assert-act-full-fixture.mjs"
 cp "$source_root/test/fixtures/act/fake-pi" "$worktree/test/fixtures/act/fake-pi"
 cp \
@@ -35,6 +36,7 @@ EOF
 
 git -C "$worktree" add \
   .github/workflows/pipr-local-full.yml \
+  scripts/assert-act-fixture-helpers.mjs \
   scripts/assert-act-full-fixture.mjs \
   test/fixtures/act/fake-pi \
   test/fixtures/act/project/sample.ts

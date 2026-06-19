@@ -19,8 +19,15 @@ type TokenRead = {
 };
 
 type TokenReader = (source: string, index: number) => TokenRead | undefined;
+type PathSegment = string | number;
+type ExpressionParserOptions = {
+  onRef?: (ref: string) => void;
+  onPath?: (segments: readonly PathSegment[]) => void;
+  allowedRoots?: ReadonlySet<string>;
+};
 
 const expressionPattern = /^\s*\$\{\{\s*([\s\S]*?)\s*\}\}\s*$/;
+const embeddedExpressionPattern = /\$\{\{\s*([\s\S]*?)\s*\}\}/g;
 const unsafePathSegments = new Set(["__proto__", "prototype", "constructor"]);
 const expressionRoots = new Set(["inputs", "steps", "context", "config", "event"]);
 const tokenReaders: TokenReader[] = [
@@ -51,39 +58,75 @@ export function resolveWorkflowValue(value: unknown, roots: WorkflowExpressionRo
   return value;
 }
 
-export function validateWorkflowExpressions(value: unknown): void {
+export function renderWorkflowTemplateString(
+  value: string,
+  roots: WorkflowExpressionRoots,
+  options: {
+    renderValue: (value: unknown) => string;
+    invalidMessage: string;
+    allowedRoots?: readonly string[];
+  },
+): string {
+  validateWorkflowTemplateString(value, {
+    allowedRoots: options.allowedRoots,
+    invalidMessage: options.invalidMessage,
+  });
+  return value.replace(embeddedExpressionPattern, (_match, expression: string) =>
+    options.renderValue(resolveWorkflowExpression(expression, roots)),
+  );
+}
+
+function resolveWorkflowExpression(expression: string, roots: WorkflowExpressionRoots): unknown {
+  return new ExpressionParser(expression, roots).parse();
+}
+
+export function validateWorkflowExpressions(
+  value: unknown,
+  options: { allowedRoots?: readonly string[] } = {},
+): void {
+  const parserOptions =
+    options.allowedRoots === undefined
+      ? undefined
+      : { allowedRoots: new Set(options.allowedRoots) };
   if (typeof value === "string") {
-    validateWorkflowString(value);
+    validateWorkflowString(value, parserOptions);
     return;
   }
 
   if (Array.isArray(value)) {
     for (const item of value) {
-      validateWorkflowExpressions(item);
+      validateWorkflowExpressions(item, options);
     }
     return;
   }
 
   if (typeof value === "object" && value !== null) {
     for (const item of Object.values(value)) {
-      validateWorkflowExpressions(item);
+      validateWorkflowExpressions(item, options);
     }
   }
 }
 
-function resolveWorkflowString(value: string, roots: WorkflowExpressionRoots): unknown {
-  const expression = readExpression(value);
-  return expression === undefined ? value : new ExpressionParser(expression, roots).parse();
+export function validateWorkflowTemplateString(
+  value: string,
+  options: { allowedRoots?: readonly string[]; invalidMessage?: string } = {},
+): void {
+  const parserOptions =
+    options.allowedRoots === undefined
+      ? undefined
+      : { allowedRoots: new Set(options.allowedRoots) };
+  assertNoDanglingTemplateMarkers(value, options.invalidMessage ?? "Invalid workflow template");
+  value.replace(embeddedExpressionPattern, (_match, expression: string) => {
+    new ExpressionParser(expression, undefined, parserOptions).parse();
+    return "";
+  });
 }
 
-function validateWorkflowString(value: string): void {
-  const expression = readExpression(value);
-  if (expression !== undefined) {
-    new ExpressionParser(expression).parse();
-  }
+export function isWholeWorkflowExpression(value: string): boolean {
+  return expressionPattern.test(value);
 }
 
-function readExpression(value: string): string | undefined {
+function readWholeWorkflowExpression(value: string): string | undefined {
   const match = expressionPattern.exec(value);
   if (match) {
     return match[1] ?? "";
@@ -94,14 +137,78 @@ function readExpression(value: string): string | undefined {
   return undefined;
 }
 
+export function collectWorkflowStepDependencies(value: unknown): Set<string> {
+  const dependencies = new Set<string>();
+  collectWorkflowStepDependenciesInto(value, dependencies);
+  return dependencies;
+}
+
+function resolveWorkflowString(value: string, roots: WorkflowExpressionRoots): unknown {
+  const expression = readWholeWorkflowExpression(value);
+  return expression === undefined ? value : resolveWorkflowExpression(expression, roots);
+}
+
+function assertNoDanglingTemplateMarkers(value: string, message: string): void {
+  const sourceWithoutExpressions = value.replace(embeddedExpressionPattern, "");
+  if (sourceWithoutExpressions.includes("${{") || sourceWithoutExpressions.includes("}}")) {
+    throw new Error(message);
+  }
+}
+
+function validateWorkflowString(value: string, options?: ExpressionParserOptions): void {
+  const expression = readWholeWorkflowExpression(value);
+  if (expression !== undefined) {
+    new ExpressionParser(expression, undefined, options).parse();
+  }
+}
+
+function collectWorkflowStepDependenciesInto(value: unknown, dependencies: Set<string>): void {
+  if (typeof value === "string") {
+    const expression = readWholeWorkflowExpression(value);
+    if (expression === undefined) {
+      return;
+    }
+    for (const dependency of readWorkflowStepDependencies(expression)) {
+      dependencies.add(dependency);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectWorkflowStepDependenciesInto(item, dependencies);
+    }
+    return;
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const item of Object.values(value)) {
+      collectWorkflowStepDependenciesInto(item, dependencies);
+    }
+  }
+}
+
+function readWorkflowStepDependencies(expression: string): Set<string> {
+  const dependencies = new Set<string>();
+  new ExpressionParser(expression, undefined, {
+    onPath(segments) {
+      const [root, dependency] = segments;
+      if (root === "steps" && typeof dependency === "string") {
+        dependencies.add(dependency);
+      }
+    },
+  }).parse();
+  return dependencies;
+}
+
 class ExpressionParser {
   private readonly tokens: Token[];
   private cursor = 0;
   private skipRefResolution = false;
+  private lastPathSegments: PathSegment[] = [];
 
   constructor(
     expression: string,
     private readonly roots?: WorkflowExpressionRoots,
+    private readonly options: ExpressionParserOptions = {},
   ) {
     this.tokens = tokenizeExpression(expression);
   }
@@ -171,6 +278,8 @@ class ExpressionParser {
         const property = this.expect("identifier").value;
         assertSafePathSegment(property);
         ref = `${ref}.${property}`;
+        this.options.onRef?.(ref);
+        this.extendPath(property);
         value = this.readProperty(value, property, ref);
         continue;
       }
@@ -178,6 +287,8 @@ class ExpressionParser {
         const index = this.readBracketIndex();
         this.expectValue("]");
         ref = `${ref}.${String(index)}`;
+        this.options.onRef?.(ref);
+        this.extendPath(index);
         value = this.readProperty(value, index, ref);
         continue;
       }
@@ -194,29 +305,35 @@ class ExpressionParser {
     }
 
     if (token.kind === "identifier") {
-      if (!expressionRoots.has(token.value)) {
-        throw new Error(`Unknown workflow expression root '${token.value}'`);
-      }
-      this.lastRef = token.value;
-      return this.roots ? this.roots[token.value as keyof WorkflowExpressionRoots] : undefined;
+      return this.parseRootToken(token.value);
     }
-    if (token.kind === "string") {
+
+    const literal = readLiteralTokenValue(token);
+    if (literal !== undefined) {
       this.lastRef = token.value;
-      return token.value;
+      this.lastPathSegments = [];
+      return literal;
     }
-    if (token.kind === "number") {
-      this.lastRef = token.value;
-      return Number(token.value);
-    }
-    if (token.kind === "boolean") {
-      this.lastRef = token.value;
-      return token.value === "true";
-    }
-    if (token.kind === "null") {
-      this.lastRef = token.value;
-      return null;
-    }
+
     throw new Error(`Unsupported workflow expression token '${token.value}'`);
+  }
+
+  private parseRootToken(root: string): unknown {
+    const allowedRoots = this.options.allowedRoots ?? expressionRoots;
+    if (!allowedRoots.has(root)) {
+      throw new Error(`Unknown workflow expression root '${root}'`);
+    }
+    this.lastRef = root;
+    this.lastPathSegments = [root];
+    return this.roots ? this.roots[root as keyof WorkflowExpressionRoots] : undefined;
+  }
+
+  private extendPath(segment: PathSegment): void {
+    if (this.lastPathSegments.length === 0) {
+      return;
+    }
+    this.lastPathSegments = [...this.lastPathSegments, segment];
+    this.options.onPath?.(this.lastPathSegments);
   }
 
   private readBracketIndex(): string | number {
@@ -423,6 +540,22 @@ function classifyIdentifier(value: string): Token {
     return { kind: "null", value };
   }
   return { kind: "identifier", value };
+}
+
+function readLiteralTokenValue(token: Token): unknown {
+  if (token.kind === "string") {
+    return token.value;
+  }
+  if (token.kind === "number") {
+    return Number(token.value);
+  }
+  if (token.kind === "boolean") {
+    return token.value === "true";
+  }
+  if (token.kind === "null") {
+    return null;
+  }
+  return undefined;
 }
 
 function assertSafePathSegment(segment: string): void {

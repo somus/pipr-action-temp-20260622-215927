@@ -1,29 +1,217 @@
 #!/usr/bin/env bun
 
-const prompt = process.argv.at(-1) ?? "";
-const marker = "\n\nDiff Manifest:\n";
-const markerIndex = prompt.lastIndexOf(marker);
+import { existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import { assert, assertEqual } from "../../../scripts/assert-act-fixture-helpers.mjs";
 
-if (markerIndex === -1) {
+const prompt = process.argv.at(-1) ?? "";
+const args = process.argv.slice(2, -1);
+
+if (!prompt.includes("Diff Manifest:")) {
   throw new Error("fake-pi could not find Diff Manifest in prompt");
 }
 
-const manifest = JSON.parse(prompt.slice(markerIndex + marker.length).trim());
-const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
-const range =
-  ranges.find(
-    (item) =>
-      item.path === "test/fixtures/act/project/sample.ts" &&
-      item.side === "RIGHT" &&
-      item.preview?.includes("normalized"),
-  ) ??
-  ranges.find((item) => item.path === "test/fixtures/act/project/sample.ts" && item.kind === "added") ??
-  ranges.find((item) => item.path === "test/fixtures/act/project/sample.ts" && item.side === "RIGHT");
+if (prompt.includes("Specialist reviews:")) {
+  writeOrchestratorReview();
+}
 
-if (!range) {
+if (prompt.includes("Focus: correctness")) {
+  writeReview("Orchestrator fixture review", "Correctness specialist review");
+}
+
+if (prompt.includes("Focus: security")) {
+  writeReview("Orchestrator fixture review", "Security specialist review");
+}
+
+if (prompt.includes("Focus: tests")) {
+  writeReview("Orchestrator fixture review", "Tests specialist review");
+}
+
+if (prompt.includes('"mode": "condensed"')) {
+  await assertCondensedRuntimeTools();
+  writeReview("Condensed fixture review", "Condensed act fixture reached Pi after runtime tools passed.");
+}
+
+writeFullFixtureReview();
+
+function writeFullFixtureReview() {
+  const manifest = parsePromptJson("Diff Manifest:");
+  const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
+  const range =
+    ranges.find(
+      (item) =>
+        item.path === "test/fixtures/act/project/sample.ts" &&
+        item.side === "RIGHT" &&
+        item.preview?.includes("normalized"),
+    ) ??
+    ranges.find(
+      (item) => item.path === "test/fixtures/act/project/sample.ts" && item.kind === "added",
+    ) ??
+    ranges.find(
+      (item) => item.path === "test/fixtures/act/project/sample.ts" && item.side === "RIGHT",
+    );
+
+  if (!range) {
+    writeReview("Fixture review", "Fake Pi found no commentable ranges.");
+  }
+
+  const evidenceSnippet =
+    range.preview
+      ?.split("\n")
+      .map((line) => line.trim())
+      .find(Boolean) ?? "changed fixture line";
+
   console.log(
     JSON.stringify({
-      summary: { body: "Fake Pi found no commentable ranges." },
+      summary: {
+        title: "Fixture review",
+        body: "Fake Pi reviewed the act full-flow fixture.",
+      },
+      inlineFindings: [
+        {
+          title: "Fixture inline finding",
+          body: "Full-flow act reached inline publication.",
+          path: range.path,
+          rangeId: range.id,
+          side: range.side,
+          startLine: range.startLine,
+          endLine: range.startLine,
+          severity: "medium",
+          category: "maintainability",
+          confidence: 0.99,
+          evidenceSnippet,
+        },
+      ],
+      nonInlineFindings: [],
+    }),
+  );
+}
+
+function writeOrchestratorReview() {
+  assertPromptContains("Correctness specialist review");
+  assertPromptContains("Security specialist review");
+  assertPromptContains("Tests specialist review");
+  writeReview(
+    "Orchestrator fixture review",
+    "Orchestrated review combined correctness, security, and tests specialist outputs.",
+  );
+}
+
+async function assertCondensedRuntimeTools() {
+  const toolNames = readFlagValue("--tools");
+  const extensionPath = readFlagValue("--extension");
+
+  assertEqual(
+    toolNames,
+    "read,grep,find,ls,pipr_read_diff,pipr_read_at_ref",
+    "unexpected condensed Pi tool allowlist",
+  );
+  for (const forbidden of ["bash", "edit", "write"]) {
+    assert(!toolNames.split(",").includes(forbidden), `forbidden tool '${forbidden}' was enabled`);
+  }
+  assert(existsSync(extensionPath), "runtime tool extension path missing");
+
+  const payload = parsePromptJson("Diff Manifest Payload:", "Diff Manifest:");
+  assertEqual(payload.mode, "condensed", "expected condensed manifest payload");
+  assert(prompt.includes("pipr_read_diff(path?, rangeId?)"), "prompt did not describe pipr_read_diff");
+  assert(
+    prompt.includes("pipr_read_at_ref(path, ref, rangeId)"),
+    "prompt did not describe pipr_read_at_ref",
+  );
+
+  const manifest = parsePromptJson("Diff Manifest:");
+  const file = manifest.files.find((item) => item.path === "test/fixtures/act/project/sample.ts");
+  assert(file, "condensed manifest missing sample file");
+  assert(file.commentableRanges.length > 0, "condensed manifest missing commentable ranges");
+  assert(!("preview" in file.commentableRanges[0]), "condensed range kept preview");
+
+  const range =
+    file.commentableRanges.find((item) => item.side === "RIGHT") ?? file.commentableRanges[0];
+  for (const key of [
+    "id",
+    "path",
+    "side",
+    "startLine",
+    "endLine",
+    "kind",
+    "hunkHeader",
+    "hunkContentHash",
+  ]) {
+    assert(range[key] !== undefined, `condensed range missing ${key}`);
+  }
+
+  const tools = await loadRuntimeTools(extensionPath);
+  const diffTool = assertTool(tools, "pipr_read_diff");
+  const atRefTool = assertTool(tools, "pipr_read_at_ref");
+  const leftRange = file.commentableRanges.find((item) => item.side === "LEFT");
+  assert(leftRange, "condensed manifest missing LEFT range for base read");
+
+  const diffByPath = await executeTool(diffTool, { path: file.path });
+  assertEqual(diffByPath.value.files.length, 1, "pipr_read_diff path filter returned wrong file count");
+  assertEqual(diffByPath.value.files[0].path, file.path, "pipr_read_diff returned wrong path");
+  assert(
+    diffByPath.value.files[0].commentableRanges.some((item) => item.preview?.includes("normalized")),
+    "pipr_read_diff did not return full range preview",
+  );
+
+  const diffByRange = await executeTool(diffTool, { rangeId: range.id });
+  assertEqual(
+    diffByRange.value.files[0].commentableRanges.length,
+    1,
+    "pipr_read_diff range filter returned wrong range count",
+  );
+  assertEqual(
+    diffByRange.value.files[0].commentableRanges[0].id,
+    range.id,
+    "pipr_read_diff returned wrong range",
+  );
+
+  const headContent = await executeTool(atRefTool, {
+    path: file.path,
+    ref: "head",
+    rangeId: range.id,
+  });
+  assert(headContent.content.includes("normalized"), "pipr_read_at_ref head read missed head content");
+  assertEqual(headContent.path, file.path, "pipr_read_at_ref head path mismatch");
+
+  const baseContent = await executeTool(atRefTool, {
+    path: file.path,
+    ref: "base",
+    rangeId: leftRange.id,
+  });
+  assert(baseContent.content.includes("legacy.trim()"), "pipr_read_at_ref base read missed base content");
+  assertEqual(baseContent.path, file.path, "pipr_read_at_ref base path mismatch");
+
+  const oppositeSideBase = await executeTool(atRefTool, {
+    path: file.path,
+    ref: "base",
+    rangeId: range.id,
+  });
+  assertEqual(oppositeSideBase.available, false, "pipr_read_at_ref widened opposite-side base read");
+
+  await assertRejects(
+    () => executeTool(diffTool, { path: "test/fixtures/act/project/missing.ts" }),
+    "not in the Diff Manifest",
+  );
+  await assertRejects(() => executeTool(diffTool, { rangeId: "rng_missing" }), "Unknown Diff Manifest range");
+  await assertRejects(
+    () => executeTool(atRefTool, { path: "../sample.ts", ref: "head", rangeId: range.id }),
+    "Unsafe manifest path",
+  );
+  await assertRejects(
+    () => executeTool(atRefTool, { path: file.path, ref: "topic", rangeId: range.id }),
+    "Unsupported ref",
+  );
+  await assertRejects(
+    () => executeTool(atRefTool, { path: file.path, ref: "head", rangeId: "rng_missing" }),
+    "Unknown Diff Manifest range",
+  );
+}
+
+function writeReview(title, body) {
+  console.log(
+    JSON.stringify({
+      summary: { title, body },
       inlineFindings: [],
       nonInlineFindings: [],
     }),
@@ -31,33 +219,58 @@ if (!range) {
   process.exit(0);
 }
 
-const evidenceSnippet =
-  range.preview
-    ?.split("\n")
-    .map((line) => line.trim())
-    .find(Boolean) ?? "changed fixture line";
+function readFlagValue(flag) {
+  const index = args.indexOf(flag);
+  assert(index !== -1 && args[index + 1] !== undefined, `${flag} missing`);
+  return args[index + 1];
+}
 
-console.log(
-  JSON.stringify({
-    summary: {
-      title: "Fixture review",
-      body: "Fake Pi reviewed the act full-flow fixture.",
+function parsePromptJson(startLabel, endLabel) {
+  const start = prompt.indexOf(startLabel);
+  assert(start !== -1, `prompt missing ${startLabel}`);
+  const contentStart = start + startLabel.length;
+  const end = endLabel === undefined ? prompt.length : prompt.indexOf(endLabel, contentStart);
+  assert(end !== -1, `prompt missing ${endLabel}`);
+  return JSON.parse(prompt.slice(contentStart, end).trim());
+}
+
+async function loadRuntimeTools(extensionPath) {
+  const registered = new Map();
+  const extension = await import(pathToFileURL(extensionPath).href);
+  await extension.default({
+    registerTool(tool) {
+      registered.set(tool.name, tool);
     },
-    inlineFindings: [
-      {
-        title: "Fixture inline finding",
-        body: "Full-flow act reached inline publication.",
-        path: range.path,
-        rangeId: range.id,
-        side: range.side,
-        startLine: range.startLine,
-        endLine: range.startLine,
-        severity: "medium",
-        category: "maintainability",
-        confidence: 0.99,
-        evidenceSnippet,
-      },
-    ],
-    nonInlineFindings: [],
-  }),
-);
+  });
+  return registered;
+}
+
+function assertTool(tools, name) {
+  const tool = tools.get(name);
+  assert(tool, `runtime tool ${name} was not registered`);
+  return tool;
+}
+
+async function executeTool(tool, params) {
+  const result = await tool.execute("act-fixture", params, undefined, undefined, { cwd: process.cwd() });
+  return result.details ?? JSON.parse(result.content[0].text);
+}
+
+async function assertRejects(run, expectedMessage) {
+  try {
+    await run();
+  } catch (error) {
+    assert(
+      error instanceof Error && error.message.includes(expectedMessage),
+      `expected rejection '${expectedMessage}', got '${error instanceof Error ? error.message : String(error)}'`,
+    );
+    return;
+  }
+  throw new Error(`expected rejection '${expectedMessage}'`);
+}
+
+function assertPromptContains(value) {
+  if (!prompt.includes(value)) {
+    throw new Error(`orchestrator prompt missing ${value}`);
+  }
+}
