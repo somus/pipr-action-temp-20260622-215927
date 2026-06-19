@@ -8,18 +8,15 @@ on:
   - pull_request.reopened
 steps:
   - id: review
-    uses: pipr/review-default
-    output: validated_review
+    uses: core/run-agent
+    with:
+      agent: pipr/reviewer
   - id: main-comment
     uses: core/main-comment
     with:
-      review:
-        from: validated_review
+      review: ${{ steps.review.outputs.result }}
       template: pipr/main
-    output: main_comment
   - id: inline-comments
     uses: core/inline-comments
     with:
-      review:
-        from: validated_review
-    output: inline_comments
+      review: ${{ steps.review.outputs.result }}

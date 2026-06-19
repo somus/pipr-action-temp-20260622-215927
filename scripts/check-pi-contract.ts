@@ -6,7 +6,7 @@ import {
   piReadOnlyToolNames,
   piRequiredCliFlags,
   piThinkingLevels,
-} from "../packages/runtime/src/pi-contract.js";
+} from "../packages/runtime/src/pi/contract.js";
 
 type CheckOptions = {
   image?: string;

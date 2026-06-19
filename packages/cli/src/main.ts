@@ -42,7 +42,7 @@ Commands:
   graph [--config-dir .pipr]       Print resolved workflow graph
   explain-config [--config-dir .pipr]
                                    Print resolved config and source
-  list-blocks|list-tools|list-agents|list-presets [--config-dir .pipr]
+  list-blocks|list-tools|list-agents|list-presets|list-commands [--config-dir .pipr]
 `;
 
 const commandHandlers: Record<string, CommandHandler> = {
@@ -56,6 +56,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   "list-tools": listTools,
   "list-agents": listAgents,
   "list-presets": listPresets,
+  "list-commands": listCommands,
   help: printHelp,
   "--help": printHelp,
   "-h": printHelp,
@@ -310,9 +311,13 @@ async function listPresets(options: CliOptions): Promise<void> {
   listEntries(await loadEntries(options, "presets"));
 }
 
+async function listCommands(options: CliOptions): Promise<void> {
+  listEntries(await loadEntries(options, "commands"));
+}
+
 function loadEntries(
   options: CliOptions,
-  collection: "blocks" | "tools" | "agents" | "presets",
+  collection: "blocks" | "tools" | "agents" | "presets" | "commands",
 ): Promise<RegistryEntry[]> {
   return runListCommand(
     {

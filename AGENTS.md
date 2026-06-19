@@ -32,7 +32,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Keep Fallow as repo quality tooling only. Do not put Fallow into pipr's review runtime.
 - Keep package public surfaces small. Export only deliberate APIs from package roots.
 - Put implementation details behind internal modules. Do not export helpers only for tests or convenience.
-- Keep Docker Action, CLI command handling, runtime workflow, config loading, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary.
+- Keep Docker Action, CLI command handling, runtime workflow, config loading, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In the review workflow, diff parsing, Pi execution, and review validation are not userland blocks; they are internal to `core/run-agent`.
 - Keep user configuration under `.pipr/`. `.pi` is only an internal Pi home inside the Docker image.
 - Preserve schema-first reviewer output: validate structured JSON, allow one repair attempt, and drop invalid findings with metadata.
 - Keep inline publishing strict: same-range comments only, capped count, confidence filtering, invalid finding drops, and marker dedupe.
@@ -43,16 +43,18 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 ## File Organization
 
 - Keep package root `src` small. Prefer `src/index.ts` plus deliberate public exports.
-- Move package internals into named modules such as `src/config.ts`, `src/diff.ts`, `src/comment.ts`, or domain-specific folders when a package grows.
+- Organize package internals into domain folders such as `src/action`, `src/config`, `src/diff`, `src/pi`, `src/registry`, `src/review`, `src/workflow`, and `src/shared`.
 - Name modules by current responsibility. Avoid `legacy`, `compat`, or old-system names for unreleased code.
 - Keep docs in `docs/`; keep ADRs in `docs/adr/`.
 - Keep local Action fixtures under `test/fixtures/`.
-- Test-only helpers should live in the nearest package `test/helpers.ts` or `test/helpers/*`.
+- Test-only helpers should live in the nearest `tests/helpers.ts` or `tests/helpers/*`.
 
 ## Test Organization
 
-- Put executable package tests in the package-local `test/` folder, matching the current `packages/runtime/test` layout.
+- Put executable package tests in the nearest `tests/` folder under the source folder they cover: `src/action/commands.ts` -> `src/action/tests/commands.test.ts`.
+- Keep the same colocated `tests/` pattern across packages. Use `src/tests` only for package-root files such as `src/index.ts` or `src/types.ts`.
 - Do not place `*.test.ts` directly beside runtime files.
+- Do not use package-level `test/` or `tests/` directories for executable tests.
 - Package-level fixture directories are allowed when they contain assets, not executable tests.
 - Prefer public API tests. Add internal tests only when a helper has meaningful independent complexity.
 - Preserve fixture behavior unless an intentional divergence is documented in the test.
@@ -60,7 +62,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 ## TDD And Verification
 
 - Use TDD for behavior changes: write or port one failing behavior test, implement the minimum, then refactor while green.
-- Add tests for config merge behavior, provider ID resolution, registry resolution, explicit `from:` refs, diff parsing, schema validation, comment rendering, GitHub publishing, and dry-run boundaries when those areas change.
+- Add tests for config merge behavior, provider ID resolution, registry resolution, workflow expressions, diff parsing, schema validation, comment rendering, GitHub publishing, and dry-run boundaries when those areas change.
 - Run the narrowest relevant package tests during development.
 - Run `mise run check` before opening or updating a PR.
 - Run `mise run check-actions` after Action, Docker, workflow, Pi CLI mapping, or event fixture changes.

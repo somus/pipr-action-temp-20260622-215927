@@ -1,13 +1,17 @@
 import { z } from "zod";
-import { piProviderProfileSchema } from "./pi-contract.js";
-import { prReviewSchema, reviewFindingSchema } from "./review-contract.js";
+import {
+  createCommandDefinitionSchema,
+  createCommandRunSchema,
+} from "./config/command-contract.js";
+import { piProviderProfileSchema } from "./pi/contract.js";
+import { prReviewSchema, reviewFindingSchema } from "./review/contract.js";
 
 export type {
   PrReview,
   ReviewFinding,
   ReviewFindingCategory,
   ReviewFindingSeverity,
-} from "./review-contract.js";
+} from "./review/contract.js";
 
 const nonEmptyStringSchema = z.string().min(1);
 
@@ -39,6 +43,7 @@ export const registryCollectionNameSchema = z.enum([
   "agents",
   "schemas",
   "comments",
+  "commands",
   "tools",
 ]);
 
@@ -50,6 +55,7 @@ const sourceModulesSchema = z
     agents: z.record(z.string(), z.string()).optional(),
     schemas: z.record(z.string(), z.string()).optional(),
     comments: z.record(z.string(), z.string()).optional(),
+    commands: z.record(z.string(), z.string()).optional(),
     tools: z.record(z.string(), z.string()).optional(),
   })
   .strict();
@@ -140,24 +146,46 @@ export const registryEntrySchema = z
   })
   .strict();
 
+export const failurePolicySchema = z.enum(["fail", "continue", "skip-output"]);
+export const jsonSchemaMapSchema = z.record(z.string(), z.unknown());
+
 export const workflowStepSchema = z
   .object({
+    id: nonEmptyStringSchema,
     block: nonEmptyStringSchema,
     with: z.unknown().optional(),
-    output: nonEmptyStringSchema.optional(),
+    failurePolicy: failurePolicySchema.optional(),
   })
   .strict();
 
 export const workflowRegistryEntrySchema = registryEntrySchema
   .extend({
     events: z.array(nonEmptyStringSchema),
+    failurePolicy: failurePolicySchema.optional(),
     steps: z.array(workflowStepSchema),
   })
   .strict();
 
 export const blockRegistryEntrySchema = registryEntrySchema
   .extend({
+    inputs: jsonSchemaMapSchema.optional(),
+    outputs: jsonSchemaMapSchema.optional(),
     steps: z.array(workflowStepSchema).optional(),
+    output: z.record(z.string(), z.unknown()).optional(),
+    failurePolicy: failurePolicySchema.optional(),
+  })
+  .strict();
+
+export const commandRunSchema = createCommandRunSchema(nonEmptyStringSchema);
+
+export const commandDefinitionSchema = createCommandDefinitionSchema(
+  nonEmptyStringSchema,
+  nonEmptyStringSchema,
+);
+
+export const commandSetRegistryEntrySchema = registryEntrySchema
+  .extend({
+    commands: z.array(commandDefinitionSchema),
   })
   .strict();
 
@@ -169,6 +197,7 @@ export const runtimeRegistrySchema = z
     agents: z.array(registryEntrySchema),
     schemas: z.array(registryEntrySchema),
     comments: z.array(registryEntrySchema),
+    commands: z.array(commandSetRegistryEntrySchema),
     tools: z.array(registryEntrySchema),
   })
   .strict();
@@ -181,6 +210,7 @@ export const runtimeModuleSetSchema = z
     agents: z.array(registryEntrySchema).optional(),
     schemas: z.array(registryEntrySchema).optional(),
     comments: z.array(registryEntrySchema).optional(),
+    commands: z.array(commandSetRegistryEntrySchema).optional(),
     tools: z.array(registryEntrySchema).optional(),
   })
   .strict();
@@ -210,9 +240,13 @@ export type DiffManifest = z.infer<typeof diffManifestSchema>;
 export type DroppedFinding = z.infer<typeof droppedFindingSchema>;
 export type ValidatedReview = z.infer<typeof validatedReviewSchema>;
 export type RegistryEntry = z.infer<typeof registryEntrySchema>;
+export type FailurePolicy = z.infer<typeof failurePolicySchema>;
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;
 export type WorkflowRegistryEntry = z.infer<typeof workflowRegistryEntrySchema>;
 export type BlockRegistryEntry = z.infer<typeof blockRegistryEntrySchema>;
+export type CommandRun = z.infer<typeof commandRunSchema>;
+export type CommandDefinition = z.infer<typeof commandDefinitionSchema>;
+export type CommandSetRegistryEntry = z.infer<typeof commandSetRegistryEntrySchema>;
 export type RuntimeRegistry = z.infer<typeof runtimeRegistrySchema>;
 export type RuntimeModuleSet = z.infer<typeof runtimeModuleSetSchema>;
 

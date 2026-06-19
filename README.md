@@ -27,7 +27,7 @@ pipr init
 pipr validate
 ```
 
-`pipr init` creates editable files under `.pipr/` for config, workflows, blocks, the reviewer agent, comment templates, and PR review schemas. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
+`pipr init` creates editable files under `.pipr/` for config, workflows, commands, the reviewer agent, comment templates, and PR review schemas. The minimal distribution does not create custom blocks; the default review flow calls `core/run-agent` directly. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
 
 ## GitHub Action shape
 
@@ -72,13 +72,13 @@ Provider secrets stay env-only through `apiKeyEnv`; pipr does not pass raw keys 
 `--api-key`. Pi runs with `--tools read,grep,find,ls`, so the reviewer can inspect the
 read-only workspace without `bash`, `write`, or `edit`.
 
-The Action also runs pipr's trusted Core MVP review graph. Repository `.pipr/workflows/*.yaml`
-is validated by local tooling, but cannot replace the Action review graph. Non-dry Action runs
-load executable `.pipr/` control-plane files from the pull request base commit, so invalid or
-deleted PR-head `.pipr/` files cannot block the trusted review run. Reviewer agent instructions
-and the Main Review Comment template are loaded from the pull request base commit, so a PR cannot
-change the prompt or rendered comment template that reviews it. The base commit must contain the
-materialized `.pipr/` tree.
+The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load the
+materialized workflow, command, agent, schema, comment-template, and optional block registry from
+the pull request base commit. That base-commit `.pipr/` tree is trusted review authority, while
+runtime-owned `core/run-agent` owns deterministic diff creation, Pi execution, and review
+validation. Runtime-owned comment handlers own comment preparation. Invalid or deleted PR-head
+`.pipr/` files cannot block the trusted review run. The base commit must contain the materialized
+`.pipr/` tree.
 
 ## Minimal config
 
@@ -97,34 +97,40 @@ providers:
 
 workflows:
   - pipr/review
+commands:
+  - pipr/default-commands
 
 limits:
   timeoutSeconds: 300
 ```
 
-The bundled workflow owns Main Review Comment rendering:
+The bundled workflow calls the safe review primitive directly, then renders comments:
 
 ```yaml
 steps:
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/reviewer
   - id: main-comment
     uses: core/main-comment
     with:
-      review:
-        from: validated_review
+      review: ${{ steps.review.outputs.result }}
       template: pipr/main
-    output: main_comment
 ```
+
+Review workflows must expose the reserved runtime step ids `review`, `main-comment`, and `inline-comments`.
 
 ## Registry modules
 
 The materialized `.pipr/` tree contains conventional component files:
 
 - `.pipr/workflows/*.yaml`
-- `.pipr/blocks/*.yaml`
 - `.pipr/agents/*.md`
 - `.pipr/comments/*.yaml`
+- `.pipr/commands/*.yaml`
 - `.pipr/schemas/*.json`
 
-Bundled product components use the `pipr/*` namespace. Runtime primitive blocks use the reserved `core/*` namespace.
+Custom `.pipr/blocks/*.yaml` files are supported for explicit user extensions, but the minimal distribution does not include one. Bundled product components use the `pipr/*` namespace. Runtime primitive blocks use the reserved `core/*` namespace.
 
 `pipr validate` checks the generated tree and reports source-file errors before model or GitHub publishing work starts.

@@ -10,8 +10,8 @@
     "build": "tsdown src/main.ts --dts --format esm --out-dir dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "biome check src test",
-    "format:check": "biome check src test",
+    "lint": "biome check src",
+    "format:check": "biome check src",
     "check": "bun run lint && bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {

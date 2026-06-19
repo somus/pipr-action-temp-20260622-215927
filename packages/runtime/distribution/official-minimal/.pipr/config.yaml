@@ -8,5 +8,7 @@ providers:
     thinking: high
 workflows:
   - pipr/review
+commands:
+  - pipr/default-commands
 limits:
   timeoutSeconds: 300
