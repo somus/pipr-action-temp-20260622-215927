@@ -1,0 +1,67 @@
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_79947881b14a81 125-129,274
+  s_e3682c1e6e7dd6::t_5a05722c022778 17-24,34-35,261
+packages/runtime/src/config/tests/schema.test.ts
+  s_e3682c1e6e7dd6::t_0a8c5a1f6831a4 124-140
+packages/runtime/src/pi/runtime-tools.ts
+  s_e3682c1e6e7dd6::t_4ce581e47a53cd 184-186,194-197
+  s_e3682c1e6e7dd6::t_772edd69a68aba 2,90
+  s_e3682c1e6e7dd6::t_fdd3bb97cfdb57 341-343
+  s_e3682c1e6e7dd6::t_70d8e066d9d50e 85-87
+  s_e3682c1e6e7dd6::t_c5945550f5bf08 1,3-84,88-89,92-183,187-193,198-340,344-346,348-440
+  s_e3682c1e6e7dd6::t_d236bf2963109c 91,347
+packages/runtime/src/pi/tests/runtime-tools.test.ts
+  s_e3682c1e6e7dd6::t_a28e5f358e8d69 2,150
+  s_e3682c1e6e7dd6::t_6d266e4e7cfdc8 149
+  s_e3682c1e6e7dd6::t_c296f728982001 114-122,197-207
+  s_e3682c1e6e7dd6::t_5cdb8df88861d2 1,3-6,8-11,20-113,123-148,151-163,168-173,175-196,208-213
+  s_e3682c1e6e7dd6::t_f06723346b3dbf 7,12-19,164-167,174
+packages/runtime/src/pi/contract.ts
+  s_e3682c1e6e7dd6::t_a646292f8639ff 14
+packages/runtime/src/review/manifest-payload.ts
+  s_e3682c1e6e7dd6::t_459c5648883354 28,66,70
+  s_e3682c1e6e7dd6::t_1100f930ff263d 1-27,29-65,67-69,72-131
+  s_e3682c1e6e7dd6::t_1953b54a91df13 71
+packages/runtime/src/review/tests/runtime.test.ts
+  s_e3682c1e6e7dd6::t_cf3b97405852cf 230-317,561,567,573,579,594-596
+README.md
+  s_e3682c1e6e7dd6::t_6b9748172fe313 78-83,115-126
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_7ec9e5ee379a7c 35-38,59-61
+packages/runtime/src/review/tests/manifest-payload.test.ts
+  s_e3682c1e6e7dd6::t_e8db0dcc30db9b 1-111
+packages/runtime/src/pi/tests/pi.test.ts
+  s_e3682c1e6e7dd6::t_df3071261b13d3 15,30,160-185
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 186-187
+packages/runtime/src/pi/runner.ts
+  s_e3682c1e6e7dd6::t_577cd14b899110 41-48,65,68,81-82
+  s_e3682c1e6e7dd6::t_0f083453ae9f1a 7
+  s_e3682c1e6e7dd6::t_54028983808555 5,16-19
+packages/runtime/src/review/runtime.ts
+  s_e3682c1e6e7dd6::t_e36c814ab4298d 5,456-459,463
+  s_e3682c1e6e7dd6::t_3cc508ed017321 8,375
+  s_e3682c1e6e7dd6::t_6a8a5cd8d1fa06 40
+  s_e3682c1e6e7dd6::t_fe058fe31fe2d1 224,386-389,392,402-408,426-432,447,452-455,464,487-498,500
+packages/runtime/src/config/schema.ts
+  s_e3682c1e6e7dd6::t_38e34c2aa33864 6-10,56-57
+docs/adr/0001-pipr-owns-pr-runtime-pi-owns-agent-execution.md
+  s_e3682c1e6e7dd6::t_79af73fab68903 6-7
+docs/adr/0002-docker-action-with-read-only-pi-workspace.md
+  s_e3682c1e6e7dd6::t_6d1c95e81e1bb8 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "50449bf77daebf30e6b0ab72a0d8be0da00e9bc5",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
