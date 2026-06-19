@@ -1,0 +1,71 @@
+packages/runtime/src/registry/registry.ts
+  s_e3682c1e6e7dd6::t_49f88e611d7a9e 2,39-45
+packages/runtime/src/config/schema.ts
+  s_e3682c1e6e7dd6::t_193d26e4e95307 4
+  s_e3682c1e6e7dd6::t_72fb4c0aaca7ef 307
+packages/cli/src/tests/main.test.ts
+  s_e3682c1e6e7dd6::t_23c93906913217 33
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 356
+  s_e3682c1e6e7dd6::t_0c2c6dc20ac2ab 27
+packages/runtime/src/review/runtime.ts
+  s_e3682c1e6e7dd6::t_752a9690f8c1f0 32-37
+  s_e3682c1e6e7dd6::t_9275241a48e6c2 234,365
+packages/runtime/src/review/contract.ts
+  s_e3682c1e6e7dd6::t_cf6321d8dfe3f1 4,36,74
+  s_e3682c1e6e7dd6::t_228b32e9a79a9d 3
+packages/runtime/src/review/review.ts
+  s_e3682c1e6e7dd6::t_13e5acbed74979 9,19
+packages/runtime/src/config/tests/schema.test.ts
+  s_e3682c1e6e7dd6::t_d00643e212d2da 153,169,187
+  s_e3682c1e6e7dd6::t_36739df5f6f795 374,734
+  s_e3682c1e6e7dd6::t_9f026042d4a0bb 573,576,584,587
+  s_e3682c1e6e7dd6::t_fa1313ba05fc59 328,333,372,378
+  s_e3682c1e6e7dd6::t_a53c751c16d088 735
+  s_e3682c1e6e7dd6::t_2956ee3f85dfc3 336-342,344-371,373,375-377
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 67,149,165,181,201,343,738
+README.md
+  s_e3682c1e6e7dd6::t_3a3652eab7ca79 79,143
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 30
+  s_e3682c1e6e7dd6::t_176a314a42ad69 145
+.pipr/agents/reviewer.md
+  s_e3682c1e6e7dd6::t_e9402f4cbefec6 7
+packages/runtime/distribution/official-minimal/.pipr/agents/reviewer.md
+  s_e3682c1e6e7dd6::t_1b7fd96a2ad133 7
+packages/runtime/src/review/tests/review.test.ts
+  s_e3682c1e6e7dd6::t_563f38e603332e 67,71-79,103-121
+  s_e3682c1e6e7dd6::t_8cebdaa6e31932 122-125
+docs/adr/0004-runtime-owned-review-kernel.md
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 10
+  s_e3682c1e6e7dd6::t_60c8b326a7b38f 13
+packages/runtime/src/config/tests/init.test.ts
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 30
+packages/runtime/src/action/tests/git-project.test.ts
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 23
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_eacd69a0a496a3 20
+  s_e3682c1e6e7dd6::t_a00716cc19673a 24
+packages/runtime/src/config/tests/materialized-config.test.ts
+  s_e3682c1e6e7dd6::t_ddee82fac09ea9 315-317
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 108,200,223
+docs/adr/0003-materialized-pipr-component-control-plane.md
+  s_e3682c1e6e7dd6::t_df72ae3a1685b3 3
+  s_e3682c1e6e7dd6::t_c89eee9265e5dc 14
+packages/runtime/src/review/tests/runtime.test.ts
+  s_e3682c1e6e7dd6::t_aa5a3b3346e197 217,295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "a26d1ea87a9acafd0bf4610024e57df9d1fe2c49",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
