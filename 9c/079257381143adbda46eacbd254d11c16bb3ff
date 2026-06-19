@@ -1,0 +1,21 @@
+packages/cli/src/tests/main.test.ts
+  s_e3682c1e6e7dd6::t_926ed9e2962e0e 504,506
+  s_e3682c1e6e7dd6::t_66b4cff632c9cf 100-102,430-500,503,505,507-520,585-586,668-669
+  s_e3682c1e6e7dd6::t_8e6b25207950cb 501-502
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "9c079257381143adbda46eacbd254d11c16bb3ff",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
