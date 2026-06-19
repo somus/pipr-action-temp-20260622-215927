@@ -118,6 +118,17 @@ describe("runtime boundary schemas", () => {
             status: "modified",
             additions: 1,
             deletions: 0,
+            hunks: [
+              {
+                hunkIndex: 1,
+                header: "@@ -1,0 +1,1 @@",
+                oldStart: 1,
+                oldLines: 0,
+                newStart: 1,
+                newLines: 1,
+                contentHash: "deadbeefcafe",
+              },
+            ],
             commentableRanges: [
               {
                 id: "range-1",
@@ -126,7 +137,9 @@ describe("runtime boundary schemas", () => {
                 startLine: 0,
                 endLine: 1,
                 kind: "added",
+                hunkIndex: 1,
                 hunkHeader: "@@ -1,0 +1,1 @@",
+                hunkContentHash: "deadbeefcafe",
               },
             ],
           },

@@ -75,9 +75,21 @@ export const commentableRangeSchema = z.strictObject({
   startLine: z.number().int().positive(),
   endLine: z.number().int().positive(),
   kind: rangeKindSchema,
+  hunkIndex: z.number().int().positive(),
   hunkHeader: nonEmptyStringSchema,
+  hunkContentHash: z.string().regex(/^[a-f0-9]{12}$/),
   summary: z.string().optional(),
   preview: z.string().optional(),
+});
+
+export const diffHunkSchema = z.strictObject({
+  hunkIndex: z.number().int().positive(),
+  header: nonEmptyStringSchema,
+  oldStart: z.number().int().min(0),
+  oldLines: z.number().int().min(0),
+  newStart: z.number().int().min(0),
+  newLines: z.number().int().min(0),
+  contentHash: z.string().regex(/^[a-f0-9]{12}$/),
 });
 
 export const diffManifestFileSchema = z.strictObject({
@@ -87,8 +99,9 @@ export const diffManifestFileSchema = z.strictObject({
   language: nonEmptyStringSchema.optional(),
   additions: z.number().int().min(0),
   deletions: z.number().int().min(0),
+  hunks: z.array(diffHunkSchema),
   commentableRanges: z.array(commentableRangeSchema),
-  riskSignals: z.array(z.string()).optional(),
+  signals: z.array(z.string()).optional(),
   changedSymbols: z.array(z.string()).optional(),
   excludedReason: nonEmptyStringSchema.optional(),
 });
@@ -240,6 +253,7 @@ export type FileStatus = z.infer<typeof fileStatusSchema>;
 export type ReviewSide = z.infer<typeof reviewSideSchema>;
 export type RangeKind = z.infer<typeof rangeKindSchema>;
 export type CommentableRange = z.infer<typeof commentableRangeSchema>;
+export type DiffHunk = z.infer<typeof diffHunkSchema>;
 export type DiffManifestFile = z.infer<typeof diffManifestFileSchema>;
 export type DiffManifest = z.infer<typeof diffManifestSchema>;
 export type DroppedFinding = z.infer<typeof droppedFindingSchema>;

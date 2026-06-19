@@ -28,6 +28,17 @@ const manifest: DiffManifest = {
       status: "modified",
       additions: 1,
       deletions: 0,
+      hunks: [
+        {
+          hunkIndex: 1,
+          header: "@@ -9,1 +10,3 @@",
+          oldStart: 9,
+          oldLines: 1,
+          newStart: 10,
+          newLines: 3,
+          contentHash: "deadbeefcafe",
+        },
+      ],
       commentableRanges: [
         {
           id: "range-1",
@@ -36,7 +47,9 @@ const manifest: DiffManifest = {
           startLine: 10,
           endLine: 12,
           kind: "added",
+          hunkIndex: 1,
           hunkHeader: "@@ -9,1 +10,3 @@",
+          hunkContentHash: "deadbeefcafe",
         },
       ],
     },
