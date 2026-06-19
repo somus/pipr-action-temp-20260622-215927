@@ -1,0 +1,47 @@
+test/fixtures/act/fake-pi
+  s_e3682c1e6e7dd6::t_a557baf64bf1c4 1-13,20-63
+  s_e3682c1e6e7dd6::t_c5b13fa5d1407b 14-19
+package.json
+  s_e3682c1e6e7dd6::t_a557baf64bf1c4 20-21
+  s_e3682c1e6e7dd6::t_276aa7d3cd82c7 19
+test/fixtures/act/workflows/pipr-local-full.yml
+  s_e3682c1e6e7dd6::t_77caa74de46a5d 49-50
+  s_e3682c1e6e7dd6::t_42e808428ca2ec 30
+  s_e3682c1e6e7dd6::t_17456612c8d34d 43-47
+  s_e3682c1e6e7dd6::t_a557baf64bf1c4 1-29,31-34,38-42
+  s_e3682c1e6e7dd6::t_7248f14963e5b0 35-37
+  s_e3682c1e6e7dd6::t_76b6a165b9ef38 48
+README.md
+  s_e3682c1e6e7dd6::t_a557baf64bf1c4 19
+scripts/act-pr-full-fixture.sh
+  s_e3682c1e6e7dd6::t_5b2259cb6ea525 18
+  s_e3682c1e6e7dd6::t_843c724af98325 22-23,38
+  s_e3682c1e6e7dd6::t_a557baf64bf1c4 1-17,19-21,24-37,39-89
+scripts/assert-act-full-fixture.mjs
+  s_e3682c1e6e7dd6::t_76b6a165b9ef38 1-61
+mise.toml
+  s_e3682c1e6e7dd6::t_a557baf64bf1c4 16,26-29
+scripts/check-actions.sh
+  s_e3682c1e6e7dd6::t_276aa7d3cd82c7 6
+  s_e3682c1e6e7dd6::t_a557baf64bf1c4 8
+scripts/test-act-full-fixture-assertions.ts
+  s_e3682c1e6e7dd6::t_76b6a165b9ef38 3,34-46
+  s_e3682c1e6e7dd6::t_73e58a0929da21 9-12
+  s_e3682c1e6e7dd6::t_77caa74de46a5d 1-2,4-8,13-33,47-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ba6648a76a2de9f8bcca25e5192726a1ef91909e",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
