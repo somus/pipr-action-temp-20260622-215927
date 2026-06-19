@@ -16,7 +16,7 @@ Local GitHub Action testing uses `act`:
 mise run check-actions
 ```
 
-This builds the Docker Action image, verifies the installed Pi CLI contract, and runs the local Action fixture through `act`. The fixture runs with `PIPR_DRY_RUN=1`; it proves Docker Action packaging and event/config loading without calling Pi or publishing comments.
+This builds the Docker Action image, verifies the installed Pi CLI contract, and runs local Action fixtures through `act`. The dry-run fixture proves Docker Action packaging and event/config loading without calling Pi or publishing comments. The full-flow fixture uses fake Pi and fake GitHub publication storage, then asserts one Main Review Comment and one Inline Review Comment payload are produced.
 
 ## Repository setup
 

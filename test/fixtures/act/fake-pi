@@ -1,0 +1,63 @@
+#!/usr/bin/env bun
+
+const prompt = process.argv.at(-1) ?? "";
+const marker = "\n\nDiff Manifest:\n";
+const markerIndex = prompt.lastIndexOf(marker);
+
+if (markerIndex === -1) {
+  throw new Error("fake-pi could not find Diff Manifest in prompt");
+}
+
+const manifest = JSON.parse(prompt.slice(markerIndex + marker.length).trim());
+const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
+const range =
+  ranges.find(
+    (item) =>
+      item.path === "test/fixtures/act/project/sample.ts" &&
+      item.side === "RIGHT" &&
+      item.preview?.includes("normalized"),
+  ) ??
+  ranges.find((item) => item.path === "test/fixtures/act/project/sample.ts" && item.kind === "added") ??
+  ranges.find((item) => item.path === "test/fixtures/act/project/sample.ts" && item.side === "RIGHT");
+
+if (!range) {
+  console.log(
+    JSON.stringify({
+      summary: { body: "Fake Pi found no commentable ranges." },
+      inlineFindings: [],
+      nonInlineFindings: [],
+    }),
+  );
+  process.exit(0);
+}
+
+const evidenceSnippet =
+  range.preview
+    ?.split("\n")
+    .map((line) => line.trim())
+    .find(Boolean) ?? "changed fixture line";
+
+console.log(
+  JSON.stringify({
+    summary: {
+      title: "Fixture review",
+      body: "Fake Pi reviewed the act full-flow fixture.",
+    },
+    inlineFindings: [
+      {
+        title: "Fixture inline finding",
+        body: "Full-flow act reached inline publication.",
+        path: range.path,
+        rangeId: range.id,
+        side: range.side,
+        startLine: range.startLine,
+        endLine: range.startLine,
+        severity: "medium",
+        category: "maintainability",
+        confidence: 0.99,
+        evidenceSnippet,
+      },
+    ],
+    nonInlineFindings: [],
+  }),
+);

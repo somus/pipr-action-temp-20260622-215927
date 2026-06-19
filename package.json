@@ -16,7 +16,9 @@
     "check": "turbo run check //#format:check //#fallow",
     "check:actions": "bash scripts/check-actions.sh",
     "check:pi-contract": "bun scripts/check-pi-contract.ts --image pipr-action:contract",
-    "act:pr": "scripts/act-pr-fixture.sh"
+    "test:act-fixture": "bun scripts/test-act-full-fixture-assertions.ts",
+    "act:pr": "scripts/act-pr-fixture.sh",
+    "act:pr-full": "scripts/act-pr-full-fixture.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
