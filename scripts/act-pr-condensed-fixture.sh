@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-case "$(uname -m)" in
-  arm64 | aarch64) container_architecture="linux/arm64" ;;
-  *) container_architecture="linux/amd64" ;;
-esac
-
 source_root="$(git rev-parse --show-toplevel)"
+source "$source_root/scripts/act-helpers.sh"
+
+container_architecture="$(pipr_container_architecture)"
+runner_image="$(pipr_act_runner_image)"
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/pipr-act-condensed.XXXXXX")"
 worktree="$tmp_root/worktree"
 
@@ -77,6 +76,7 @@ cp \
   "$source_root/test/fixtures/act/workflows/pipr-local-condensed.yml" \
   "$worktree/.github/workflows/pipr-local-condensed.yml"
 chmod +x "$worktree/test/fixtures/act/fake-pi"
+pipr_prepare_act_workflow "$worktree" "$worktree/.github/workflows/pipr-local-condensed.yml"
 
 cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/config.yaml" <<'EOF'
 apiVersion: pipr.dev/v1
@@ -106,6 +106,7 @@ export function reviewTarget(value: string): string {
 }
 EOF
 
+git -C "$worktree" add -f .github/act/action.yml
 git -C "$worktree" add -A
 git -C "$worktree" commit -m "test: prepare condensed act fixture base" >/dev/null
 base_sha="$(git -C "$worktree" rev-parse HEAD)"
@@ -148,11 +149,14 @@ cat >"$worktree/test/fixtures/act/pull_request_condensed.json" <<EOF
 }
 EOF
 
+pipr_ensure_act_runner_image "$container_architecture"
+
 (
   cd "$worktree"
   act pull_request \
     -W .github/workflows/pipr-local-condensed.yml \
     -e test/fixtures/act/pull_request_condensed.json \
-    -P ubuntu-latest=catthehacker/ubuntu:act-latest \
-    --container-architecture "$container_architecture"
+    -P "ubuntu-latest=$runner_image" \
+    --container-architecture "$container_architecture" \
+    --pull=false
 )

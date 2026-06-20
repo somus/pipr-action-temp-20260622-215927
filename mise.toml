@@ -13,7 +13,7 @@ description = "Run repository checks"
 run = "bun run check"
 
 [tasks.check-actions]
-description = "Build Docker Action, verify Pi contract, and run dry-run, full-flow, and condensed act fixtures"
+description = "Build local Docker Action image, verify Pi contract, and run act fixtures"
 run = "bun run check:actions"
 
 [tasks.check-pi-contract]

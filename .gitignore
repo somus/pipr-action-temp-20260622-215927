@@ -3,6 +3,7 @@ dist
 coverage
 .turbo
 .fallow
+.github/act
 .DS_Store
 *.log
 .env

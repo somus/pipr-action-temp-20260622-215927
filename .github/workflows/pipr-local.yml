@@ -17,6 +17,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Prepare act workspace permissions
+        shell: bash
+        run: chmod -R a+rX "$GITHUB_WORKSPACE"
       - uses: ./
         env:
           DEEPSEEK_API_KEY: local-fixture-key

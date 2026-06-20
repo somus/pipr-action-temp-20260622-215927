@@ -18,6 +18,16 @@ mise run check-actions
 
 This builds the Docker Action image, verifies the installed Pi CLI contract, and runs local Action fixtures through `act`. The dry-run fixture proves Docker Action packaging and event/config loading without calling Pi or publishing comments. The full-flow fixture uses fake Pi and fake GitHub publication storage, then asserts one Main Review Comment and one Inline Review Comment payload are produced.
 
+`check-actions` builds one local image, `pipr-action:act`, then generates local-only Action metadata under `.github/act/` so every `act` fixture uses that prebuilt image instead of rebuilding the Dockerfile. To test a future published image after the repository exists on GitHub, run:
+
+```bash
+PIPR_SKIP_ACTION_IMAGE_BUILD=1 \
+PIPR_ACTION_IMAGE=ghcr.io/somus/pipr-action:main \
+mise run act-pr-full
+```
+
+The GHCR image workflow is manual and does not publish by default. Until `ghcr.io/somus/pipr-action:main` is pushed and made public or explicitly shared, external sample repositories cannot use the image.
+
 ## Repository setup
 
 Start a repository by materializing the official minimal pipr distribution:
@@ -64,6 +74,8 @@ jobs:
           model: deepseek-v4-pro
           api-key-env: DEEPSEEK_API_KEY
 ```
+
+The source Action metadata still uses `runs.image: Dockerfile`. The prebuilt GHCR image path is prepared for later publishing, but root `action.yml` will stay source-compatible until the project is available on GitHub.
 
 The Docker Action pins provider execution from trusted Action inputs, not from PR-authored
 `.pipr/config.yaml`. This keeps a pull request from redirecting the provider backend, model,
