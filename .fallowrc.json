@@ -3,16 +3,13 @@
   "entry": [
     "packages/cli/src/main.ts",
     "packages/runtime/src/index.ts",
-    "packages/runtime/runtime-tools-extension.mjs"
+    "packages/runtime/src/pi/runtime-tools-extension.ts"
   ],
   "ignorePatterns": ["**/dist/**", "**/coverage/**", ".turbo/**", "node_modules/**"],
   "workspaces": {
     "patterns": ["packages/*"]
   },
   "duplicates": {
-    "ignore": ["**/dist/**", "**/coverage/**", "packages/runtime/runtime-tools-extension.mjs"]
-  },
-  "health": {
-    "ignore": ["packages/runtime/runtime-tools-extension.mjs"]
+    "ignore": ["**/dist/**", "**/coverage/**"]
   }
 }

@@ -214,7 +214,9 @@ describe("pipr runtime Pi read tools", () => {
         sourceWorkspace: repo.root,
         request: { manifest, toolResponseMaxBytes: 10 },
       });
-      expect(path.basename(prepared.extensionPath)).toBe("runtime-tools-extension.mjs");
+      expect(["runtime-tools-extension.ts", "runtime-tools-extension.mjs"]).toContain(
+        path.basename(prepared.extensionPath),
+      );
       expect(path.dirname(prepared.extensionPath)).not.toBe(path.join(toolRoot, "runtime-tools"));
       await expect(access(prepared.dataPath)).resolves.toBeUndefined();
       await expect(

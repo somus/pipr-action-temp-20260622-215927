@@ -9,10 +9,14 @@
     ".": {
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
+    },
+    "./runtime-tools-extension": {
+      "types": "./dist/pi/runtime-tools-extension.d.mts",
+      "default": "./dist/pi/runtime-tools-extension.mjs"
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --dts --format esm --out-dir dist",
+    "build": "tsdown src/index.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "biome check src",

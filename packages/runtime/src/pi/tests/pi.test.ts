@@ -280,7 +280,7 @@ describe("buildPiArgs", () => {
       expect(result.stdout).toContain("PIPR_RUNTIME_TOOLS_DATA=");
       expect(result.stdout).toContain("runtime-tools/data.json");
       expect(result.stdout).toContain("--extension");
-      expect(result.stdout).toContain("runtime-tools-extension.mjs");
+      expect(result.stdout).toMatch(/runtime-tools-extension\.(ts|mjs)/);
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

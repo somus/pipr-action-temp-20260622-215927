@@ -1,12 +1,24 @@
 import { spawnSync } from "node:child_process";
-import { access, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommentableRange, DiffHunk, DiffManifest, DiffManifestFile } from "../types.js";
+import type { DiffManifest } from "../types.js";
+import {
+  assertNoSymlinkPath,
+  type BaseRangeSnapshot,
+  boundedLineSlice,
+  isSafeManifestPath,
+  type LineWindow,
+  type ReadDiffParams,
+  type RuntimeToolData,
+  readAtRefParams,
+  readDiffFromRuntimeData,
+  resolveAllowedPath,
+  resolveReadAtRefRequest,
+  unavailableReadAtRefResult,
+} from "./runtime-tools-core.js";
 
 export const piRuntimeReadToolNames = ["pipr_read_diff", "pipr_read_at_ref"] as const;
-
-const readAtRefContextLines = 3;
 
 export type PiRuntimeReadToolName = (typeof piRuntimeReadToolNames)[number];
 
@@ -21,35 +33,7 @@ export type PreparedPiRuntimeReadTools = {
   toolNames: readonly PiRuntimeReadToolName[];
 };
 
-export type ReadDiffParams = {
-  path?: string;
-  rangeId?: string;
-};
-
-type ReadAtRefParams = {
-  path: string;
-  ref: "base" | "head";
-  rangeId: string;
-};
-
-type RuntimeToolData = {
-  manifest: DiffManifest;
-  toolResponseMaxBytes: number;
-  baseRanges: Record<string, BaseRangeSnapshot>;
-};
-
-type BaseRangeSnapshot = {
-  path: string;
-  ref: "base" | "head";
-  sourcePath: string;
-  rangeId: string;
-  startLine: number;
-  endLine: number;
-  available: boolean;
-  relativePath?: string;
-  bytes?: number;
-  truncated?: boolean;
-};
+export type { ReadDiffParams } from "./runtime-tools-core.js";
 
 export async function preparePiRuntimeReadTools(options: {
   root: string;
@@ -82,8 +66,9 @@ export async function preparePiRuntimeReadTools(options: {
 async function runtimeToolsExtensionPath(): Promise<string> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.join(moduleDir, "..", "..", "runtime-tools-extension.mjs"),
-    path.join(moduleDir, "..", "runtime-tools-extension.mjs"),
+    path.join(moduleDir, "pi", "runtime-tools-extension.mjs"),
+    path.join(moduleDir, "runtime-tools-extension.mjs"),
+    path.join(moduleDir, "runtime-tools-extension.ts"),
   ];
   for (const candidate of candidates) {
     if (await pathExists(candidate)) {
@@ -107,19 +92,10 @@ export function readDiffFromManifest(
   params: ReadDiffParams,
   maxBytes: number,
 ): unknown {
-  const { path: filePath, rangeId } = params;
-  if (filePath !== undefined) {
-    assertSafeManifestPath(filePath);
-    assertKnownManifestPath(manifest, filePath);
-  }
-  if (rangeId !== undefined && !findRange(manifest, rangeId)) {
-    throw new Error(`Unknown Diff Manifest range '${rangeId}'`);
-  }
-  const files = manifest.files
-    .filter((file) => filePath === undefined || file.path === filePath)
-    .map((file) => filterManifestFileRanges(file, rangeId))
-    .filter((file) => rangeId === undefined || file.commentableRanges.length > 0);
-  return boundedJson({ files }, maxBytes);
+  return readDiffFromRuntimeData(
+    { manifest, toolResponseMaxBytes: maxBytes, baseRanges: {} },
+    params,
+  );
 }
 
 export async function readAtRef(options: {
@@ -130,16 +106,17 @@ export async function readAtRef(options: {
   rangeId: string;
   maxBytes: number;
 }): Promise<unknown> {
-  const request = resolveReadAtRefRequest(options.manifest, {
+  const params = readAtRefParams({
     path: options.path,
     ref: options.ref,
     rangeId: options.rangeId,
   });
+  const request = resolveReadAtRefRequest(options.manifest, params);
   if (!request.window) {
     return unavailableReadAtRefResult(request);
   }
   const content =
-    options.ref === "base"
+    params.ref === "base"
       ? readGitBlobSlice({
           cwd: options.workspace,
           ref: options.manifest.mergeBaseSha,
@@ -154,56 +131,15 @@ export async function readAtRef(options: {
           maxBytes: options.maxBytes,
         });
   return {
-    path: options.path,
-    ref: options.ref,
+    path: params.path,
+    ref: params.ref,
     sourcePath: request.sourcePath,
-    rangeId: options.rangeId,
+    rangeId: params.rangeId,
     startLine: request.window.startLine,
     endLine: request.window.endLine,
     ...content,
   };
 }
-
-function filterManifestFileRanges(
-  file: DiffManifestFile,
-  rangeId: string | undefined,
-): DiffManifestFile {
-  if (rangeId === undefined) {
-    return file;
-  }
-  return {
-    ...file,
-    commentableRanges: file.commentableRanges.filter((range) => range.id === rangeId),
-  };
-}
-
-function boundedJson(value: unknown, maxBytes: number): unknown {
-  const text = JSON.stringify(value, null, 2);
-  const bytes = Buffer.byteLength(text, "utf8");
-  if (bytes <= maxBytes) {
-    return { truncated: false, bytes, value };
-  }
-  return {
-    truncated: true,
-    bytes,
-    maxBytes,
-    text: Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8"),
-  };
-}
-
-type ReadAtRefRequest = {
-  file: DiffManifestFile;
-  range: CommentableRange;
-  hunk: DiffHunk;
-  ref: "base" | "head";
-  sourcePath: string;
-  window: LineWindow | undefined;
-};
-
-type LineWindow = {
-  startLine: number;
-  endLine: number;
-};
 
 async function materializeBaseRangeSnapshots(options: {
   baseRoot: string;
@@ -296,159 +232,4 @@ async function readWorkspaceFileSlice(options: {
   await assertNoSymlinkPath(options.workspace, options.filePath);
   const content = await readFile(resolved, "utf8");
   return boundedLineSlice(content, options.window, options.maxBytes);
-}
-
-function boundedLineSlice(
-  content: string,
-  window: LineWindow,
-  maxBytes: number,
-): { available: true; content: string; bytes: number; truncated: boolean } {
-  const lines = splitLinesWithEndings(content);
-  const slice = lines.slice(window.startLine - 1, window.endLine).join("");
-  const buffer = Buffer.from(slice, "utf8");
-  return {
-    available: true,
-    content: buffer.subarray(0, maxBytes).toString("utf8"),
-    bytes: buffer.byteLength,
-    truncated: buffer.byteLength > maxBytes,
-  };
-}
-
-function splitLinesWithEndings(content: string): string[] {
-  const lines = content.match(/[^\n]*(?:\n|$)/g) ?? [];
-  if (lines.at(-1) === "") {
-    lines.pop();
-  }
-  return lines;
-}
-
-function resolveReadAtRefRequest(
-  manifest: DiffManifest,
-  params: ReadAtRefParams,
-): ReadAtRefRequest {
-  if (params.ref !== "base" && params.ref !== "head") {
-    throw new Error(`Unsupported ref '${String(params.ref)}'`);
-  }
-  assertSafeManifestPath(params.path);
-  const file = assertKnownManifestPath(manifest, params.path);
-  const range = assertKnownRange(manifest, file, params.rangeId);
-  const hunk = assertKnownHunk(file, range);
-  const sourcePath = params.ref === "base" ? (file.previousPath ?? file.path) : file.path;
-  assertSafeManifestPath(sourcePath);
-  return {
-    file,
-    range,
-    hunk,
-    ref: params.ref,
-    sourcePath,
-    window: lineWindowForRange(range, hunk, params.ref),
-  };
-}
-
-function lineWindowForRange(
-  range: CommentableRange,
-  hunk: DiffHunk,
-  ref: "base" | "head",
-): LineWindow | undefined {
-  const targetSide = ref === "base" ? "LEFT" : "RIGHT";
-  if (range.side !== targetSide) {
-    return undefined;
-  }
-  const hunkStart = ref === "base" ? hunk.oldStart : hunk.newStart;
-  const hunkLines = ref === "base" ? hunk.oldLines : hunk.newLines;
-  if (hunkLines === 0) {
-    return undefined;
-  }
-  const hunkEnd = hunkStart + hunkLines - 1;
-  return {
-    startLine: Math.max(hunkStart, range.startLine - readAtRefContextLines),
-    endLine: Math.min(hunkEnd, range.endLine + readAtRefContextLines),
-  };
-}
-
-function unavailableReadAtRefResult(request: ReadAtRefRequest): BaseRangeSnapshot {
-  return {
-    path: request.file.path,
-    ref: request.ref,
-    sourcePath: request.sourcePath,
-    rangeId: request.range.id,
-    startLine: 0,
-    endLine: 0,
-    available: false,
-  };
-}
-
-function assertKnownManifestPath(manifest: DiffManifest, filePath: string): DiffManifestFile {
-  const file = manifest.files.find((item) => item.path === filePath);
-  if (!file) {
-    throw new Error(`Path '${filePath}' is not in the Diff Manifest`);
-  }
-  return file;
-}
-
-function assertKnownRange(
-  manifest: DiffManifest,
-  file: DiffManifestFile,
-  rangeId: string,
-): CommentableRange {
-  const range = file.commentableRanges.find((item) => item.id === rangeId);
-  if (range) {
-    return range;
-  }
-  if (findRange(manifest, rangeId)) {
-    throw new Error(`Diff Manifest range '${rangeId}' is not in path '${file.path}'`);
-  }
-  throw new Error(`Unknown Diff Manifest range '${rangeId}'`);
-}
-
-function assertKnownHunk(file: DiffManifestFile, range: CommentableRange): DiffHunk {
-  const hunk = file.hunks.find(
-    (item) => item.hunkIndex === range.hunkIndex && item.contentHash === range.hunkContentHash,
-  );
-  if (!hunk) {
-    throw new Error(`Diff Manifest range '${range.id}' has no matching hunk`);
-  }
-  return hunk;
-}
-
-function findRange(manifest: DiffManifest, rangeId: string): boolean {
-  return manifest.files.some((file) =>
-    file.commentableRanges.some((range) => range.id === rangeId),
-  );
-}
-
-function assertSafeManifestPath(filePath: string): void {
-  if (!isSafeManifestPath(filePath)) {
-    throw new Error(`Unsafe manifest path '${filePath}'`);
-  }
-}
-
-function isSafeManifestPath(filePath: string): boolean {
-  return (
-    filePath.length > 0 &&
-    !filePath.includes("\0") &&
-    !path.isAbsolute(filePath) &&
-    !filePath.split(/[\\/]/).some((part) => part === ".." || part === ".git" || part === "")
-  );
-}
-
-function resolveAllowedPath(root: string, filePath: string): string {
-  const resolved = path.resolve(root, filePath);
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`Path '${filePath}' resolves outside the workspace`);
-  }
-  return resolved;
-}
-
-async function assertNoSymlinkPath(root: string, filePath: string): Promise<void> {
-  const parts = filePath.split(/[\\/]/);
-  let current = root;
-  for (const part of parts) {
-    current = path.join(current, part);
-    const stats = await lstat(current);
-    if (stats.isSymbolicLink()) {
-      throw new Error(`Path '${filePath}' crosses a symlink`);
-    }
-  }
 }
