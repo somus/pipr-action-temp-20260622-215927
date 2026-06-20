@@ -16,7 +16,6 @@ import { validateWorkflowExpressions } from "../workflow/expression.js";
 type WorkflowCommandEntry = NonNullable<WorkflowRegistryEntry["commands"]>[number];
 
 const registryCollections: RegistryCollectionName[] = [
-  "presets",
   "workflows",
   "blocks",
   "agents",
@@ -28,7 +27,6 @@ const registryCollections: RegistryCollectionName[] = [
 export function createCoreRegistry(): RuntimeRegistry {
   const source = "runtime:core";
   return {
-    presets: [{ id: "core/default", description: "Default single-reviewer PR workflow", source }],
     workflows: [],
     blocks: [
       {
@@ -63,7 +61,6 @@ export function createRuntimeRegistry(resolved?: Pick<ResolvedConfig, "modules">
 
 export function renderRegistryGraph(registry: RuntimeRegistry): string {
   return [
-    renderSimpleSection("Presets", registry.presets, "  - "),
     renderWorkflowSection(registry.workflows),
     renderBlockSection(registry.blocks),
     renderSimpleSection("Agents", registry.agents),
@@ -141,7 +138,6 @@ function sectionTitle(title: string): string {
 
 function mergeModules(base: RuntimeRegistry, modules: RuntimeModuleSet): RuntimeRegistry {
   return {
-    presets: mergeCollection(base.presets, modules.presets),
     workflows: mergeCollection(base.workflows, modules.workflows),
     blocks: mergeCollection(base.blocks, modules.blocks),
     agents: mergeCollection(base.agents, modules.agents),

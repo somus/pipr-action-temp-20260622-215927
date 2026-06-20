@@ -1,3 +1,4 @@
+import { Octokit } from "@octokit/rest";
 import { z } from "zod";
 import {
   commandLabels,
@@ -6,6 +7,7 @@ import {
   parseCommandPattern,
   piprHelpCommandLine,
 } from "../commands/grammar.js";
+import { githubApiVersion, parseRepoSlug } from "../shared/github.js";
 import type {
   CommandPermissionLevel,
   RegistryEntry,
@@ -82,11 +84,23 @@ export type WorkflowCommandResolution =
 export function createGitHubCommandClient(
   env: NodeJS.ProcessEnv = process.env,
 ): GitHubCommandClient {
+  const octokit = new Octokit({
+    auth: env.GITHUB_TOKEN,
+    baseUrl: env.GITHUB_API_URL ?? "https://api.github.com",
+    request: {
+      headers: {
+        "X-GitHub-Api-Version": githubApiVersion,
+      },
+    },
+  });
   return {
     async getPullRequest(options) {
-      const json = pullRequestDetailsSchema.parse(
-        await getJson(env, `/repos/${options.repo}/pulls/${options.pullRequestNumber}`),
-      );
+      const repo = parseRepoSlug(options.repo);
+      const { data } = await octokit.rest.pulls.get({
+        ...repo,
+        pull_number: options.pullRequestNumber,
+      });
+      const json = pullRequestDetailsSchema.parse(data);
       return {
         repo: json.base.repo?.full_name ?? options.repo,
         baseSha: json.base.sha,
@@ -95,11 +109,14 @@ export function createGitHubCommandClient(
     },
     async getRepositoryPermission(options) {
       try {
-        return repositoryPermissionResponseSchema.parse(
-          await getJson(env, `/repos/${options.repo}/collaborators/${options.username}/permission`),
-        );
+        const repo = parseRepoSlug(options.repo);
+        const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+          ...repo,
+          username: options.username,
+        });
+        return repositoryPermissionResponseSchema.parse(data);
       } catch (error) {
-        if (isGitHubApiStatus(error, 404)) {
+        if (isOctokitStatus(error, 404)) {
           return noRepositoryPermission;
         }
         throw error;
@@ -292,7 +309,6 @@ function invalidCommand(
     requiredPermission: command.requiredPermission ?? "write",
     body: renderCommandHelp(
       {
-        presets: [],
         workflows: [workflow],
         blocks: [],
         agents: [],
@@ -379,38 +395,6 @@ function isKnownPermission(value: string | undefined): value is CommandPermissio
   return value !== undefined && knownPermissions.has(value as CommandPermissionLevel);
 }
 
-async function getJson(env: NodeJS.ProcessEnv, path: string): Promise<unknown> {
-  const apiUrl = env.GITHUB_API_URL ?? "https://api.github.com";
-  const response = await fetch(`${apiUrl}${path}`, {
-    headers: githubHeaders(env),
-  });
-  if (!response.ok) {
-    throw new GitHubApiError(response.status, path);
-  }
-  return await response.json();
-}
-
-class GitHubApiError extends Error {
-  constructor(
-    readonly status: number,
-    path: string,
-  ) {
-    super(`GitHub API request failed (${status}) for ${path}`);
-  }
-}
-
-function isGitHubApiStatus(error: unknown, status: number): boolean {
-  return error instanceof GitHubApiError && error.status === status;
-}
-
-function githubHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2026-03-10",
-  };
-  const token = env.GITHUB_TOKEN;
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return headers;
+function isOctokitStatus(error: unknown, status: number): boolean {
+  return typeof error === "object" && error !== null && Reflect.get(error, "status") === status;
 }

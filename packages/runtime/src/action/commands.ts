@@ -164,7 +164,7 @@ export async function runGraphCommand(options: RuntimeCommandOptions): Promise<s
 
 export async function runListCommand(
   options: RuntimeCommandOptions,
-  collection: Extract<RegistryCollectionName, "blocks" | "tools" | "agents" | "presets">,
+  collection: Extract<RegistryCollectionName, "blocks" | "tools" | "agents">,
 ): Promise<RegistryEntry[]> {
   const runtime = await loadRuntimeProject({ ...options, requireProviderEnv: false });
   return runtime.registry[collection];

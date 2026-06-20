@@ -1,5 +1,7 @@
 import { Octokit } from "@octokit/rest";
 import { z } from "zod";
+import { firstNonEmptyLine } from "../commands/grammar.js";
+import { githubApiVersion, parseRepoSlug } from "../shared/github.js";
 import type { PullRequestEventContext } from "../types.js";
 import {
   extractFindingMarkers,
@@ -117,7 +119,7 @@ export function createGitHubPublicationClient(
     baseUrl: env.GITHUB_API_URL ?? "https://api.github.com",
     request: {
       headers: {
-        "X-GitHub-Api-Version": "2026-03-10",
+        "X-GitHub-Api-Version": githubApiVersion,
       },
     },
   });
@@ -322,7 +324,11 @@ function findMainComment(
 ): GitHubIssueComment | undefined {
   const token = `<!-- ${marker} pr=${pullRequestNumber} -->`;
   return comments.find(
-    (comment) => isOwnerComment(comment, ownerLogin) && firstNonEmptyLine(comment.body) === token,
+    (comment) =>
+      isOwnerComment(comment, ownerLogin) &&
+      (comment.body === null || comment.body === undefined
+        ? undefined
+        : firstNonEmptyLine(comment.body)) === token,
   );
 }
 
@@ -331,19 +337,4 @@ function isOwnerComment(
   ownerLogin: string,
 ): boolean {
   return comment.authorLogin === ownerLogin;
-}
-
-function firstNonEmptyLine(body: string | null | undefined): string | undefined {
-  return body
-    ?.split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-}
-
-function parseRepoSlug(value: string): { owner: string; repo: string } {
-  const [owner, repo, ...extra] = value.split("/");
-  if (!owner || !repo || extra.length > 0) {
-    throw new Error(`GitHub repo must be in owner/repo form, got '${value}'`);
-  }
-  return { owner, repo };
 }

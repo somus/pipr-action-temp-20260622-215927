@@ -203,22 +203,7 @@ describe("runReviewRuntime", () => {
     let manifestBuilds = 0;
     const runtime = await loadOfficialRuntimeProject();
     const pi = fakePiRunner([reviewSummary("Backend review."), reviewSummary("Docs review.")]);
-    const registry = createRuntimeRegistry({
-      modules: {
-        workflows: [
-          reviewWorkflow({
-            id: "pipr/backend",
-            paths: { include: ["src/**"] },
-            merge: "append",
-          }),
-          reviewWorkflow({
-            id: "pipr/docs",
-            paths: { include: ["docs/**"] },
-            merge: "append",
-          }),
-        ],
-      },
-    });
+    const registry = twoPathReviewRegistry("append");
 
     const result = await runRegistryReview({
       runtime,
@@ -232,12 +217,7 @@ describe("runReviewRuntime", () => {
 
     expect(manifestBuilds).toBe(1);
     expect(pi.prompts).toHaveLength(2);
-    expect(result.publicationPlan.metadata.selectedWorkflows).toEqual([
-      "pipr/backend",
-      "pipr/docs",
-    ]);
-    expect(result.mainComment).toContain("Backend review.");
-    expect(result.mainComment).toContain("Docs review.");
+    expectTwoWorkflowReview(result);
   });
 
   it("runs selected workflows in parallel while reducing results deterministically", async () => {
@@ -246,22 +226,7 @@ describe("runReviewRuntime", () => {
       reviewSummary("Backend review."),
       reviewSummary("Docs review."),
     ]);
-    const registry = createRuntimeRegistry({
-      modules: {
-        workflows: [
-          reviewWorkflow({
-            id: "pipr/backend",
-            paths: { include: ["src/**"] },
-            merge: "append",
-          }),
-          reviewWorkflow({
-            id: "pipr/docs",
-            paths: { include: ["docs/**"] },
-            merge: "append",
-          }),
-        ],
-      },
-    });
+    const registry = twoPathReviewRegistry("append");
 
     const result = await runRegistryReview({
       runtime,
@@ -271,25 +236,13 @@ describe("runReviewRuntime", () => {
     });
 
     expect(pi.maxActive()).toBeGreaterThan(1);
-    expect(result.publicationPlan.metadata.selectedWorkflows).toEqual([
-      "pipr/backend",
-      "pipr/docs",
-    ]);
-    expect(result.mainComment).toContain("Backend review.");
-    expect(result.mainComment).toContain("Docs review.");
+    expectTwoWorkflowReview(result);
   });
 
   it("fails when multiple workflows write the same main section without explicit merge", async () => {
     const runtime = await loadOfficialRuntimeProject();
     const pi = fakePiRunner([reviewSummary("Backend review."), reviewSummary("Docs review.")]);
-    const registry = createRuntimeRegistry({
-      modules: {
-        workflows: [
-          reviewWorkflow({ id: "pipr/backend", paths: { include: ["src/**"] } }),
-          reviewWorkflow({ id: "pipr/docs", paths: { include: ["docs/**"] } }),
-        ],
-      },
-    });
+    const registry = twoPathReviewRegistry();
 
     await expect(
       runRegistryReview({
@@ -351,22 +304,7 @@ describe("runReviewRuntime", () => {
   it("executes only the requested command workflow", async () => {
     const runtime = await loadOfficialRuntimeProject();
     const pi = fakePiRunner([reviewSummary("Docs review.")]);
-    const registry = createRuntimeRegistry({
-      modules: {
-        workflows: [
-          reviewWorkflow({
-            id: "pipr/backend",
-            paths: { include: ["src/**"] },
-            merge: "append",
-          }),
-          reviewWorkflow({
-            id: "pipr/docs",
-            paths: { include: ["docs/**"] },
-            merge: "append",
-          }),
-        ],
-      },
-    });
+    const registry = twoPathReviewRegistry("append");
 
     const result = await runRegistryReview({
       runtime,
@@ -1218,6 +1156,31 @@ function reviewWorkflow(options: {
   };
 }
 
+function twoPathReviewRegistry(merge?: "exclusive" | "replace" | "append" | "list") {
+  return createRuntimeRegistry({
+    modules: {
+      workflows: [
+        reviewWorkflow({
+          id: "pipr/backend",
+          paths: { include: ["src/**"] },
+          ...(merge ? { merge } : {}),
+        }),
+        reviewWorkflow({
+          id: "pipr/docs",
+          paths: { include: ["docs/**"] },
+          ...(merge ? { merge } : {}),
+        }),
+      ],
+    },
+  });
+}
+
+function expectTwoWorkflowReview(result: ReviewRuntimeResult): void {
+  expect(result.publicationPlan.metadata.selectedWorkflows).toEqual(["pipr/backend", "pipr/docs"]);
+  expect(result.mainComment).toContain("Backend review.");
+  expect(result.mainComment).toContain("Docs review.");
+}
+
 function manifestWithDocs() {
   return {
     ...manifest,
@@ -1541,11 +1504,7 @@ function fakePiRunner(outputs: string[]): {
     runtimeTools,
     timeoutSeconds,
     run: async (options) => {
-      envs.push(options.env);
-      prompts.push(options.prompt);
-      providerIds.push(options.provider.id);
-      runtimeTools.push(options.runtimeTools);
-      timeoutSeconds.push(options.timeoutSeconds);
+      recordPiRun({ envs, prompts, providerIds, runtimeTools, timeoutSeconds }, options);
       return {
         stdout: outputs.shift() ?? "",
         stderr: "",
@@ -1570,11 +1529,7 @@ function fakePiRunnerWithExitCodes(
   return {
     ...runner,
     run: async (options) => {
-      runner.envs.push(options.env);
-      runner.prompts.push(options.prompt);
-      runner.providerIds.push(options.provider.id);
-      runner.runtimeTools.push(options.runtimeTools);
-      runner.timeoutSeconds.push(options.timeoutSeconds);
+      recordPiRun(runner, options);
       const output = outputs.shift() ?? { stdout: "", stderr: "", exitCode: 0 };
       return {
         ...output,
@@ -1592,11 +1547,7 @@ function concurrentPiRunner(outputs: string[]): PiRunnerSpy & { maxActive: () =>
     ...runner,
     maxActive: () => maxActive,
     run: async (options) => {
-      runner.envs.push(options.env);
-      runner.prompts.push(options.prompt);
-      runner.providerIds.push(options.provider.id);
-      runner.runtimeTools.push(options.runtimeTools);
-      runner.timeoutSeconds.push(options.timeoutSeconds);
+      recordPiRun(runner, options);
       active += 1;
       maxActive = Math.max(maxActive, active);
       const stdout = outputs.shift() ?? "";
@@ -1610,6 +1561,17 @@ function concurrentPiRunner(outputs: string[]): PiRunnerSpy & { maxActive: () =>
       };
     },
   };
+}
+
+function recordPiRun(
+  runner: Pick<PiRunnerSpy, "envs" | "prompts" | "providerIds" | "runtimeTools" | "timeoutSeconds">,
+  options: Parameters<PiRunner>[0],
+): void {
+  runner.envs.push(options.env);
+  runner.prompts.push(options.prompt);
+  runner.providerIds.push(options.provider.id);
+  runner.runtimeTools.push(options.runtimeTools);
+  runner.timeoutSeconds.push(options.timeoutSeconds);
 }
 
 function expr(source: string): string {

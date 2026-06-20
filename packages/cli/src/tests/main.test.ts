@@ -63,7 +63,7 @@ describe("pipr CLI", () => {
     expect(command.exitCode).toBe(1);
     expect(`${command.stdout}\n${command.stderr}`).toContain("Unknown pipr command 'toString'");
     expect(option.exitCode).toBe(1);
-    expect(`${option.stdout}\n${option.stderr}`).toContain("Unknown option 'toString'");
+    expect(`${option.stdout}\n${option.stderr}`).toContain("Unexpected argument 'toString'");
   });
 
   it("runs action dry-run without requiring provider env", async () => {

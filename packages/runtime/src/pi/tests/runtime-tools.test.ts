@@ -236,6 +236,46 @@ describe("pipr runtime Pi read tools", () => {
     }
   });
 
+  it("keeps typed helpers and generated extension tools in parity", async () => {
+    const repo = await createGitRepo();
+    const toolRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-runtime-tools-parity-"));
+    try {
+      const manifest = renamedManifest(repo.baseSha, repo.headSha);
+      const prepared = await preparePiRuntimeReadTools({
+        root: toolRoot,
+        sourceWorkspace: repo.root,
+        request: { manifest, toolResponseMaxBytes: 10_000 },
+      });
+      const diffTool = await loadExtensionTool(prepared.extensionPath, "pipr_read_diff");
+      const atRefTool = await loadExtensionTool(prepared.extensionPath, "pipr_read_at_ref");
+
+      const diffParams = { path: "src/new.ts", rangeId: "range-1" };
+      expect(await executeExtensionTool(diffTool, repo.root, diffParams)).toEqual(
+        readDiffFromManifest(manifest, diffParams, 10_000),
+      );
+
+      const atRefParams = { path: "src/new.ts", ref: "head" as const, rangeId: "range-1" };
+      expect(await executeExtensionTool(atRefTool, repo.root, atRefParams)).toEqual(
+        await readAtRef({
+          workspace: repo.root,
+          manifest,
+          ...atRefParams,
+          maxBytes: 10_000,
+        }),
+      );
+
+      expect(() => readDiffFromManifest(manifest, { path: "src/missing.ts" }, 10_000)).toThrow(
+        "is not in the Diff Manifest",
+      );
+      await expect(
+        executeExtensionTool(diffTool, repo.root, { path: "src/missing.ts" }),
+      ).rejects.toThrow("is not in the Diff Manifest");
+    } finally {
+      await rm(repo.root, { recursive: true, force: true });
+      await rm(toolRoot, { recursive: true, force: true });
+    }
+  });
+
   it("returns unavailable instead of widening opposite-side reads to the whole hunk", async () => {
     const repo = await createGitRepo();
     try {

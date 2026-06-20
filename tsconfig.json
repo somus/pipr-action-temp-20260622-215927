@@ -6,9 +6,6 @@
       "path": "./packages/runtime"
     },
     {
-      "path": "./packages/sdk"
-    },
-    {
       "path": "./packages/cli"
     }
   ]

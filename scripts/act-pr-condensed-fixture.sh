@@ -14,59 +14,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-git clone --quiet "$source_root" "$worktree"
-
-overlay_current_worktree() {
-  local allowed_untracked_paths=(
-    "packages/runtime/src/pi/runtime-tools.ts"
-    "packages/runtime/src/pi/tests/runtime-tools.test.ts"
-    "packages/runtime/src/diff/path-filter.ts"
-    "packages/runtime/src/diff/tests/path-filter.test.ts"
-    "packages/runtime/src/review/agent-template.ts"
-    "packages/runtime/src/review/manifest-payload.ts"
-    "packages/runtime/src/review/tests/agent-template.test.ts"
-    "packages/runtime/src/review/tests/manifest-payload.test.ts"
-    "packages/runtime/src/shared/json.ts"
-    "scripts/assert-act-fixture-helpers.mjs"
-    "scripts/assert-act-condensed-fixture.mjs"
-    "test/fixtures/act/fake-pi"
-    "test/fixtures/act/workflows/pipr-local-condensed.yml"
-  )
-
-  while IFS=$'\t' read -r status first second; do
-    case "$status" in
-      D)
-        rm -f "$worktree/$first"
-        ;;
-      R*)
-        rm -f "$worktree/$first"
-        mkdir -p "$worktree/$(dirname "$second")"
-        cp -p "$source_root/$second" "$worktree/$second"
-        ;;
-      *)
-        copy_source_file "$first"
-        ;;
-    esac
-  done < <(git -C "$source_root" diff --name-status HEAD --)
-
-  for file in "${allowed_untracked_paths[@]}"; do
-    if [[ -e "$source_root/$file" ]]; then
-      copy_source_file "$file"
-    fi
-  done
-}
-
-copy_source_file() {
-  local file="$1"
-  mkdir -p "$worktree/$(dirname "$file")"
-  cp -p "$source_root/$file" "$worktree/$file"
-}
-
-overlay_current_worktree
-
-git -C "$worktree" config user.email "pipr-act@example.invalid"
-git -C "$worktree" config user.name "pipr act fixture"
-git -C "$worktree" config commit.gpgsign false
+pipr_clone_fixture_worktree "$source_root" "$worktree"
+pipr_overlay_current_worktree \
+  "$source_root" \
+  "$worktree" \
+  "packages/runtime/src/pi/runtime-tools.ts" \
+  "packages/runtime/src/pi/tests/runtime-tools.test.ts" \
+  "packages/runtime/src/diff/path-filter.ts" \
+  "packages/runtime/src/diff/tests/path-filter.test.ts" \
+  "packages/runtime/src/review/agent-template.ts" \
+  "packages/runtime/src/review/manifest-payload.ts" \
+  "packages/runtime/src/review/tests/agent-template.test.ts" \
+  "packages/runtime/src/review/tests/manifest-payload.test.ts" \
+  "scripts/assert-act-fixture-helpers.mjs" \
+  "scripts/assert-act-condensed-fixture.mjs" \
+  "test/fixtures/act/fake-pi" \
+  "test/fixtures/act/workflows/pipr-local-condensed.yml"
 
 mkdir -p "$worktree/.github/workflows" "$worktree/scripts" "$worktree/test/fixtures/act/project"
 cp "$source_root/scripts/assert-act-fixture-helpers.mjs" "$worktree/scripts/assert-act-fixture-helpers.mjs"
@@ -149,14 +112,9 @@ cat >"$worktree/test/fixtures/act/pull_request_condensed.json" <<EOF
 }
 EOF
 
-pipr_ensure_act_runner_image "$container_architecture"
-
-(
-  cd "$worktree"
-  act pull_request \
-    -W .github/workflows/pipr-local-condensed.yml \
-    -e test/fixtures/act/pull_request_condensed.json \
-    -P "ubuntu-latest=$runner_image" \
-    --container-architecture "$container_architecture" \
-    --pull=false
-)
+pipr_run_act_pull_request \
+  "$worktree" \
+  ".github/workflows/pipr-local-condensed.yml" \
+  "test/fixtures/act/pull_request_condensed.json" \
+  "$runner_image" \
+  "$container_architecture"

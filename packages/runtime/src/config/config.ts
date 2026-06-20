@@ -1,6 +1,7 @@
 import { access, lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
+import { isRecord } from "../shared/record.js";
 import { validateWorkflowTemplateString } from "../workflow/expression.js";
 import { resolveContainedConfigDir } from "./paths.js";
 import {
@@ -269,8 +270,4 @@ async function fileExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

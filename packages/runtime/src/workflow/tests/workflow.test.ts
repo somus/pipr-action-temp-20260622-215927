@@ -556,7 +556,6 @@ async function loadOfficialRuntimeProject() {
 
 function testRegistry(options: { badRef?: boolean } = {}): RuntimeRegistry {
   return {
-    presets: [{ id: "core/default", description: "Test preset", source: "test" }],
     workflows: [
       {
         id: "review",
@@ -597,7 +596,6 @@ function testRegistry(options: { badRef?: boolean } = {}): RuntimeRegistry {
 
 function failureRegistry(): RuntimeRegistry {
   return {
-    presets: [{ id: "core/default", description: "Test preset", source: "test" }],
     workflows: [
       {
         id: "review",

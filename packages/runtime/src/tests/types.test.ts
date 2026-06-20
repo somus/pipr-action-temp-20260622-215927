@@ -28,7 +28,6 @@ const review: PrReview = {
 };
 
 const registry: RuntimeRegistry = {
-  presets: [],
   workflows: [
     {
       id: "pipr/review",

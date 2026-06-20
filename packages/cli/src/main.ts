@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { readFile, writeFile } from "node:fs/promises";
-import { inspect } from "node:util";
+import { inspect, parseArgs } from "node:util";
 import * as core from "@actions/core";
 import type { GitHubPublicationClient, RegistryEntry } from "@pipr/runtime";
 import {
@@ -30,7 +30,6 @@ type CliOptions = {
 };
 
 type CommandHandler = (options: CliOptions) => Promise<void> | void;
-type OptionHandler = (options: CliOptions, args: string[], index: number) => number;
 type LoadedActionResult = Exclude<ActionCommandResult, { kind: "ignored" }>;
 
 const help = `pipr
@@ -47,7 +46,7 @@ Commands:
   graph [--config-dir .pipr]       Print resolved workflow graph
   explain-config [--config-dir .pipr]
                                    Print resolved config and source
-  list-blocks|list-tools|list-agents|list-presets|list-commands [--config-dir .pipr]
+  list-blocks|list-tools|list-agents|list-commands [--config-dir .pipr]
 `;
 
 const commandHandlers: Record<string, CommandHandler> = {
@@ -60,22 +59,10 @@ const commandHandlers: Record<string, CommandHandler> = {
   "list-blocks": listBlocks,
   "list-tools": listTools,
   "list-agents": listAgents,
-  "list-presets": listPresets,
   "list-commands": listCommands,
   help: printHelp,
   "--help": printHelp,
   "-h": printHelp,
-};
-
-const optionHandlers: Record<string, OptionHandler> = {
-  "--config-dir": readConfigDirOption,
-  "--event": readEventOption,
-  "--force": readForceOption,
-  "--provider-id": readProviderIdOption,
-  "--provider": readProviderOption,
-  "--model": readModelOption,
-  "--api-key-env": readApiKeyEnvOption,
-  "--require-env": readRequireEnvOption,
 };
 
 async function main(): Promise<void> {
@@ -235,90 +222,58 @@ async function runExplainConfig(options: CliOptions): Promise<void> {
 }
 
 function parseOptions(args: string[]): CliOptions {
-  const options: CliOptions = {
-    configDir: ".pipr",
-    force: false,
-    requireEnv: false,
+  const values = parseCliArgs(args);
+  return {
+    configDir: stringOption(values["config-dir"]) ?? ".pipr",
+    event: stringOption(values.event),
+    force: values.force === true,
+    trustedProvider: readTrustedProviderOptions(values),
+    requireEnv: values["require-env"] === true,
   };
-  let index = 0;
-  while (index < args.length) {
-    index = applyOption(options, args, index);
-  }
-  return options;
 }
 
-function applyOption(options: CliOptions, args: string[], index: number): number {
-  const arg = args[index] ?? "";
-  const handler = getOptionHandler(arg);
-  if (!handler) {
-    throw new Error(`Unknown option '${arg}'`);
-  }
-  return handler(options, args, index);
+function parseCliArgs(args: string[]) {
+  return parseArgs({
+    args,
+    allowPositionals: false,
+    strict: true,
+    options: {
+      "config-dir": { type: "string" },
+      event: { type: "string" },
+      force: { type: "boolean" },
+      "provider-id": { type: "string" },
+      provider: { type: "string" },
+      model: { type: "string" },
+      "api-key-env": { type: "string" },
+      "require-env": { type: "boolean" },
+    },
+  }).values;
+}
+
+function readTrustedProviderOptions(
+  values: ReturnType<typeof parseCliArgs>,
+): CliOptions["trustedProvider"] {
+  const trustedProvider = {
+    providerId: stringOption(values["provider-id"]),
+    provider: stringOption(values.provider),
+    model: stringOption(values.model),
+    apiKeyEnv: stringOption(values["api-key-env"]),
+  };
+  return Object.values(trustedProvider).some((value) => value !== undefined)
+    ? trustedProvider
+    : undefined;
+}
+
+function stringOption(value: string | boolean | string[] | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function getCommandHandler(command: string): CommandHandler | undefined {
   return Object.hasOwn(commandHandlers, command) ? commandHandlers[command] : undefined;
 }
 
-function getOptionHandler(option: string): OptionHandler | undefined {
-  return Object.hasOwn(optionHandlers, option) ? optionHandlers[option] : undefined;
-}
-
 function isHelpOption(arg: string): boolean {
   return arg === "--help" || arg === "-h";
-}
-
-function readConfigDirOption(options: CliOptions, args: string[], index: number): number {
-  options.configDir = readOptionValue(args, index);
-  return index + 2;
-}
-
-function readEventOption(options: CliOptions, args: string[], index: number): number {
-  options.event = readOptionValue(args, index);
-  return index + 2;
-}
-
-function readForceOption(options: CliOptions, _args: string[], index: number): number {
-  options.force = true;
-  return index + 1;
-}
-
-function readRequireEnvOption(options: CliOptions, _args: string[], index: number): number {
-  options.requireEnv = true;
-  return index + 1;
-}
-
-function readProviderIdOption(options: CliOptions, args: string[], index: number): number {
-  trustedProviderOptions(options).providerId = readOptionValue(args, index);
-  return index + 2;
-}
-
-function readProviderOption(options: CliOptions, args: string[], index: number): number {
-  trustedProviderOptions(options).provider = readOptionValue(args, index);
-  return index + 2;
-}
-
-function readModelOption(options: CliOptions, args: string[], index: number): number {
-  trustedProviderOptions(options).model = readOptionValue(args, index);
-  return index + 2;
-}
-
-function readApiKeyEnvOption(options: CliOptions, args: string[], index: number): number {
-  trustedProviderOptions(options).apiKeyEnv = readOptionValue(args, index);
-  return index + 2;
-}
-
-function trustedProviderOptions(options: CliOptions): NonNullable<CliOptions["trustedProvider"]> {
-  options.trustedProvider ??= {};
-  return options.trustedProvider;
-}
-
-function readOptionValue(args: string[], index: number): string {
-  const value = args[index + 1];
-  if (!value) {
-    throw new Error(`${args[index]} requires a value`);
-  }
-  return value;
 }
 
 function actionWorkspace(): string {
@@ -451,10 +406,6 @@ async function listAgents(options: CliOptions): Promise<void> {
   listEntries(await loadEntries(options, "agents"));
 }
 
-async function listPresets(options: CliOptions): Promise<void> {
-  listEntries(await loadEntries(options, "presets"));
-}
-
 async function listCommands(options: CliOptions): Promise<void> {
   listEntries(
     await runListCommandsCommand({
@@ -467,7 +418,7 @@ async function listCommands(options: CliOptions): Promise<void> {
 
 function loadEntries(
   options: CliOptions,
-  collection: "blocks" | "tools" | "agents" | "presets",
+  collection: "blocks" | "tools" | "agents",
 ): Promise<RegistryEntry[]> {
   return runListCommand(
     {

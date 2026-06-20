@@ -40,13 +40,6 @@
         "vitest": "4.1.9",
       },
     },
-    "packages/sdk": {
-      "name": "@pipr/sdk",
-      "version": "0.0.0",
-      "dependencies": {
-        "@pipr/runtime": "workspace:*",
-      },
-    },
   },
   "packages": {
     "@actions/core": ["@actions/core@3.0.1", "", { "dependencies": { "@actions/exec": "^3.0.0", "@actions/http-client": "^4.0.0" } }, "sha512-a6d/Nwahm9fliVGRhdhofo40HjHQasUPusmc7vBfyky+7Z+P2A1J68zyFVaNcEclc/Se+eO595oAr5nwEIoIUA=="],
@@ -146,8 +139,6 @@
     "@pipr/cli": ["@pipr/cli@workspace:packages/cli"],
 
     "@pipr/runtime": ["@pipr/runtime@workspace:packages/runtime"],
-
-    "@pipr/sdk": ["@pipr/sdk@workspace:packages/sdk"],
 
     "@quansync/fs": ["@quansync/fs@1.0.0", "", { "dependencies": { "quansync": "^1.0.0" } }, "sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ=="],
 

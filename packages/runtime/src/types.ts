@@ -64,7 +64,6 @@ export const piprConfigSchema = z.strictObject({
 });
 
 export const registryCollectionNameSchema = z.enum([
-  "presets",
   "workflows",
   "blocks",
   "agents",
@@ -74,7 +73,6 @@ export const registryCollectionNameSchema = z.enum([
 ]);
 
 const sourceModulesSchema = z.strictObject({
-  presets: z.record(z.string(), z.string()).optional(),
   workflows: z.record(z.string(), z.string()).optional(),
   blocks: z.record(z.string(), z.string()).optional(),
   agents: z.record(z.string(), z.string()).optional(),
@@ -286,7 +284,6 @@ export const workflowCommandInvocationSchema = z.strictObject({
 });
 
 export const runtimeRegistrySchema = z.strictObject({
-  presets: z.array(registryEntrySchema),
   workflows: z.array(workflowRegistryEntrySchema),
   blocks: z.array(blockRegistryEntrySchema),
   agents: z.array(registryEntrySchema),
@@ -296,7 +293,6 @@ export const runtimeRegistrySchema = z.strictObject({
 });
 
 export const runtimeModuleSetSchema = z.strictObject({
-  presets: z.array(registryEntrySchema).optional(),
   workflows: z.array(workflowRegistryEntrySchema).optional(),
   blocks: z.array(blockRegistryEntrySchema).optional(),
   agents: z.array(registryEntrySchema).optional(),

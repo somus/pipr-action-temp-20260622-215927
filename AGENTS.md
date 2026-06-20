@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered GitHub pull request review automation, including the Docker Action, CLI, runtime package, SDK package, product docs, and local `act` fixtures.
+This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered GitHub pull request review automation, including the Docker Action, CLI, runtime package, product docs, and local `act` fixtures.
 
 ## Workflow
 
