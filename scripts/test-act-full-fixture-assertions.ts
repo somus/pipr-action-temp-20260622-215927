@@ -30,6 +30,45 @@ expectFailure("inline marker missing", {
   reviewCommentPayloads: [{ ...validInlinePayload(), body: "missing marker" }],
 });
 
+expectFailure("secondary section missing", {
+  ...validFullFixture(),
+  issueComments: [
+    {
+      body: fullMainCommentBody().replace("Full fixture secondary section\n", ""),
+    },
+  ],
+});
+
+expectFailure("unexpected selected workflows", {
+  ...validFullFixture(),
+  issueComments: [
+    {
+      body: fullMainCommentBody().replace(
+        "Selected workflows: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
+        "Selected workflows: `pipr/review`",
+      ),
+    },
+  ],
+});
+
+expectFailure("path-missed workflow was selected", {
+  ...validFullFixture(),
+  issueComments: [
+    {
+      body: `${fullMainCommentBody()}\npipr/docs-only`,
+    },
+  ],
+});
+
+expectFailure("duplicate findings were not deduped in main comment", {
+  ...validFullFixture(),
+  issueComments: [
+    {
+      body: `${fullMainCommentBody()}\nFixture inline finding`,
+    },
+  ],
+});
+
 expectCondensedFailure("condensed summary missing", {
   ...validCondensedFixture(),
   issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->" }],
@@ -75,9 +114,23 @@ type PublicationFixture = {
 
 function validFullFixture(): PublicationFixture {
   return {
-    issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->\n\n# pipr Review" }],
+    issueComments: [{ body: fullMainCommentBody() }],
     reviewCommentPayloads: [validInlinePayload()],
   };
+}
+
+function fullMainCommentBody(): string {
+  return [
+    "<!-- pipr:main-comment pr=1 -->",
+    "",
+    "# pipr Review",
+    "",
+    "Full fixture secondary section",
+    "",
+    "- **Fixture inline finding**: Full-flow act reached inline publication.",
+    "",
+    "Selected workflows: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
+  ].join("\n");
 }
 
 function validCondensedFixture(): PublicationFixture {

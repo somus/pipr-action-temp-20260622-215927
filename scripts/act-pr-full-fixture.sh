@@ -16,8 +16,51 @@ cleanup() {
 trap cleanup EXIT
 
 git clone --quiet "$source_root" "$worktree"
+
+overlay_current_worktree() {
+  local allowed_untracked_paths=(
+    "packages/runtime/src/diff/path-filter.ts"
+    "packages/runtime/src/diff/tests/path-filter.test.ts"
+    "scripts/assert-act-fixture-helpers.mjs"
+    "scripts/assert-act-full-fixture.mjs"
+    "test/fixtures/act/fake-pi"
+    "test/fixtures/act/workflows/pipr-local-full.yml"
+  )
+
+  while IFS=$'\t' read -r status first second; do
+    case "$status" in
+      D)
+        rm -f "$worktree/$first"
+        ;;
+      R*)
+        rm -f "$worktree/$first"
+        mkdir -p "$worktree/$(dirname "$second")"
+        cp -p "$source_root/$second" "$worktree/$second"
+        ;;
+      *)
+        copy_source_file "$first"
+        ;;
+    esac
+  done < <(git -C "$source_root" diff --name-status HEAD --)
+
+  for file in "${allowed_untracked_paths[@]}"; do
+    if [[ -e "$source_root/$file" ]]; then
+      copy_source_file "$file"
+    fi
+  done
+}
+
+copy_source_file() {
+  local file="$1"
+  mkdir -p "$worktree/$(dirname "$file")"
+  cp -p "$source_root/$file" "$worktree/$file"
+}
+
+overlay_current_worktree
+
 git -C "$worktree" config user.email "pipr-act@example.invalid"
 git -C "$worktree" config user.name "pipr act fixture"
+git -C "$worktree" config commit.gpgsign false
 
 mkdir -p "$worktree/.github/workflows" "$worktree/scripts" "$worktree/test/fixtures/act/project"
 cp "$source_root/scripts/assert-act-fixture-helpers.mjs" "$worktree/scripts/assert-act-fixture-helpers.mjs"
@@ -28,6 +71,137 @@ cp \
   "$worktree/.github/workflows/pipr-local-full.yml"
 chmod +x "$worktree/test/fixtures/act/fake-pi"
 
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/config.yaml" <<'EOF'
+apiVersion: pipr.dev/v1
+kind: Config
+providers:
+  - id: deepseek
+    provider: deepseek
+    model: deepseek-v4-pro
+    apiKeyEnv: DEEPSEEK_API_KEY
+    thinking: high
+workflows:
+  - pipr/review
+  - pipr/full-duplicate-review
+  - pipr/full-secondary-section
+  - pipr/docs-only
+limits:
+  timeoutSeconds: 300
+EOF
+
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/workflows/review.yaml" <<'EOF'
+apiVersion: pipr.dev/v1
+kind: Workflow
+id: pipr/review
+description: Default Pi pull request review workflow.
+paths:
+  include:
+    - test/fixtures/act/project/**
+on:
+  events:
+    - pull_request.opened
+steps:
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/reviewer
+  - id: main-comment
+    uses: core/main-comment
+    with:
+      review: ${{ steps.review.outputs.result }}
+      template: pipr/main
+      merge: append
+      priority: 100
+  - id: inline-comments
+    uses: core/inline-comments
+    with:
+      review: ${{ steps.review.outputs.result }}
+EOF
+
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/workflows/full-duplicate-review.yaml" <<'EOF'
+apiVersion: pipr.dev/v1
+kind: Workflow
+id: pipr/full-duplicate-review
+paths:
+  include:
+    - test/fixtures/act/project/**
+on:
+  events:
+    - pull_request.opened
+steps:
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/reviewer
+  - id: main-comment
+    uses: core/main-comment
+    with:
+      review: ${{ steps.review.outputs.result }}
+      template: pipr/main
+      merge: append
+      priority: 90
+  - id: inline-comments
+    uses: core/inline-comments
+    with:
+      review: ${{ steps.review.outputs.result }}
+EOF
+
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/workflows/full-secondary-section.yaml" <<'EOF'
+apiVersion: pipr.dev/v1
+kind: Workflow
+id: pipr/full-secondary-section
+paths:
+  include:
+    - test/fixtures/act/project/**
+on:
+  events:
+    - pull_request.opened
+steps:
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/reviewer
+  - id: main-comment
+    uses: core/main-comment
+    with:
+      sectionId: summary
+      value: Full fixture secondary section
+      template: pipr/main
+      merge: append
+      priority: 80
+  - id: inline-comments
+    uses: core/inline-comments
+    with:
+      review: ${{ steps.review.outputs.result }}
+EOF
+
+cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/workflows/docs-only.yaml" <<'EOF'
+apiVersion: pipr.dev/v1
+kind: Workflow
+id: pipr/docs-only
+paths:
+  include:
+    - docs/**
+on:
+  events:
+    - pull_request.opened
+steps:
+  - id: review
+    uses: core/run-agent
+    with:
+      agent: pipr/reviewer
+  - id: main-comment
+    uses: core/main-comment
+    with:
+      review: ${{ steps.review.outputs.result }}
+      template: pipr/main
+      merge: append
+  - id: inline-comments
+    uses: core/inline-comments
+    with:
+      review: ${{ steps.review.outputs.result }}
+EOF
+
 cat >"$worktree/test/fixtures/act/project/sample.ts" <<'EOF'
 export function reviewTarget(value: string): string {
   return value.trim();
@@ -36,6 +210,11 @@ EOF
 
 git -C "$worktree" add \
   .github/workflows/pipr-local-full.yml \
+  packages/runtime/distribution/official-minimal/.pipr/config.yaml \
+  packages/runtime/distribution/official-minimal/.pipr/workflows/docs-only.yaml \
+  packages/runtime/distribution/official-minimal/.pipr/workflows/full-duplicate-review.yaml \
+  packages/runtime/distribution/official-minimal/.pipr/workflows/full-secondary-section.yaml \
+  packages/runtime/distribution/official-minimal/.pipr/workflows/review.yaml \
   scripts/assert-act-fixture-helpers.mjs \
   scripts/assert-act-full-fixture.mjs \
   test/fixtures/act/fake-pi \

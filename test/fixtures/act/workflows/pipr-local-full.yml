@@ -28,9 +28,11 @@ jobs:
           }
           JSON
           chmod 666 test/fixtures/act/github-publication-full.json
+          mkdir -p test/fixtures/act/pi-calls-full
+          chmod 777 test/fixtures/act/pi-calls-full
       - uses: ./
         env:
-          DEEPSEEK_API_KEY: local-fixture-key
+          DEEPSEEK_API_KEY: ${{ github.workspace }}/test/fixtures/act/pi-calls-full
           GITHUB_TOKEN: local-fixture-token
           GIT_CONFIG_COUNT: "1"
           GIT_CONFIG_KEY_0: safe.directory
@@ -47,4 +49,5 @@ jobs:
         run: |
           node scripts/assert-act-full-fixture.mjs \
             test/fixtures/act/github-publication-full.json \
-            "$EXPECTED_HEAD_SHA"
+            "$EXPECTED_HEAD_SHA" \
+            test/fixtures/act/pi-calls-full

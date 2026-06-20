@@ -130,6 +130,10 @@ limits:
 The bundled workflow calls the safe review primitive directly, then renders comments:
 
 ```yaml
+paths:
+  include: ["src/**", "packages/**"]
+  exclude: ["**/*.md"]
+
 on:
   events:
     - pull_request.opened
@@ -157,9 +161,26 @@ steps:
 ```
 
 Review workflows must expose the reserved runtime step ids `review`, `main-comment`, and `inline-comments`.
+Workflow and Agent `paths` use repo-relative glob patterns. `include` defaults to all files, `exclude` wins, dotfiles are matched, patterns without `/` match basenames at any depth, and renamed files match both `path` and `previousPath`. Pull request events run every enabled workflow whose event and paths match in parallel; command comments run only the matched workflow and still respect paths.
+
+`core/main-comment` emits named Main Review Comment section contributions. Passing `review` emits the default `summary` and `findings` sections. Passing `sectionId` and `value` emits one explicit section. `merge` defaults to `exclusive`, so multiple workflows writing the same section fail unless they explicitly choose `append`, `replace`, or `list`. `list` can dedupe structured items with `itemKey`.
+
+```yaml
+steps:
+  - id: summary
+    uses: core/main-comment
+    with:
+      sectionId: summary
+      value: ${{ steps.review.outputs.result.review.summary.body }}
+      merge: exclusive
+      priority: 100
+```
+
 Command triggers run only for `issue_comment` events that target pull requests. pipr checks `github.event.issue.pull_request`, fetches PR metadata, checks the commenter with GitHub's collaborator permission API, parses command arguments, and only then starts the workflow. Permissions are ordered `read < triage < write < maintain < admin`; `requiredPermission` defaults to `write`.
 
 Agents may declare `string` or `json` inputs. `core/run-agent` validates those inputs before Pi runs, and Agent markdown can embed them with `${{ inputs.name }}`. Objects and arrays render as stable pretty JSON. Agent `provider` may also be `${{ inputs.provider }}` or an inline provider object without an `id`; string providers must resolve to a configured provider id. Independent `core/run-agent` steps are scheduled from workflow `steps.*` dependencies, so specialist reviewers can run before a final reserved `review` orchestrator step.
+
+Agents may also declare `paths`. Agent paths narrow the workflow-scoped Diff Manifest before Pi runs. If no files remain, pipr returns an empty validated review for that Agent without calling Pi.
 
 ```yaml
 steps:

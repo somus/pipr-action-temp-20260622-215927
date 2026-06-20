@@ -14,6 +14,32 @@ const nonEmptyStringSchema = z.string().min(1);
 
 export const providerConfigSchema = piProviderProfileSchema;
 
+export const pathGlobPatternSchema = z
+  .string()
+  .min(1)
+  .superRefine((pattern, context) => {
+    if (pattern.includes("\0")) {
+      context.addIssue({ code: "custom", message: "must not contain NUL bytes" });
+    }
+    if (pattern.includes("\\")) {
+      context.addIssue({ code: "custom", message: "must use POSIX '/' separators" });
+    }
+    if (pattern.startsWith("/") || /^[A-Za-z]:\//.test(pattern)) {
+      context.addIssue({ code: "custom", message: "must be repo-relative" });
+    }
+    if (pattern.startsWith("!")) {
+      context.addIssue({ code: "custom", message: "must use paths.exclude instead of negation" });
+    }
+    if (pattern.split("/").includes("..")) {
+      context.addIssue({ code: "custom", message: "must not contain '..' segments" });
+    }
+  });
+
+export const pathFilterSchema = z.strictObject({
+  include: z.array(pathGlobPatternSchema).min(1).optional(),
+  exclude: z.array(pathGlobPatternSchema).min(1).optional(),
+});
+
 export const diffManifestLimitsConfigSchema = z.strictObject({
   fullMaxBytes: z.number().int().positive().optional(),
   fullMaxEstimatedTokens: z.number().int().positive().optional(),
@@ -231,6 +257,7 @@ export const workflowStepSchema = z.strictObject({
 
 export const workflowRegistryEntrySchema = registryEntrySchema.extend({
   inputs: workflowInputsSchema.optional(),
+  paths: pathFilterSchema.optional(),
   events: z.array(nonEmptyStringSchema),
   commands: z.array(workflowCommandSchema).optional(),
   failurePolicy: failurePolicySchema.optional(),
@@ -287,6 +314,7 @@ export const resolvedConfigSchema = z.strictObject({
 });
 
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
+export type PathFilter = z.infer<typeof pathFilterSchema>;
 export type DiffManifestLimitsConfig = z.infer<typeof diffManifestLimitsConfigSchema>;
 export type PiprConfig = z.infer<typeof piprConfigSchema>;
 export type RegistryCollectionName = z.infer<typeof registryCollectionNameSchema>;

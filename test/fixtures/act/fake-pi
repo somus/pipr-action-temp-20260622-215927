@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
-import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { assert, assertEqual } from "../../../scripts/assert-act-fixture-helpers.mjs";
 
@@ -9,6 +10,11 @@ const args = process.argv.slice(2, -1);
 
 if (!prompt.includes("Diff Manifest:")) {
   throw new Error("fake-pi could not find Diff Manifest in prompt");
+}
+
+const piTelemetry = beginPiTelemetry();
+if (piTelemetry) {
+  await delay(400);
 }
 
 if (prompt.includes("Specialist reviews:")) {
@@ -273,4 +279,57 @@ function assertPromptContains(value) {
   if (!prompt.includes(value)) {
     throw new Error(`orchestrator prompt missing ${value}`);
   }
+}
+
+function beginPiTelemetry() {
+  const directory = process.env.PIPR_ACT_PI_CALL_DIR ?? telemetryDirectoryFromProviderEnv();
+  if (!directory) {
+    return undefined;
+  }
+  mkdirSync(directory, { recursive: true });
+  const id = `${Date.now()}-${process.pid}-${randomUUID()}`;
+  const file = `${directory}/${id}.jsonl`;
+  appendFileSync(
+    file,
+    `${JSON.stringify({ id, phase: "start", time: Date.now(), promptKind: promptKind() })}\n`,
+  );
+  process.on("exit", () => {
+    appendFileSync(
+      file,
+      `${JSON.stringify({ id, phase: "end", time: Date.now(), promptKind: promptKind() })}\n`,
+    );
+  });
+  return { file, id };
+}
+
+function telemetryDirectoryFromProviderEnv() {
+  const providerEnvName = process.env.PIPR_PROVIDER_API_KEY_ENV;
+  if (!providerEnvName) {
+    return undefined;
+  }
+  const value = process.env[providerEnvName];
+  return value?.includes("/test/fixtures/act/pi-calls-") ? value : undefined;
+}
+
+function promptKind() {
+  if (prompt.includes("Specialist reviews:")) {
+    return "orchestrator";
+  }
+  if (prompt.includes("Focus: correctness")) {
+    return "correctness";
+  }
+  if (prompt.includes("Focus: security")) {
+    return "security";
+  }
+  if (prompt.includes("Focus: tests")) {
+    return "tests";
+  }
+  if (prompt.includes('"mode": "condensed"')) {
+    return "condensed";
+  }
+  return "full";
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

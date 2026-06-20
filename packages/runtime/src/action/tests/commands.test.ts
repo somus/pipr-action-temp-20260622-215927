@@ -131,6 +131,27 @@ describe("runActionCommand issue_comment dispatch", () => {
     }
   });
 
+  it("skips issue comment command workflows when paths do not match", async () => {
+    const workspace = await createCommandWorkspace({
+      baseWorkflowYaml: commandWorkflowYaml({ paths: ["docs/**"] }),
+      checkoutBaseBeforeRun: true,
+    });
+    try {
+      const result = await runIssueCommentCommand(workspace, "@pipr review", {
+        permission: "write",
+        role_name: "write",
+      });
+
+      expect(result).toMatchObject({ kind: "ignored" });
+      expect(result.kind === "ignored" ? result.reason : "").toContain(
+        "Workflow 'pipr/review' skipped",
+      );
+      await expectPiNotCalled(workspace);
+    } finally {
+      await rm(workspace.rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("executes commands from the base commit config instead of PR-head config", async () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     try {
@@ -176,6 +197,35 @@ describe("runActionCommand pull_request dispatch", () => {
       await rm(workspace.rootDir, { recursive: true, force: true });
     }
   });
+
+  it("skips publication when pull request paths do not match the workflow", async () => {
+    const workspace = await createCommandWorkspace({
+      baseWorkflowYaml: commandWorkflowYaml({ paths: ["docs/**"] }),
+      checkoutBaseBeforeRun: true,
+    });
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writePullRequestEvent(eventPath, workspace);
+
+      const result = await runActionCommand({
+        rootDir: workspace.rootDir,
+        configDir: ".pipr",
+        eventPath,
+        dryRun: false,
+        env: pullRequestEnv(workspace.rootDir, eventPath),
+        githubPublicationClient: failingGitHubPublicationClient(),
+        piExecutable: workspace.piExecutable,
+      });
+
+      expect(result).toMatchObject({ kind: "ignored" });
+      expect(result.kind === "ignored" ? result.reason : "").toContain(
+        "No enabled workflows matched",
+      );
+      await expectPiNotCalled(workspace);
+    } finally {
+      await rm(workspace.rootDir, { recursive: true, force: true });
+    }
+  });
 });
 
 type CommandWorkspace = {
@@ -186,7 +236,7 @@ type CommandWorkspace = {
 };
 
 async function createCommandWorkspace(
-  options: { checkoutBaseBeforeRun?: boolean } = {},
+  options: { baseWorkflowYaml?: string; checkoutBaseBeforeRun?: boolean } = {},
 ): Promise<CommandWorkspace> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-action-command-"));
   runGit(rootDir, ["init", "--initial-branch=main"]);
@@ -195,7 +245,10 @@ async function createCommandWorkspace(
   runGit(rootDir, ["config", "core.hooksPath", "/dev/null"]);
   runGit(rootDir, ["config", "commit.gpgsign", "false"]);
   await initOfficialMinimalProject({ rootDir });
-  await writeFile(path.join(rootDir, ".pipr", "workflows", "review.yaml"), commandWorkflowYaml());
+  await writeFile(
+    path.join(rootDir, ".pipr", "workflows", "review.yaml"),
+    options.baseWorkflowYaml ?? commandWorkflowYaml(),
+  );
   await mkdir(path.join(rootDir, "src"));
   await writeFile(path.join(rootDir, "src", "a.ts"), "export const value = 1;\n");
   runGit(rootDir, ["add", "."]);
@@ -261,11 +314,12 @@ async function expectReviewRanAtHead(
   expect(currentGitHead(workspace.rootDir)).toBe(workspace.headSha);
 }
 
-function commandWorkflowYaml(): string {
+function commandWorkflowYaml(options: { paths?: string[] } = {}): string {
   return [
     "apiVersion: pipr.dev/v1",
     "kind: Workflow",
     "id: pipr/review",
+    ...pathLines(options.paths),
     "inputs:",
     "  scope:",
     "    type: string",
@@ -292,6 +346,13 @@ function commandWorkflowYaml(): string {
     "    with:",
     `      review: ${expr("steps.review.outputs.result")}`,
   ].join("\n");
+}
+
+function pathLines(paths: string[] | undefined): string[] {
+  if (!paths) {
+    return [];
+  }
+  return ["paths:", "  include:", ...paths.map((item) => `    - ${item}`)];
 }
 
 function headOnlyCommandWorkflowYaml(): string {

@@ -39,6 +39,10 @@ describe("pipr.dev/v1 schemas", () => {
         apiVersion: "pipr.dev/v1",
         kind: "Workflow",
         id: "pipr/review",
+        paths: {
+          include: ["src/**"],
+          exclude: ["**/*.md"],
+        },
         on: {
           events: ["pull_request.opened"],
           commands: [{ name: "review", aliases: ["@pipr review"] }],
@@ -62,6 +66,9 @@ describe("pipr.dev/v1 schemas", () => {
         apiVersion: "pipr.dev/v1",
         kind: "Agent",
         id: "pipr/reviewer",
+        paths: {
+          include: ["**/*.ts"],
+        },
         provider: "primary",
         tools: ["plugin/custom-review-tool"],
         output: { schema: "core/pr-review" },
@@ -94,6 +101,20 @@ describe("pipr.dev/v1 schemas", () => {
         steps: [],
       }),
     ).toThrow("must match pattern");
+  });
+
+  it("rejects invalid path filter patterns", () => {
+    expect(() =>
+      validateComponentDocument(".pipr/workflows/review.yaml", {
+        apiVersion: "pipr.dev/v1",
+        kind: "Workflow",
+        id: "pipr/review",
+        paths: {
+          include: ["/absolute", "!negated", "windows\\path", "../outside"],
+        },
+        steps: [],
+      }),
+    ).toThrow("must be repo-relative");
   });
 
   it("rejects materialized components in the reserved core namespace", () => {

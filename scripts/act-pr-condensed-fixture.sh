@@ -21,6 +21,8 @@ overlay_current_worktree() {
   local allowed_untracked_paths=(
     "packages/runtime/src/pi/runtime-tools.ts"
     "packages/runtime/src/pi/tests/runtime-tools.test.ts"
+    "packages/runtime/src/diff/path-filter.ts"
+    "packages/runtime/src/diff/tests/path-filter.test.ts"
     "packages/runtime/src/review/agent-template.ts"
     "packages/runtime/src/review/manifest-payload.ts"
     "packages/runtime/src/review/tests/agent-template.test.ts"

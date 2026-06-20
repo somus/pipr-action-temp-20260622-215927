@@ -10,6 +10,7 @@ import { isRecord } from "../shared/record.js";
 import {
   agentInputsSchema,
   diffManifestLimitsConfigSchema,
+  pathFilterSchema,
   workflowCommandSchema,
   workflowInputsSchema,
 } from "../types.js";
@@ -72,6 +73,7 @@ const workflowComponentSchema = z.strictObject({
   id: componentIdSchema,
   description: z.string().optional(),
   inputs: workflowInputsSchema.optional(),
+  paths: pathFilterSchema.optional(),
   failurePolicy: failurePolicySchema.optional(),
   on: z
     .strictObject({
@@ -114,6 +116,7 @@ const agentComponentSchema = z.strictObject({
   kind: z.literal("Agent"),
   id: componentIdSchema,
   inputs: agentInputsSchema.optional(),
+  paths: pathFilterSchema.optional(),
   provider: agentProviderSchema,
   tools: z.array(componentIdSchema).optional(),
   output: z.strictObject({

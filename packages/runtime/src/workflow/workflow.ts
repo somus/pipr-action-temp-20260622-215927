@@ -75,8 +75,15 @@ export function selectWorkflowForEvent(
   registry: RuntimeRegistry,
   event: Pick<PullRequestEventContext, "eventName" | "action">,
 ): WorkflowRegistryEntry | undefined {
+  return selectWorkflowsForEvent(registry, event)[0];
+}
+
+export function selectWorkflowsForEvent(
+  registry: RuntimeRegistry,
+  event: Pick<PullRequestEventContext, "eventName" | "action">,
+): WorkflowRegistryEntry[] {
   const eventNames = new Set(workflowEventCandidates(event));
-  return registry.workflows.find((workflow) =>
+  return registry.workflows.filter((workflow) =>
     workflow.events.some((workflowEvent) => eventNames.has(workflowEvent)),
   );
 }

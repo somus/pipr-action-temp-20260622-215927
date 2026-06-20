@@ -17,12 +17,20 @@ export const runtimeVersion = "0.0.0";
 
 const mainSectionMergePolicySchema = z.enum(["exclusive", "replace", "append", "list"]);
 
+const mainSectionListItemSchema = z.record(z.string(), z.json());
+const mainSectionValueSchema = z.union([
+  z.string(),
+  z.array(z.string()),
+  z.array(mainSectionListItemSchema),
+]);
+
 export const mainSectionContributionSchema = z.strictObject({
   workflowId: z.string().min(1),
   sectionId: z.string().min(1),
   policy: mainSectionMergePolicySchema,
   priority: z.number().int(),
-  value: z.union([z.string(), z.array(z.string())]),
+  value: mainSectionValueSchema,
+  itemKey: z.string().min(1).optional(),
 });
 
 export const mainSectionContributionsSchema = z.array(mainSectionContributionSchema);
@@ -84,7 +92,7 @@ export const publicationMetadataSchema = z.strictObject({
   trustedConfigSha: z.string().min(1).optional(),
   trustedConfigHash: z.string().min(1).optional(),
   reviewedHeadSha: z.string().min(1),
-  providerModel: z.string().min(1).optional(),
+  providerModels: z.array(z.string().min(1)).optional(),
   selectedWorkflows: z.array(z.string().min(1)),
   failedWorkflows: z.array(z.string().min(1)),
   validFindings: z.number().int().min(0),
@@ -182,27 +190,34 @@ export function reduceMainSectionContributions(
 export function reviewToMainSectionContributions(options: {
   workflowId: string;
   validated: ValidatedReview;
+  summaryPolicy?: MainSectionMergePolicy;
+  summaryPriority?: number;
 }): MainSectionContribution[] {
   const summary = options.validated.review.summary;
   const contributions: MainSectionContribution[] = [
     {
       workflowId: options.workflowId,
       sectionId: "summary",
-      policy: "replace",
-      priority: 100,
+      policy: options.summaryPolicy ?? "exclusive",
+      priority: options.summaryPriority ?? 100,
       value: summary.title ? `**${summary.title}**\n\n${summary.body}` : summary.body,
     },
   ];
 
-  contributions.push(
-    ...options.validated.validFindings.map((finding) => ({
+  const findingItems = options.validated.validFindings.map((finding) => ({
+    fingerprint: findingFingerprint(finding),
+    body: `- **${finding.title}**: ${finding.body}`,
+  }));
+  if (findingItems.length > 0) {
+    contributions.push({
       workflowId: options.workflowId,
       sectionId: "findings",
-      policy: "list" as const,
-      priority: findingPriority(finding),
-      value: `- **${finding.title}**: ${finding.body}`,
-    })),
-  );
+      policy: "list",
+      priority: 0,
+      value: findingItems,
+      itemKey: "fingerprint",
+    });
+  }
   return mainSectionContributionsSchema.parse(contributions);
 }
 
@@ -279,7 +294,7 @@ export function renderMainComment(options: RenderMainCommentOptions): string {
   const metadata: Omit<PublicationMetadata, "cappedInlineFindings"> = {
     runtimeVersion,
     reviewedHeadSha: options.event.headSha,
-    providerModel: options.providerModel,
+    providerModels: [options.providerModel],
     selectedWorkflows: ["pipr/review"],
     failedWorkflows: [],
     validFindings: options.validFindings.length,
@@ -399,8 +414,9 @@ function reduceAppendSection(_sectionId: string, contributions: MainSectionContr
 }
 
 function reduceListSection(_sectionId: string, contributions: MainSectionContribution[]): string {
+  const seen = new Set<string>();
   return toPriorityOrder(contributions)
-    .flatMap((item) => contributionValues(item.value))
+    .flatMap((contribution) => contributionValues(contribution.value, contribution.itemKey, seen))
     .join("\n");
 }
 
@@ -415,8 +431,36 @@ function renderContributionValue(value: MainSectionContribution["value"]): strin
   return contributionValues(value).join("\n");
 }
 
-function contributionValues(value: MainSectionContribution["value"]): string[] {
-  return Array.isArray(value) ? value : [value];
+function contributionValues(
+  value: MainSectionContribution["value"],
+  itemKey?: string,
+  seen?: Set<string>,
+): string[] {
+  const items = Array.isArray(value) ? value : [value];
+  return items.flatMap((item) => {
+    if (typeof item === "string") {
+      return [item];
+    }
+    const dedupeKey = itemKey ? item[itemKey] : undefined;
+    if (typeof dedupeKey === "string" || typeof dedupeKey === "number") {
+      const key = String(dedupeKey);
+      if (seen?.has(key)) {
+        return [];
+      }
+      seen?.add(key);
+    }
+    return [renderListItem(item)];
+  });
+}
+
+function renderListItem(item: Record<string, unknown>): string {
+  if (typeof item.body === "string") {
+    return item.body;
+  }
+  if (typeof item.value === "string") {
+    return item.value;
+  }
+  return JSON.stringify(item);
 }
 
 function metadataContribution(metadata: PublicationMetadata): MainSectionContribution {
@@ -429,7 +473,9 @@ function metadataContribution(metadata: PublicationMetadata): MainSectionContrib
     metadata.trustedConfigHash
       ? `Trusted config hash: \`${metadata.trustedConfigHash}\`  `
       : undefined,
-    metadata.providerModel ? `Model: \`${metadata.providerModel}\`  ` : undefined,
+    metadata.providerModels?.length
+      ? `Models: \`${metadata.providerModels.join(", ")}\`  `
+      : undefined,
     `Selected workflows: \`${metadata.selectedWorkflows.join(", ") || "none"}\`  `,
     `Failed workflows: \`${metadata.failedWorkflows.join(", ") || "none"}\`  `,
     `Valid inline findings: \`${metadata.validFindings}\`  `,
@@ -443,25 +489,6 @@ function metadataContribution(metadata: PublicationMetadata): MainSectionContrib
     priority: 0,
     value: lines.join("\n"),
   };
-}
-
-function findingPriority(finding: ReviewFinding): number {
-  return severityPriority(finding.severity) * 100 + Math.round(finding.confidence * 100);
-}
-
-function severityPriority(severity: ReviewFinding["severity"]): number {
-  switch (severity) {
-    case "critical":
-      return 5;
-    case "high":
-      return 4;
-    case "medium":
-      return 3;
-    case "low":
-      return 2;
-    case "nit":
-      return 1;
-  }
 }
 
 function findingMarker(fingerprint: string, reviewedHeadSha: string): string {

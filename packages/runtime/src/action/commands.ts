@@ -205,12 +205,17 @@ export async function runActionCommand(
   });
   const provider = trustedActionProvider(options, trustedRuntime.resolved.config);
   ensurePullRequestHeadCheckout(options.rootDir, event);
+  const completed = await runTrustedReviewAndPublish({ options, trustedRuntime, provider, event });
+  if (completed.kind === "skipped") {
+    return { kind: "ignored", reason: completed.reason };
+  }
 
   return {
     kind: "review",
     event,
     configSource: trustedRuntime.resolved.source,
-    ...(await runTrustedReviewAndPublish({ options, trustedRuntime, provider, event })),
+    review: completed.review,
+    publication: completed.publication,
   };
 }
 
@@ -313,19 +318,24 @@ async function dispatchIssueCommentCommand(
 
   const provider = trustedActionProvider(options, prepared.trustedRuntime.resolved.config);
   ensurePullRequestHeadCheckout(options.rootDir, prepared.event);
+  const completed = await runTrustedReviewAndPublish({
+    options,
+    trustedRuntime: prepared.trustedRuntime,
+    provider,
+    event: prepared.event,
+    workflowId: prepared.resolution.invocation.workflowId,
+    workflowInputs: prepared.resolution.invocation.inputs,
+  });
+  if (completed.kind === "skipped") {
+    return { kind: "ignored", reason: completed.reason };
+  }
   return {
     kind: "review",
     event: prepared.event,
     command: prepared.resolution.invocation.commandName,
     configSource: prepared.trustedRuntime.resolved.source,
-    ...(await runTrustedReviewAndPublish({
-      options,
-      trustedRuntime: prepared.trustedRuntime,
-      provider,
-      event: prepared.event,
-      workflowId: prepared.resolution.invocation.workflowId,
-      workflowInputs: prepared.resolution.invocation.inputs,
-    })),
+    review: completed.review,
+    publication: completed.publication,
   };
 }
 
@@ -336,7 +346,10 @@ async function runTrustedReviewAndPublish(options: {
   event: PullRequestEventContext;
   workflowId?: string;
   workflowInputs?: unknown;
-}): Promise<{ review: ReviewRuntimeResult; publication: PublicationResult }> {
+}): Promise<
+  | { kind: "skipped"; reason: string }
+  | { kind: "completed"; review: ReviewRuntimeResult; publication: PublicationResult }
+> {
   const review = await runReviewRuntime({
     workspace: options.options.rootDir,
     config: trustedActionConfig(
@@ -355,6 +368,9 @@ async function runTrustedReviewAndPublish(options: {
     trustedConfigHash: readTrustedRuntimeHash(options.trustedRuntime),
     piExecutable: options.options.piExecutable,
   });
+  if (review.kind === "skipped") {
+    return { kind: "skipped", reason: review.skipReason ?? "review skipped" };
+  }
   const client =
     options.options.githubPublicationClient ??
     createGitHubPublicationClient(actionEnv(options.options));
@@ -363,7 +379,7 @@ async function runTrustedReviewAndPublish(options: {
     event: options.event,
     plan: review.publicationPlan,
   });
-  return { review, publication };
+  return { kind: "completed", review, publication };
 }
 
 function readTrustedRuntimeSha(runtime: LoadedRuntimeProject): string | undefined {

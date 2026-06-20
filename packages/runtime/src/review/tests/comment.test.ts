@@ -211,6 +211,32 @@ describe("comments", () => {
     expect(reduced.get("findings")).toBe("second\nfirst");
   });
 
+  it("dedupes structured list items by itemKey", () => {
+    const reduced = reduceMainSectionContributions([
+      {
+        workflowId: "a/workflow",
+        sectionId: "findings",
+        policy: "list",
+        priority: 1,
+        itemKey: "fingerprint",
+        value: [
+          { fingerprint: "duplicate", body: "- First" },
+          { fingerprint: "unique", body: "- Unique" },
+        ],
+      },
+      {
+        workflowId: "b/workflow",
+        sectionId: "findings",
+        policy: "list",
+        priority: 1,
+        itemKey: "fingerprint",
+        value: [{ fingerprint: "duplicate", body: "- Second" }],
+      },
+    ]);
+
+    expect(reduced.get("findings")).toBe("- First\n- Unique");
+  });
+
   it("rejects conflicting main section policies", () => {
     expect(() =>
       reduceMainSectionContributions([

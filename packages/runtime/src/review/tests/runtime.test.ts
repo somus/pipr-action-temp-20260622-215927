@@ -142,6 +142,421 @@ describe("runReviewRuntime", () => {
     expect(result.validated.validFindings).toHaveLength(0);
   });
 
+  it("skips event workflows when no changed files match workflow paths", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [reviewWorkflow({ id: "pipr/docs", paths: { include: ["docs/**"] } })],
+      },
+    });
+
+    const result = await runReviewRuntime({
+      workspace: "/tmp/pipr",
+      config: runtime.resolved.config,
+      event,
+      registry,
+      piRunner: pi.run,
+      diffManifestBuilder: () => manifest,
+    });
+
+    expect(result.kind).toBe("skipped");
+    expect(result.skipReason).toContain("No enabled workflows matched");
+    expect(pi.prompts).toEqual([]);
+  });
+
+  it("returns an empty review without Pi when Agent paths do not match", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeDocsReviewerAgent(rootDir);
+    const runtime = await loadRuntimeProject({ rootDir });
+    const pi = noFindingsPiRunner();
+
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, { workspace: rootDir }),
+    );
+
+    expect(result.kind).toBe("review");
+    expect(result.validated.validFindings).toEqual([]);
+    expect(result.review.summary.body).toContain("skipped because no changed files matched");
+    expect(pi.prompts).toEqual([]);
+  });
+
+  it("passes a path-scoped Diff Manifest into Agent prompts", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeDocsReviewerAgent(rootDir);
+    const runtime = await loadRuntimeProject({ rootDir });
+    const pi = noFindingsPiRunner();
+
+    await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, {
+        workspace: rootDir,
+        diffManifestBuilder: () => manifestWithDocs(),
+      }),
+    );
+
+    expect(
+      promptManifest(pi.prompts[0] ?? "").files.map((file: { path: string }) => file.path),
+    ).toEqual(["docs/readme.md"]);
+  });
+
+  it("executes all matching event workflows in config order with one Diff Manifest build", async () => {
+    let manifestBuilds = 0;
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = fakePiRunner([reviewSummary("Backend review."), reviewSummary("Docs review.")]);
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          reviewWorkflow({
+            id: "pipr/backend",
+            paths: { include: ["src/**"] },
+            merge: "append",
+          }),
+          reviewWorkflow({
+            id: "pipr/docs",
+            paths: { include: ["docs/**"] },
+            merge: "append",
+          }),
+        ],
+      },
+    });
+
+    const result = await runRegistryReview({
+      runtime,
+      pi,
+      registry,
+      diffManifestBuilder: () => {
+        manifestBuilds += 1;
+        return manifestWithDocs();
+      },
+    });
+
+    expect(manifestBuilds).toBe(1);
+    expect(pi.prompts).toHaveLength(2);
+    expect(result.publicationPlan.metadata.selectedWorkflows).toEqual([
+      "pipr/backend",
+      "pipr/docs",
+    ]);
+    expect(result.mainComment).toContain("Backend review.");
+    expect(result.mainComment).toContain("Docs review.");
+  });
+
+  it("runs selected workflows in parallel while reducing results deterministically", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = concurrentPiRunner([
+      reviewSummary("Backend review."),
+      reviewSummary("Docs review."),
+    ]);
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          reviewWorkflow({
+            id: "pipr/backend",
+            paths: { include: ["src/**"] },
+            merge: "append",
+          }),
+          reviewWorkflow({
+            id: "pipr/docs",
+            paths: { include: ["docs/**"] },
+            merge: "append",
+          }),
+        ],
+      },
+    });
+
+    const result = await runRegistryReview({
+      runtime,
+      pi,
+      registry,
+      diffManifestBuilder: () => manifestWithDocs(),
+    });
+
+    expect(pi.maxActive()).toBeGreaterThan(1);
+    expect(result.publicationPlan.metadata.selectedWorkflows).toEqual([
+      "pipr/backend",
+      "pipr/docs",
+    ]);
+    expect(result.mainComment).toContain("Backend review.");
+    expect(result.mainComment).toContain("Docs review.");
+  });
+
+  it("fails when multiple workflows write the same main section without explicit merge", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = fakePiRunner([reviewSummary("Backend review."), reviewSummary("Docs review.")]);
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          reviewWorkflow({ id: "pipr/backend", paths: { include: ["src/**"] } }),
+          reviewWorkflow({ id: "pipr/docs", paths: { include: ["docs/**"] } }),
+        ],
+      },
+    });
+
+    await expect(
+      runRegistryReview({
+        runtime,
+        pi,
+        registry,
+        diffManifestBuilder: () => manifestWithDocs(),
+      }),
+    ).rejects.toThrow("multiple exclusive writers");
+  });
+
+  it("records provider models from every selected workflow Agent step", async () => {
+    const { rootDir } = await createOfficialRuntimeProject();
+    await writeFile(
+      path.join(rootDir, ".pipr", "config.yaml"),
+      [
+        "apiVersion: pipr.dev/v1",
+        "kind: Config",
+        "providers:",
+        "  - id: backend",
+        "    provider: deepseek",
+        "    model: backend-model",
+        "    apiKeyEnv: BACKEND_API_KEY",
+        "  - id: docs",
+        "    provider: deepseek",
+        "    model: docs-model",
+        "    apiKeyEnv: DOCS_API_KEY",
+        "workflows:",
+        "  - pipr/backend",
+        "  - pipr/docs",
+      ].join("\n"),
+    );
+    await writeProviderAgent(rootDir, "reviewer.md", "pipr/reviewer", "backend");
+    await writeProviderAgent(rootDir, "backend.md", "pipr/backend-reviewer", "backend");
+    await writeProviderAgent(rootDir, "docs.md", "pipr/docs-reviewer", "docs");
+    await writeFile(
+      path.join(rootDir, ".pipr", "workflows", "backend.yaml"),
+      providerWorkflowYaml("pipr/backend", "pipr/backend-reviewer", "src/**"),
+    );
+    await writeFile(
+      path.join(rootDir, ".pipr", "workflows", "docs.yaml"),
+      providerWorkflowYaml("pipr/docs", "pipr/docs-reviewer", "docs/**"),
+    );
+    const runtime = await loadRuntimeProject({ rootDir });
+    const pi = fakePiRunner([reviewSummary("Backend review."), reviewSummary("Docs review.")]);
+
+    const result = await runReviewRuntime(
+      reviewRuntimeOptions(runtime, pi, {
+        workspace: rootDir,
+        diffManifestBuilder: () => manifestWithDocs(),
+      }),
+    );
+
+    expect(pi.providerIds).toEqual(["backend", "docs"]);
+    expect(result.publicationPlan.metadata.providerModels).toEqual(["backend-model", "docs-model"]);
+    expect(result.mainComment).toContain("Models: `backend-model, docs-model`");
+  });
+
+  it("executes only the requested command workflow", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = fakePiRunner([reviewSummary("Docs review.")]);
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          reviewWorkflow({
+            id: "pipr/backend",
+            paths: { include: ["src/**"] },
+            merge: "append",
+          }),
+          reviewWorkflow({
+            id: "pipr/docs",
+            paths: { include: ["docs/**"] },
+            merge: "append",
+          }),
+        ],
+      },
+    });
+
+    const result = await runRegistryReview({
+      runtime,
+      pi,
+      registry,
+      workflowId: "pipr/docs",
+      diffManifestBuilder: () => manifestWithDocs(),
+    });
+
+    expect(pi.prompts).toHaveLength(1);
+    expect(result.publicationPlan.metadata.selectedWorkflows).toEqual(["pipr/docs"]);
+    expect(result.mainComment).toContain("Docs review.");
+    expect(result.mainComment).not.toContain("Backend review.");
+  });
+
+  it("lets core/main-comment emit an explicit named section contribution", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = fakePiRunner([reviewSummary("Explicit section review.")]);
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          {
+            id: "pipr/review",
+            description: "Explicit section review workflow",
+            source: "test",
+            events: ["pull_request.opened"],
+            steps: [
+              { id: "review", block: "core/run-agent" },
+              {
+                id: "main-comment",
+                block: "core/main-comment",
+                with: {
+                  sectionId: "summary",
+                  value: expr("steps.review.outputs.result.review.summary.body"),
+                  merge: "exclusive",
+                  priority: 100,
+                },
+              },
+              {
+                id: "inline-comments",
+                block: "core/inline-comments",
+                with: { review: expr("steps.review.outputs.result") },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const result = await runRegistryReview({
+      runtime,
+      pi,
+      registry,
+      diffManifestBuilder: () => manifest,
+    });
+
+    expect(result.mainComment).toContain("Explicit section review.");
+  });
+
+  it("fails the run when a selected workflow records a step failure", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = fakePiRunnerWithExitCodes([
+      { stdout: "", stderr: "warmup failed", exitCode: 1 },
+      { stdout: noFindingsReview, stderr: "", exitCode: 0 },
+    ]);
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          {
+            id: "pipr/review",
+            description: "Review with fallible warmup",
+            source: "test",
+            events: ["pull_request.opened"],
+            steps: [
+              { id: "warmup", block: "core/run-agent", failurePolicy: "continue" },
+              { id: "review", block: "core/run-agent" },
+              {
+                id: "main-comment",
+                block: "core/main-comment",
+                with: { review: expr("steps.review.outputs.result") },
+              },
+              {
+                id: "inline-comments",
+                block: "core/inline-comments",
+                with: { review: expr("steps.review.outputs.result") },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    await expect(
+      runRegistryReview({ runtime, pi, registry, diffManifestBuilder: () => manifest }),
+    ).rejects.toThrow("Review workflow 'pipr/review' failed: warmup");
+  });
+
+  it("uses the built-in Main Review Comment template when selected workflows omit templates", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [reviewWorkflow({ id: "pipr/review", omitTemplate: true })],
+      },
+    });
+
+    const result = await runReviewRuntime({
+      workspace: "/tmp/pipr",
+      config: runtime.resolved.config,
+      event,
+      project: projectWithoutCommentTemplates(runtime),
+      registry,
+      piRunner: pi.run,
+      diffManifestBuilder: () => manifest,
+    });
+
+    expect(result.mainComment).toContain("<!-- pipr:main-comment pr=1 -->");
+    expect(result.mainComment).toContain("# pipr Review");
+  });
+
+  it("dedupes inline findings and applies the inline cap across workflows", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = fakePiRunner([
+      findingReview("First", "range-1"),
+      findingReview("Second", "range-2"),
+    ]);
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          reviewWorkflow({ id: "pipr/first", merge: "append" }),
+          reviewWorkflow({ id: "pipr/second", merge: "append" }),
+        ],
+      },
+    });
+
+    const result = await runReviewRuntime({
+      workspace: "/tmp/pipr",
+      config: {
+        ...runtime.resolved.config,
+        publication: { ...runtime.resolved.config.publication, maxInlineComments: 1 },
+      },
+      event,
+      registry,
+      piRunner: pi.run,
+      diffManifestBuilder: () => manifest,
+    });
+
+    expect(result.inlineCommentDrafts).toHaveLength(1);
+    expect(result.publicationPlan.metadata.cappedInlineFindings).toBe(1);
+
+    const duplicatePi = fakePiRunner([
+      findingReview("Duplicate", "range-1"),
+      findingReview("Duplicate", "range-1"),
+    ]);
+    const duplicateResult = await runReviewRuntime({
+      workspace: "/tmp/pipr",
+      config: runtime.resolved.config,
+      event,
+      registry,
+      piRunner: duplicatePi.run,
+      diffManifestBuilder: () => manifest,
+    });
+
+    expect(duplicateResult.inlineCommentDrafts).toHaveLength(1);
+  });
+
+  it("rejects selected workflows with mixed Main Review Comment templates", async () => {
+    const runtime = await loadOfficialRuntimeProject();
+    const pi = noFindingsPiRunner();
+    const registry = createRuntimeRegistry({
+      modules: {
+        workflows: [
+          reviewWorkflow({ id: "pipr/first", template: "pipr/main" }),
+          reviewWorkflow({ id: "pipr/second", template: "custom/main" }),
+        ],
+      },
+    });
+
+    await expect(
+      runReviewRuntime({
+        workspace: "/tmp/pipr",
+        config: runtime.resolved.config,
+        event,
+        registry,
+        piRunner: pi.run,
+        diffManifestBuilder: () => manifest,
+      }),
+    ).rejects.toThrow("mixed Main Review Comment templates");
+  });
+
   it("fails before Pi when Diff Manifest build fails", async () => {
     const runtime = await loadOfficialRuntimeProject();
     const pi = noFindingsPiRunner();
@@ -671,7 +1086,7 @@ describe("runReviewRuntime", () => {
     const { result, pi } = await runProjectReviewWithRunner(rootDir);
 
     expectBackupProviderUsed(result, pi);
-    expect(result.mainComment).toContain("Model: `backup-model`");
+    expect(result.mainComment).toContain("Models: `backup-model`");
   });
 
   it("passes the runtime source env through to Pi", async () => {
@@ -767,6 +1182,105 @@ function createReviewRegistry(steps: WorkflowStep[], blocks: BlockRegistryEntry[
   });
 }
 
+function reviewWorkflow(options: {
+  id: string;
+  paths?: NonNullable<RunReviewRuntimeOptions["registry"]["workflows"][number]["paths"]>;
+  template?: string;
+  omitTemplate?: boolean;
+  merge?: "exclusive" | "replace" | "append" | "list";
+}) {
+  const mainCommentInput = options.omitTemplate
+    ? { review: expr("steps.review.outputs.result") }
+    : {
+        review: expr("steps.review.outputs.result"),
+        template: options.template ?? "pipr/main",
+        ...(options.merge ? { merge: options.merge } : {}),
+      };
+  return {
+    id: options.id,
+    description: options.id,
+    source: "test",
+    paths: options.paths,
+    events: ["pull_request.opened"],
+    steps: [
+      { id: "review", block: "core/run-agent" },
+      {
+        id: "main-comment",
+        block: "core/main-comment",
+        with: mainCommentInput,
+      },
+      {
+        id: "inline-comments",
+        block: "core/inline-comments",
+        with: { review: expr("steps.review.outputs.result") },
+      },
+    ],
+  };
+}
+
+function manifestWithDocs() {
+  return {
+    ...manifest,
+    files: [
+      ...manifest.files,
+      {
+        path: "docs/readme.md",
+        status: "modified" as const,
+        additions: 1,
+        deletions: 0,
+        hunks: [
+          {
+            hunkIndex: 1,
+            header: "@@ -1 +1 @@",
+            oldStart: 1,
+            oldLines: 1,
+            newStart: 1,
+            newLines: 1,
+            contentHash: "cafedeadbeef",
+          },
+        ],
+        commentableRanges: [
+          {
+            id: "docs-range",
+            path: "docs/readme.md",
+            side: "RIGHT" as const,
+            startLine: 1,
+            endLine: 1,
+            kind: "added" as const,
+            hunkIndex: 1,
+            hunkHeader: "@@ -1 +1 @@",
+            hunkContentHash: "cafedeadbeef",
+            preview: "updated docs",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function findingReview(title: string, rangeId: "range-1" | "range-2"): string {
+  const startLine = rangeId === "range-1" ? 10 : 20;
+  const endLine = rangeId === "range-1" ? 12 : 22;
+  return JSON.stringify({
+    summary: { body: `${title} summary.` },
+    inlineFindings: [
+      {
+        title,
+        body: "This can fail.",
+        path: "src/a.ts",
+        rangeId,
+        side: "RIGHT",
+        startLine,
+        endLine,
+        severity: "high",
+        category: "correctness",
+        confidence: 0.9,
+        evidenceSnippet: "const x = fail();",
+      },
+    ],
+  });
+}
+
 async function expectRuntimeRejection(
   registry: RunReviewRuntimeOptions["registry"],
   message: string,
@@ -797,6 +1311,24 @@ async function runProjectReviewWithRunner(rootDir: string, pi = noFindingsPiRunn
   const runtime = await loadRuntimeProject({ rootDir });
   const result = await runReviewRuntime(reviewRuntimeOptions(runtime, pi, { workspace: rootDir }));
   return { result, pi };
+}
+
+async function runRegistryReview(options: {
+  runtime: LoadedRuntimeProject;
+  pi: PiRunnerSpy;
+  registry: RunReviewRuntimeOptions["registry"];
+  workflowId?: string;
+  diffManifestBuilder: RunReviewRuntimeOptions["diffManifestBuilder"];
+}) {
+  return await runReviewRuntime({
+    workspace: "/tmp/pipr",
+    config: options.runtime.resolved.config,
+    event,
+    registry: options.registry,
+    workflowId: options.workflowId,
+    piRunner: options.pi.run,
+    diffManifestBuilder: options.diffManifestBuilder,
+  });
 }
 
 function noFindingsPiRunner() {
@@ -842,6 +1374,79 @@ async function writeCommentTemplate(
   );
 }
 
+async function writeDocsReviewerAgent(rootDir: string): Promise<void> {
+  await writeFile(
+    path.join(rootDir, ".pipr", "agents", "reviewer.md"),
+    [
+      "---",
+      "apiVersion: pipr.dev/v1",
+      "kind: Agent",
+      "id: pipr/reviewer",
+      "paths:",
+      "  include:",
+      "    - docs/**",
+      "provider: deepseek",
+      "output:",
+      "  schema: core/pr-review",
+      "---",
+      "",
+      "Review docs.",
+    ].join("\n"),
+  );
+}
+
+async function writeProviderAgent(
+  rootDir: string,
+  fileName: string,
+  id: string,
+  provider: string,
+): Promise<void> {
+  await writeFile(
+    path.join(rootDir, ".pipr", "agents", fileName),
+    [
+      "---",
+      "apiVersion: pipr.dev/v1",
+      "kind: Agent",
+      `id: ${id}`,
+      `provider: ${provider}`,
+      "output:",
+      "  schema: core/pr-review",
+      "---",
+      "",
+      `Review with ${provider}.`,
+    ].join("\n"),
+  );
+}
+
+function providerWorkflowYaml(id: string, agentId: string, includePath: string): string {
+  return [
+    "apiVersion: pipr.dev/v1",
+    "kind: Workflow",
+    `id: ${id}`,
+    "paths:",
+    "  include:",
+    `    - ${includePath}`,
+    "on:",
+    "  events:",
+    "    - pull_request.opened",
+    "steps:",
+    "  - id: review",
+    "    uses: core/run-agent",
+    "    with:",
+    `      agent: ${agentId}`,
+    "  - id: main-comment",
+    "    uses: core/main-comment",
+    "    with:",
+    `      review: ${expr("steps.review.outputs.result")}`,
+    "      template: pipr/main",
+    "      merge: append",
+    "  - id: inline-comments",
+    "    uses: core/inline-comments",
+    "    with:",
+    `      review: ${expr("steps.review.outputs.result")}`,
+  ].join("\n");
+}
+
 function reviewSummary(body: string): string {
   return JSON.stringify({ summary: { body }, inlineFindings: [] });
 }
@@ -849,6 +1454,31 @@ function reviewSummary(body: string): string {
 function expectBackupProviderUsed(result: ReviewRuntimeResult, pi: PiRunnerSpy): void {
   expect(result.provider.id).toBe("backup");
   expect(pi.providerIds).toEqual(["backup"]);
+}
+
+function projectWithoutCommentTemplates(
+  runtime: LoadedRuntimeProject,
+): LoadedRuntimeProject["project"] {
+  const componentFiles = Object.fromEntries(
+    Object.entries(runtime.project.componentFiles).filter(
+      ([, component]) => component.document.kind !== "CommentTemplate",
+    ),
+  );
+  return {
+    ...runtime.project,
+    components: runtime.project.components.filter(
+      (component) => component.kind !== "CommentTemplate",
+    ),
+    componentFiles,
+    sources: {
+      ...runtime.project.sources,
+      components: Object.fromEntries(
+        Object.entries(runtime.project.sources.components).filter(([id]) =>
+          Object.hasOwn(componentFiles, id),
+        ),
+      ),
+    },
+  };
 }
 
 function templatedReviewWorkflowYaml(options: {
@@ -921,6 +1551,62 @@ function fakePiRunner(outputs: string[]): {
         stderr: "",
         exitCode: 0,
         durationMs: 1,
+      };
+    },
+  };
+}
+
+function fakePiRunnerWithExitCodes(
+  outputs: Array<{ stdout: string; stderr: string; exitCode: number }>,
+): {
+  run: PiRunner;
+  envs: Array<NodeJS.ProcessEnv | undefined>;
+  prompts: string[];
+  providerIds: string[];
+  runtimeTools: Array<Parameters<PiRunner>[0]["runtimeTools"]>;
+  timeoutSeconds: Array<number | undefined>;
+} {
+  const runner = fakePiRunner([]);
+  return {
+    ...runner,
+    run: async (options) => {
+      runner.envs.push(options.env);
+      runner.prompts.push(options.prompt);
+      runner.providerIds.push(options.provider.id);
+      runner.runtimeTools.push(options.runtimeTools);
+      runner.timeoutSeconds.push(options.timeoutSeconds);
+      const output = outputs.shift() ?? { stdout: "", stderr: "", exitCode: 0 };
+      return {
+        ...output,
+        durationMs: 1,
+      };
+    },
+  };
+}
+
+function concurrentPiRunner(outputs: string[]): PiRunnerSpy & { maxActive: () => number } {
+  const runner = fakePiRunner([]);
+  let active = 0;
+  let maxActive = 0;
+  return {
+    ...runner,
+    maxActive: () => maxActive,
+    run: async (options) => {
+      runner.envs.push(options.env);
+      runner.prompts.push(options.prompt);
+      runner.providerIds.push(options.provider.id);
+      runner.runtimeTools.push(options.runtimeTools);
+      runner.timeoutSeconds.push(options.timeoutSeconds);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      const stdout = outputs.shift() ?? "";
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      return {
+        stdout,
+        stderr: "",
+        exitCode: 0,
+        durationMs: 20,
       };
     },
   };

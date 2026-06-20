@@ -21,10 +21,12 @@
   },
   "dependencies": {
     "@octokit/rest": "22.0.1",
+    "picomatch": "4.0.4",
     "yaml": "2.9.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/picomatch": "4.0.3",
     "vitest": "4.1.9"
   }
 }

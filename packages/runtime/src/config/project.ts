@@ -111,6 +111,7 @@ function materializedProjectToRuntimeModules(project: MaterializedProject): Runt
       description: workflow.description ?? workflow.id,
       source: sourceFor(project, workflow.id),
       inputs: workflow.inputs,
+      paths: workflow.paths,
       events: workflow.on?.events ?? [],
       commands: workflow.on?.commands ?? [],
       failurePolicy: workflow.failurePolicy,
