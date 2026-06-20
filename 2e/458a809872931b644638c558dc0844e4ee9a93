@@ -1,0 +1,19 @@
+packages/runtime/src/pi/runtime-tools-core.ts
+  s_e3682c1e6e7dd6::t_9241087b62810f 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "2e458a809872931b644638c558dc0844e4ee9a93",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
