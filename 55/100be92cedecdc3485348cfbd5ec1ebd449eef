@@ -1,0 +1,63 @@
+scripts/act-helpers.sh
+  s_e3682c1e6e7dd6::t_d2479bf7a54476 36
+  s_e3682c1e6e7dd6::t_4acb64264d8798 1-16,30-35,37-54
+  s_e3682c1e6e7dd6::t_28dd0408ab3575 17-29
+test/fixtures/act/workflows/pipr-local-orchestrator.yml
+  s_e3682c1e6e7dd6::t_f6f6963a909e44 18-20
+scripts/act-pr-condensed-fixture.sh
+  s_e3682c1e6e7dd6::t_d5bcd00efd3a10 8,152-153,159-161
+  s_e3682c1e6e7dd6::t_6eddde93d6da3d 109
+  s_e3682c1e6e7dd6::t_023c03417d56fc 5-7,79
+scripts/act-pr-fixture.sh
+  s_e3682c1e6e7dd6::t_b2c4f60e7af263 18-20,47-49
+  s_e3682c1e6e7dd6::t_b4843fdb4a68ab 8,50,57-59
+  s_e3682c1e6e7dd6::t_d01a154ac029b1 4-7,9-17,21-46,51-56,60
+.gitignore
+  s_e3682c1e6e7dd6::t_445fcab69ea015 6
+.github/workflows/pipr-local.yml
+  s_e3682c1e6e7dd6::t_12db0d1da71444 20-22
+test/fixtures/act/workflows/pipr-local-condensed.yml
+  s_e3682c1e6e7dd6::t_69c2ddcfd38078 18-20
+scripts/write-act-action-metadata.ts
+  s_e3682c1e6e7dd6::t_470ce20dd358d1 1-18,20-24
+  s_e3682c1e6e7dd6::t_5681df018f6e27 19
+scripts/test-act-action-metadata.ts
+  s_e3682c1e6e7dd6::t_4fe8f563f716fa 1-18
+mise.toml
+  s_e3682c1e6e7dd6::t_8857e128dfc34a 16
+package.json
+  s_e3682c1e6e7dd6::t_dcf6bdefd8d285 19
+  s_e3682c1e6e7dd6::t_e8a05262a94c4c 18
+.github/workflows/docker-image.yml
+  s_e3682c1e6e7dd6::t_88471c99cbeea0 1-45
+scripts/act-pr-orchestrator-fixture.sh
+  s_e3682c1e6e7dd6::t_011e19ac6adc8c 8,209-210,216-218
+  s_e3682c1e6e7dd6::t_f242a26dc7295e 166
+  s_e3682c1e6e7dd6::t_a71fba233b14b4 5-7,74
+test/fixtures/act/workflows/pipr-local-full.yml
+  s_e3682c1e6e7dd6::t_73a004ab706021 18-20
+README.md
+  s_e3682c1e6e7dd6::t_d309cddc1ec9c1 21-30,78
+scripts/act-pr-full-fixture.sh
+  s_e3682c1e6e7dd6::t_cb98a31a043b76 211
+  s_e3682c1e6e7dd6::t_ca5968a3d74675 8,264-265,271-273
+  s_e3682c1e6e7dd6::t_aee753c99874e2 5-7,72
+scripts/check-actions.sh
+  s_e3682c1e6e7dd6::t_e440930fc75309 4-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "55100be92cedecdc3485348cfbd5ec1ebd449eef",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
