@@ -48,7 +48,7 @@ export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
     const args = buildPiArgs(options.provider, options.prompt, sandbox.sessionDir, runtimeTools);
     return await runProcess(options.piExecutable ?? "pi", args, {
       cwd: sandbox.workspace,
-      env: buildPiEnv(options.provider, sandbox, options.env),
+      env: buildPiEnv(options.provider, sandbox, options.env, runtimeTools),
       started,
       timeoutSeconds: options.timeoutSeconds,
     });
@@ -96,6 +96,7 @@ function buildPiEnv(
   provider: ProviderConfig,
   sandbox: Pick<PiRunSandbox, "home" | "sessionDir" | "tmp">,
   sourceEnv: NodeJS.ProcessEnv = process.env,
+  runtimeTools?: PreparedPiRuntimeReadTools,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     HOME: sandbox.home,
@@ -107,6 +108,9 @@ function buildPiEnv(
     TMPDIR: sandbox.tmp,
     USER: "pipr",
   };
+  if (runtimeTools) {
+    env.PIPR_RUNTIME_TOOLS_DATA = runtimeTools.dataPath;
+  }
   for (const key of ["BUN_INSTALL", "LANG", "PATH"]) {
     copyEnvValue(env, sourceEnv, key);
   }

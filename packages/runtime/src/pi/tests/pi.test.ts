@@ -2,6 +2,7 @@ import { chmod, lstat, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { DiffManifest } from "../../types.js";
 import {
   parsePiProviderInvocation,
   parsePiProviderProfile,
@@ -169,14 +170,15 @@ describe("buildPiArgs", () => {
       "Review this diff.",
       "/tmp/pipr-session",
       {
-        extensionPath: "/tmp/pipr-runtime-tools.mjs",
+        extensionPath: "/tmp/runtime-tools-extension.mjs",
+        dataPath: "/tmp/pipr-runtime-tools-data.json",
         toolNames: piRuntimeReadToolNames,
       },
     );
 
     expect(args).toContain("--no-extensions");
     expect(args).toContain("--extension");
-    expect(args[args.indexOf("--extension") + 1]).toBe("/tmp/pipr-runtime-tools.mjs");
+    expect(args[args.indexOf("--extension") + 1]).toBe("/tmp/runtime-tools-extension.mjs");
     expect(args[args.indexOf("--tools") + 1]).toBe(
       "read,grep,find,ls,pipr_read_diff,pipr_read_at_ref",
     );
@@ -237,10 +239,49 @@ describe("buildPiArgs", () => {
       expect(result.stdout).toContain("PI_CODING_AGENT_SESSION_DIR=");
       expect(result.stdout).toContain("PIPR_PROVIDER_ID=backup");
       expect(result.stdout).not.toContain(`HOME=${hostHome}`);
+      expect(result.stdout).not.toContain("PIPR_RUNTIME_TOOLS_DATA=");
       expect(result.stdout).not.toContain("SECRET_SHOULD_NOT_LEAK");
     } finally {
       restoreEnv("DEEPSEEK_API_KEY", previousProviderKey);
       restoreEnv("SECRET_SHOULD_NOT_LEAK", previousSecret);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("passes runtime tool data env only when condensed runtime tools are enabled", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
+    const piExecutable = path.join(workspace, "fake-pi.sh");
+    try {
+      await writeFile(piExecutable, "#!/bin/sh\nprintenv\nprintf 'ARGS=%s\\n' \"$*\"\n");
+      await chmod(piExecutable, 0o755);
+
+      const result = await runPi({
+        workspace,
+        piExecutable,
+        prompt: "Review this diff.",
+        env: {
+          DEEPSEEK_API_KEY: "provided-key",
+          PATH: process.env.PATH,
+        },
+        provider: {
+          id: "deepseek",
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          thinking: "high",
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+        },
+        runtimeTools: {
+          manifest: emptyDiffManifest(),
+          toolResponseMaxBytes: 10_000,
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("PIPR_RUNTIME_TOOLS_DATA=");
+      expect(result.stdout).toContain("runtime-tools/data.json");
+      expect(result.stdout).toContain("--extension");
+      expect(result.stdout).toContain("runtime-tools-extension.mjs");
+    } finally {
       await rm(workspace, { recursive: true, force: true });
     }
   });
@@ -307,6 +348,15 @@ describe("buildPiArgs", () => {
     }
   });
 });
+
+function emptyDiffManifest(): DiffManifest {
+  return {
+    baseSha: "base",
+    headSha: "head",
+    mergeBaseSha: "base",
+    files: [],
+  };
+}
 
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {

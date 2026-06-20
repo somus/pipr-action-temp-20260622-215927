@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -201,7 +201,7 @@ describe("pipr runtime Pi read tools", () => {
     }
   });
 
-  it("generates runtime extension tools with range-scoped base truncation metadata", async () => {
+  it("loads static runtime extension tools with range-scoped base truncation metadata", async () => {
     const repo = await createGitRepo({
       baseContent: `${"base ".repeat(20)}\n`,
       headContent: `${"head ".repeat(20)}\n`,
@@ -214,7 +214,17 @@ describe("pipr runtime Pi read tools", () => {
         sourceWorkspace: repo.root,
         request: { manifest, toolResponseMaxBytes: 10 },
       });
-      const atRefTool = await loadExtensionTool(prepared.extensionPath, "pipr_read_at_ref");
+      expect(path.basename(prepared.extensionPath)).toBe("runtime-tools-extension.mjs");
+      expect(path.dirname(prepared.extensionPath)).not.toBe(path.join(toolRoot, "runtime-tools"));
+      await expect(access(prepared.dataPath)).resolves.toBeUndefined();
+      await expect(
+        access(path.join(toolRoot, "runtime-tools", "pipr-runtime-tools.mjs")),
+      ).rejects.toThrow();
+      const atRefTool = await loadExtensionTool(
+        prepared.extensionPath,
+        "pipr_read_at_ref",
+        prepared.dataPath,
+      );
 
       const result = await executeExtensionTool(atRefTool, repo.root, {
         path: "src/new.ts",
@@ -236,7 +246,33 @@ describe("pipr runtime Pi read tools", () => {
     }
   });
 
-  it("keeps typed helpers and generated extension tools in parity", async () => {
+  it("fails clearly when runtime tool data env is missing", async () => {
+    const repo = await createGitRepo();
+    const toolRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-runtime-tools-env-"));
+    const previousDataPath = process.env.PIPR_RUNTIME_TOOLS_DATA;
+    try {
+      const prepared = await preparePiRuntimeReadTools({
+        root: toolRoot,
+        sourceWorkspace: repo.root,
+        request: {
+          manifest: renamedManifest(repo.baseSha, repo.headSha),
+          toolResponseMaxBytes: 10,
+        },
+      });
+      delete process.env.PIPR_RUNTIME_TOOLS_DATA;
+      const extension = await import(pathToFileURL(prepared.extensionPath).href);
+
+      expect(() => extension.default({ registerTool() {} })).toThrow(
+        "PIPR_RUNTIME_TOOLS_DATA is required",
+      );
+    } finally {
+      restoreEnv("PIPR_RUNTIME_TOOLS_DATA", previousDataPath);
+      await rm(repo.root, { recursive: true, force: true });
+      await rm(toolRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps typed helpers and static extension tools in parity", async () => {
     const repo = await createGitRepo();
     const toolRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-runtime-tools-parity-"));
     try {
@@ -246,8 +282,16 @@ describe("pipr runtime Pi read tools", () => {
         sourceWorkspace: repo.root,
         request: { manifest, toolResponseMaxBytes: 10_000 },
       });
-      const diffTool = await loadExtensionTool(prepared.extensionPath, "pipr_read_diff");
-      const atRefTool = await loadExtensionTool(prepared.extensionPath, "pipr_read_at_ref");
+      const diffTool = await loadExtensionTool(
+        prepared.extensionPath,
+        "pipr_read_diff",
+        prepared.dataPath,
+      );
+      const atRefTool = await loadExtensionTool(
+        prepared.extensionPath,
+        "pipr_read_at_ref",
+        prepared.dataPath,
+      );
 
       const diffParams = { path: "src/new.ts", rangeId: "range-1" };
       expect(await executeExtensionTool(diffTool, repo.root, diffParams)).toEqual(
@@ -470,16 +514,23 @@ async function createAdvancedBaseRepo(): Promise<{
 async function loadExtensionTool(
   extensionPath: string,
   toolName: string,
+  dataPath: string,
 ): Promise<{
   execute: (...args: unknown[]) => Promise<{ details?: unknown; content: Array<{ text: string }> }>;
 }> {
   const tools = new Map<string, unknown>();
-  const extension = await import(pathToFileURL(extensionPath).href);
-  await extension.default({
-    registerTool(tool: { name: string }) {
-      tools.set(tool.name, tool);
-    },
-  });
+  const previousDataPath = process.env.PIPR_RUNTIME_TOOLS_DATA;
+  process.env.PIPR_RUNTIME_TOOLS_DATA = dataPath;
+  try {
+    const extension = await import(pathToFileURL(extensionPath).href);
+    await extension.default({
+      registerTool(tool: { name: string }) {
+        tools.set(tool.name, tool);
+      },
+    });
+  } finally {
+    restoreEnv("PIPR_RUNTIME_TOOLS_DATA", previousDataPath);
+  }
   const tool = tools.get(toolName);
   if (!tool || typeof tool !== "object" || !("execute" in tool)) {
     throw new Error(`missing extension tool ${toolName}`);
@@ -489,6 +540,14 @@ async function loadExtensionTool(
       ...args: unknown[]
     ) => Promise<{ details?: unknown; content: Array<{ text: string }> }>;
   };
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
 }
 
 async function executeExtensionTool(

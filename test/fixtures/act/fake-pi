@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { assert, assertEqual } from "../../../scripts/assert-act-fixture-helpers.mjs";
 
@@ -106,6 +107,7 @@ function writeOrchestratorReview() {
 async function assertCondensedRuntimeTools() {
   const toolNames = readFlagValue("--tools");
   const extensionPath = readFlagValue("--extension");
+  const dataPath = process.env.PIPR_RUNTIME_TOOLS_DATA;
 
   assertEqual(
     toolNames,
@@ -116,6 +118,10 @@ async function assertCondensedRuntimeTools() {
     assert(!toolNames.split(",").includes(forbidden), `forbidden tool '${forbidden}' was enabled`);
   }
   assert(existsSync(extensionPath), "runtime tool extension path missing");
+  assertEqual(path.basename(extensionPath), "runtime-tools-extension.mjs", "runtime tool extension was not static");
+  assert(dataPath, "runtime tool data env missing");
+  assert(existsSync(dataPath), "runtime tool data path missing");
+  assertEqual(path.basename(dataPath), "data.json", "runtime tool data file name mismatch");
 
   const payload = parsePromptJson("Diff Manifest Payload:", "Diff Manifest:");
   assertEqual(payload.mode, "condensed", "expected condensed manifest payload");
