@@ -1,5 +1,6 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
+import { isRecord } from "../shared/record.js";
 import type { CommentableRange, DiffHunk, DiffManifest, DiffManifestFile } from "../types.js";
 
 const readAtRefContextLines = 3;
@@ -275,8 +276,4 @@ function findRange(manifest: DiffManifest, rangeId: string): boolean {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
