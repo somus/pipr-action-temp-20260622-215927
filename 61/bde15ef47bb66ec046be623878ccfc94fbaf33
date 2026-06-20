@@ -1,0 +1,115 @@
+packages/runtime/src/diff/path-filter.ts
+  s_e3682c1e6e7dd6::t_789dd399bfabfb 72-74
+  s_e3682c1e6e7dd6::t_64b2d0907bf86f 1-9,22-41,43-48,56-62,65-67,69-71,75-78,109
+  s_e3682c1e6e7dd6::t_efda2f273f196a 49-50,55
+  s_e3682c1e6e7dd6::t_409de0b9b0e885 54
+  s_e3682c1e6e7dd6::t_4fc07da8a83c47 10-21,63-64,68,79-108
+  s_e3682c1e6e7dd6::t_3928af129ad189 51-53
+  s_e3682c1e6e7dd6::t_12f10df06206fa 42
+packages/runtime/src/review/comment.ts
+  s_e3682c1e6e7dd6::t_48acdd5a84df34 95,297,476-478
+  s_e3682c1e6e7dd6::t_b6406188d1011f 20-26,32-33,193-194,201-202,207-212,215-220,417,419,434-463
+test/fixtures/act/fake-pi
+  s_e3682c1e6e7dd6::t_a234582f16d7d6 3-4,15-19,283-284,286-302,312-335
+  s_e3682c1e6e7dd6::t_6d7155650ec15d 285,303-311
+packages/runtime/src/config/tests/schema.test.ts
+  s_e3682c1e6e7dd6::t_c5d6b450a94172 42-45,69-71,106-117
+docs/CONTEXT.md
+  s_e3682c1e6e7dd6::t_fe85336362a286 55,61
+  s_e3682c1e6e7dd6::t_d6c382de650fd8 39-42
+packages/runtime/src/types.ts
+  s_e3682c1e6e7dd6::t_f759b9f54d7821 37-42,260,317
+  s_e3682c1e6e7dd6::t_789dd399bfabfb 17-36
+docs/adr/0004-runtime-owned-review-kernel.md
+  s_e3682c1e6e7dd6::t_a8d5132cc7c5d0 16
+  s_e3682c1e6e7dd6::t_07b02a50b5e2d5 8
+packages/runtime/package.json
+  s_e3682c1e6e7dd6::t_ecfa0b786c3fe1 24
+  s_e3682c1e6e7dd6::t_d8ce469561aba7 29
+test/fixtures/act/workflows/pipr-local-full.yml
+  s_e3682c1e6e7dd6::t_6c6608ac0a4bed 31-32,52-53
+  s_e3682c1e6e7dd6::t_7f6e6a1aec41b7 35
+packages/runtime/src/review/tests/runtime.test.ts
+  s_e3682c1e6e7dd6::t_6c49d18abd9962 145-149,151-169,171-185,187-196,200-208,219-222,226-234,274-279,302-303,351-356,367-370,374-384,490-491,496-497,502-519,524-559
+  s_e3682c1e6e7dd6::t_52a17dc1806ae9 429-461,465-489,1189,1192-1196,1198,1210,1467-1468,1473-1475,1478-1483,1559-1580
+  s_e3682c1e6e7dd6::t_dc140756accf7b 1316-1333,1377-1393
+  s_e3682c1e6e7dd6::t_409de0b9b0e885 462-464,1459-1461,1469-1471,1476-1477
+  s_e3682c1e6e7dd6::t_dc5528fd3402ed 1185-1188,1191,1199-1209,1211-1283
+  s_e3682c1e6e7dd6::t_3dbb689f7aef15 1089
+  s_e3682c1e6e7dd6::t_99e8f37a29a4cd 385-428
+  s_e3682c1e6e7dd6::t_fc06f802dbf5ff 209-218,235-244,249-273,280-301,357-366,498-501
+  s_e3682c1e6e7dd6::t_5a4025ef49dc2b 347
+  s_e3682c1e6e7dd6::t_c15eef988bc0a5 1190,1197,1442
+  s_e3682c1e6e7dd6::t_d0db7037d97fd4 325
+  s_e3682c1e6e7dd6::t_a2272cce064593 304-324,326-346,348-350,1394-1441,1443-1447
+  s_e3682c1e6e7dd6::t_3134f7f740d92a 245-248
+  s_e3682c1e6e7dd6::t_b72fe42e5d9131 1462-1466,1472
+  s_e3682c1e6e7dd6::t_789dd399bfabfb 150,197-199,492-495,520-523
+  s_e3682c1e6e7dd6::t_15962a304813c4 170,186,223-225,371-373
+  s_e3682c1e6e7dd6::t_5aba147399e3d3 1448,1582-1585,1587-1614
+packages/runtime/src/review/runtime.ts
+  s_e3682c1e6e7dd6::t_a20c1f00e6adcb 537-540,545-547
+  s_e3682c1e6e7dd6::t_86e876637a9e57 132,163
+  s_e3682c1e6e7dd6::t_bc424a2d23d191 100
+  s_e3682c1e6e7dd6::t_aa0de1e11397a2 260,572,666-687,689-707,709-713
+  s_e3682c1e6e7dd6::t_b8c500424b478c 438-448,454-456,459,497-536,541-544,549-571
+  s_e3682c1e6e7dd6::t_748cdd31c1088f 27,78-79,114-115,117-131,133,139,145,158-160,165,172-176,183,262,266-270,272,274-277
+  s_e3682c1e6e7dd6::t_789dd399bfabfb 3,109-112,362-365,422-424,427-429
+  s_e3682c1e6e7dd6::t_3134f7f740d92a 41,226,245,665,688,708
+  s_e3682c1e6e7dd6::t_915f29452e41ac 299-305,307-309,416-421
+  s_e3682c1e6e7dd6::t_409de0b9b0e885 306
+  s_e3682c1e6e7dd6::t_8b9dea72ef5939 316-361,366-415,425-426,430-437
+  s_e3682c1e6e7dd6::t_674265c19a40f0 40,134-138,140-144,146,148-157,195-225,227-244,246-257,462,473-496
+  s_e3682c1e6e7dd6::t_11178d492a4f8d 259,548,594-604
+packages/runtime/src/config/schema.ts
+  s_e3682c1e6e7dd6::t_990dadc966e27d 13,76,119
+packages/runtime/src/workflow/workflow.ts
+  s_e3682c1e6e7dd6::t_9e7477287bdf25 78-84,86
+scripts/assert-act-full-fixture.mjs
+  s_e3682c1e6e7dd6::t_f52f0783b39e0a 2,7,20,23-25,30-41,69-79,83-112
+  s_e3682c1e6e7dd6::t_78c9b28957a91c 9-11,13-17,80-82
+scripts/test-act-full-fixture-assertions.ts
+  s_e3682c1e6e7dd6::t_01cfe4eebce99a 33-71,117,122-133
+packages/runtime/src/action/commands.ts
+  s_e3682c1e6e7dd6::t_1ece1770262f78 208-211,217-218,321-331,337-338,349-352,371-373,382
+packages/runtime/src/diff/tests/path-filter.test.ts
+  s_e3682c1e6e7dd6::t_01f14763645740 1-13,15-33,49-98
+  s_e3682c1e6e7dd6::t_3eab865d841fd5 34-48
+  s_e3682c1e6e7dd6::t_789dd399bfabfb 14
+README.md
+  s_e3682c1e6e7dd6::t_499e9bac50eac5 164-177
+  s_e3682c1e6e7dd6::t_5ce6bea47ac1bd 133-136,178,183
+scripts/act-pr-full-fixture.sh
+  s_e3682c1e6e7dd6::t_2e31ab2eef38d4 19-60,63
+  s_e3682c1e6e7dd6::t_240c7a8225d243 74-204,213-217
+packages/runtime/src/review/tests/comment.test.ts
+  s_e3682c1e6e7dd6::t_866faae005d5d5 214-239
+scripts/act-pr-condensed-fixture.sh
+  s_e3682c1e6e7dd6::t_41121405f72871 24-25
+packages/runtime/src/config/project.ts
+  s_e3682c1e6e7dd6::t_d45fe702997ba3 114
+packages/runtime/src/action/tests/commands.test.ts
+  s_e3682c1e6e7dd6::t_69ff6c42a4b764 134-154
+  s_e3682c1e6e7dd6::t_c2c9bb28e02162 200-228,239,248-251,317,322,351-355
+docs/adr/0005-runtime-owned-publication-kernel.md
+  s_e3682c1e6e7dd6::t_e886f9a5220e3e 9
+  s_e3682c1e6e7dd6::t_d103736ee3997c 10-11,19
+scripts/act-pr-orchestrator-fixture.sh
+  s_e3682c1e6e7dd6::t_c33d90d13a29f6 22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "61bde15ef47bb66ec046be623878ccfc94fbaf33",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
