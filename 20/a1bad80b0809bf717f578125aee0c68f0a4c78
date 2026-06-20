@@ -1,0 +1,34 @@
+packages/runtime/src/pi/runtime-tools.ts
+  s_e3682c1e6e7dd6::t_577f0c85a345da 2,4,20,75-102
+packages/runtime/runtime-tools-extension.mjs
+  s_e3682c1e6e7dd6::t_1dc8101747811f 81,173,223,234,236,244,263,271,282
+  s_e3682c1e6e7dd6::t_577f0c85a345da 1-80,82-172,174-222,224-233,235,237-243,245-262,264-270,272-281,283-285
+.fallowrc.json
+  s_e3682c1e6e7dd6::t_897b5190b4b77a 6,13-16
+packages/runtime/src/pi/tests/runtime-tools.test.ts
+  s_e3682c1e6e7dd6::t_1dc8101747811f 257-260
+  s_e3682c1e6e7dd6::t_8b60e846ee52c0 2,204,217-227,249-256,262-275,285-294,517,522-533,545-550
+packages/runtime/src/pi/runner.ts
+  s_e3682c1e6e7dd6::t_6bc223f5986100 51,99,111-113
+packages/runtime/src/pi/tests/pi.test.ts
+  s_e3682c1e6e7dd6::t_f4675f27040201 173,181
+  s_e3682c1e6e7dd6::t_b6ac110b6408e4 5,174,242,251-288,352-359
+test/fixtures/act/fake-pi
+  s_e3682c1e6e7dd6::t_c8c28fab9f95e4 5,110,121-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "20a1bad80b0809bf717f578125aee0c68f0a4c78",
+  "prompts": {},
+  "sessions": {
+    "s_e3682c1e6e7dd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed13c-b4b4-79e2-bc48-58b10ef980f5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
