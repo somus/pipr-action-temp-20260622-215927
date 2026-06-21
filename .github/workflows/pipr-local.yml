@@ -26,4 +26,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PIPR_DRY_RUN: "1"
         with:
-          config-dir: packages/runtime/distribution/official-minimal/.pipr
+          config-dir: .pipr

@@ -16,17 +16,17 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "build": "bun run --cwd ../sdk build && tsdown src/index.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
+    "typecheck": "bun run --cwd ../sdk build && tsc --noEmit",
+    "test": "bun run --cwd ../sdk build && vitest run",
     "lint": "biome check src",
     "format:check": "biome check src",
     "check": "bun run lint && bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
     "@octokit/rest": "22.0.1",
+    "@pipr/sdk": "workspace:*",
     "picomatch": "4.0.4",
-    "yaml": "2.9.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

@@ -7,12 +7,10 @@ import {
   isPiprCommandLine,
   isPiprCommandTrigger,
   parseCommandPattern,
-  piprHelpCommandLine,
 } from "../grammar.js";
 
 describe("command grammar", () => {
   it("recognizes pipr command lines and triggers by token", () => {
-    expect(piprHelpCommandLine).toBe("@pipr help");
     expect(firstNonEmptyLine("\n  @pipr review\n  ignored")).toBe("@pipr review");
     expect(isPiprCommandLine("@pipr")).toBe(true);
     expect(isPiprCommandLine("@pipr review")).toBe(true);

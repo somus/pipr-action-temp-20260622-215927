@@ -1,23 +1,13 @@
 import { Octokit } from "@octokit/rest";
+import type { RuntimePlan } from "@pipr/sdk";
 import { z } from "zod";
 import {
-  commandLabels,
   commandPatternPrefixMatches,
   isPiprCommandLine,
   parseCommandPattern,
-  piprHelpCommandLine,
 } from "../commands/grammar.js";
 import { githubApiVersion, parseRepoSlug } from "../shared/github.js";
-import type {
-  CommandPermissionLevel,
-  RegistryEntry,
-  RuntimeRegistry,
-  WorkflowCommand,
-  WorkflowCommandInvocation,
-  WorkflowInput,
-  WorkflowRegistryEntry,
-} from "../types.js";
-import { workflowCommandInvocationSchema } from "../types.js";
+import type { CommandPermissionLevel } from "../types.js";
 
 const permissionOrder: CommandPermissionLevel[] = ["read", "triage", "write", "maintain", "admin"];
 
@@ -25,6 +15,8 @@ const knownPermissions = new Set<CommandPermissionLevel>(permissionOrder);
 const noRepositoryPermission: RepositoryPermissionResponse = { permission: "none" };
 
 const pullRequestDetailsSchema = z.looseObject({
+  title: z.string().optional(),
+  body: z.string().nullable().optional(),
   base: z.looseObject({
     sha: z.string().min(1),
     repo: z
@@ -47,6 +39,8 @@ export type GitHubPullRequestDetails = {
   repo: string;
   baseSha: string;
   headSha: string;
+  title: string;
+  description: string;
 };
 
 export type RepositoryPermissionResponse = z.infer<typeof repositoryPermissionResponseSchema>;
@@ -62,7 +56,7 @@ export type GitHubCommandClient = {
   }): Promise<RepositoryPermissionResponse>;
 };
 
-export type WorkflowCommandResolution =
+export type PlanCommandResolution =
   | { kind: "ignored"; reason: string }
   | {
       kind: "help";
@@ -78,7 +72,15 @@ export type WorkflowCommandResolution =
     }
   | {
       kind: "matched";
-      invocation: WorkflowCommandInvocation;
+      invocation: {
+        taskName: string;
+        commandName: string;
+        requiredPermission: CommandPermissionLevel;
+        line: string;
+        pattern: string;
+        arguments: Record<string, string>;
+        inputs?: unknown;
+      };
     };
 
 export function createGitHubCommandClient(
@@ -105,6 +107,8 @@ export function createGitHubCommandClient(
         repo: json.base.repo?.full_name ?? options.repo,
         baseSha: json.base.sha,
         headSha: json.head.sha,
+        title: json.title ?? "",
+        description: json.body ?? "",
       };
     },
     async getRepositoryPermission(options) {
@@ -125,70 +129,119 @@ export function createGitHubCommandClient(
   };
 }
 
-export function resolveWorkflowCommand(
-  registry: RuntimeRegistry,
+export function resolvePlanCommand(
+  plan: RuntimePlan,
   line: string | undefined,
-): WorkflowCommandResolution {
+): PlanCommandResolution {
   if (!line) {
     return { kind: "ignored", reason: "comment did not contain a command line" };
   }
   if (!isPiprCommandLine(line)) {
     return { kind: "ignored", reason: "comment did not target pipr" };
   }
-  if (line === piprHelpCommandLine) {
-    return {
-      kind: "help",
-      reason: "built-in help requested",
-      requiredPermission: "read",
-      body: renderCommandHelp(registry),
-    };
-  }
-
-  const invalid = findInvalidCommandCandidate(registry, line);
-  const matched = findMatchedCommand(registry, line);
+  let matched: PlanCommandResolution | undefined;
+  matched = findMatchedPlanCommand(plan, line);
   if (matched) {
     return matched;
-  }
-  if (invalid) {
-    return invalid;
   }
   return {
     kind: "help",
     reason: `unknown pipr command '${line}'`,
     requiredPermission: "read",
-    body: renderCommandHelp(registry, `Unknown command: ${line}`),
+    body: renderPlanCommandHelp(plan, `Unknown command: ${line}`),
   };
 }
 
-export function listWorkflowCommandEntries(registry: RuntimeRegistry): RegistryEntry[] {
-  return [
-    { id: piprHelpCommandLine, description: "Built-in pipr command help.", source: "runtime:core" },
-    ...registry.workflows.flatMap((workflow) =>
-      (workflow.commands ?? []).flatMap((command) =>
-        commandLabels(command).map((label) => ({
-          id: label,
-          description: `${workflow.id} command '${command.name}' (${command.requiredPermission ?? "write"})`,
-          source: workflow.source,
-        })),
-      ),
-    ),
-  ];
-}
-
-function renderCommandHelp(registry: RuntimeRegistry, reason?: string): string {
+function renderPlanCommandHelp(plan: RuntimePlan, reason?: string): string {
   const lines = ["# pipr commands", ""];
   if (reason) {
     lines.push(reason, "");
   }
-  lines.push(`- ${piprHelpCommandLine} (read)`);
-  for (const workflow of registry.workflows) {
-    for (const command of workflow.commands ?? []) {
-      for (const label of commandLabels(command)) {
-        lines.push(`- ${label} (${command.requiredPermission ?? "write"})`);
-      }
-    }
+  for (const command of plan.commands) {
+    lines.push(`- ${command.pattern} (${command.permission})`);
   }
   return lines.join("\n");
+}
+
+function findMatchedPlanCommand(
+  plan: RuntimePlan,
+  line: string,
+): PlanCommandResolution | undefined {
+  let firstInvalid: PlanCommandResolution | undefined;
+  for (const command of plan.commands) {
+    const parsed = parseCommandPattern(command.pattern, line);
+    if (!parsed.ok) {
+      if (commandPatternPrefixMatches(command.pattern, line) && !firstInvalid) {
+        firstInvalid = {
+          kind: "invalid",
+          reason: parsed.error,
+          requiredPermission: command.permission,
+          body: renderPlanCommandHelp(plan, parsed.error),
+        };
+      }
+      continue;
+    }
+    return {
+      kind: "matched",
+      invocation: {
+        taskName: command.task.name,
+        commandName: planCommandName(command.pattern),
+        requiredPermission: command.permission,
+        line,
+        pattern: command.pattern,
+        arguments: parsed.value,
+      },
+    };
+  }
+  return firstInvalid;
+}
+
+export function parsePlanCommandInputs(
+  plan: RuntimePlan,
+  invocation: Extract<PlanCommandResolution, { kind: "matched" }>["invocation"],
+): PlanCommandResolution {
+  const command = plan.commands.find(
+    (candidate) =>
+      candidate.task.name === invocation.taskName && candidate.pattern === invocation.pattern,
+  );
+  const matchingCommand =
+    command ?? plan.commands.find((candidate) => candidate.task.name === invocation.taskName);
+  if (!matchingCommand) {
+    return {
+      kind: "invalid",
+      reason: `No command registered for task '${invocation.taskName}'`,
+      requiredPermission: invocation.requiredPermission,
+      body: renderPlanCommandHelp(plan),
+    };
+  }
+  try {
+    return {
+      kind: "matched",
+      invocation: {
+        ...invocation,
+        inputs: parsePlanCommandInput(matchingCommand, invocation.arguments),
+      },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      kind: "invalid",
+      reason,
+      requiredPermission: invocation.requiredPermission,
+      body: renderPlanCommandHelp(plan, reason),
+    };
+  }
+}
+
+function parsePlanCommandInput(
+  command: RuntimePlan["commands"][number],
+  values: Record<string, string>,
+): unknown {
+  return command.parse ? command.parse(values) : values;
+}
+
+function planCommandName(pattern: string): string {
+  return pattern.replace(/^@pipr\s+/, "").split(/\s+/)[0] ?? pattern;
 }
 
 export function hasRequiredRepositoryPermission(
@@ -202,173 +255,8 @@ export function hasRequiredRepositoryPermission(
   return permissionOrder.indexOf(effective) >= permissionOrder.indexOf(required);
 }
 
-export function permissionDeniedHelp(
-  registry: RuntimeRegistry,
-  required: CommandPermissionLevel,
-): string {
-  return renderCommandHelp(registry, `Permission denied: requires ${required}.`);
-}
-
-function findMatchedCommand(
-  registry: RuntimeRegistry,
-  line: string,
-): WorkflowCommandResolution | undefined {
-  for (const workflow of registry.workflows) {
-    for (const command of workflow.commands ?? []) {
-      const aliasMatch = matchAliasCommand(workflow, command, line);
-      if (aliasMatch) {
-        return aliasMatch;
-      }
-      const patternMatch = matchPatternCommand(workflow, command, line);
-      if (patternMatch.kind === "matched") {
-        return patternMatch;
-      }
-    }
-  }
-  return undefined;
-}
-
-function findInvalidCommandCandidate(
-  registry: RuntimeRegistry,
-  line: string,
-): WorkflowCommandResolution | undefined {
-  for (const workflow of registry.workflows) {
-    for (const command of workflow.commands ?? []) {
-      if (!command.pattern || !commandPatternPrefixMatches(command.pattern, line)) {
-        continue;
-      }
-      const patternMatch = matchPatternCommand(workflow, command, line);
-      if (patternMatch.kind === "invalid") {
-        return patternMatch;
-      }
-    }
-  }
-  return undefined;
-}
-
-function matchAliasCommand(
-  workflow: WorkflowRegistryEntry,
-  command: WorkflowCommand,
-  line: string,
-): WorkflowCommandResolution | undefined {
-  if (!command.aliases?.includes(line)) {
-    return undefined;
-  }
-  const inputs = applyWorkflowInputs(workflow.inputs ?? {}, {});
-  if (!inputs.ok) {
-    return invalidCommand(workflow, command, inputs.error);
-  }
-  return matchedCommand(workflow, command, line, inputs.value);
-}
-
-function matchPatternCommand(
-  workflow: WorkflowRegistryEntry,
-  command: WorkflowCommand,
-  line: string,
-): WorkflowCommandResolution {
-  if (!command.pattern) {
-    return { kind: "ignored", reason: "command has no pattern" };
-  }
-  const parsed = parseCommandPattern(command.pattern, line);
-  if (!parsed.ok) {
-    return invalidCommand(workflow, command, parsed.error);
-  }
-  const inputs = applyWorkflowInputs(workflow.inputs ?? {}, parsed.value);
-  if (!inputs.ok) {
-    return invalidCommand(workflow, command, inputs.error);
-  }
-  return matchedCommand(workflow, command, line, inputs.value);
-}
-
-function matchedCommand(
-  workflow: WorkflowRegistryEntry,
-  command: WorkflowCommand,
-  line: string,
-  inputs: Record<string, string>,
-): WorkflowCommandResolution {
-  return {
-    kind: "matched",
-    invocation: workflowCommandInvocationSchema.parse({
-      workflowId: workflow.id,
-      commandName: command.name,
-      requiredPermission: command.requiredPermission ?? "write",
-      line,
-      inputs,
-    }),
-  };
-}
-
-function invalidCommand(
-  workflow: WorkflowRegistryEntry,
-  command: WorkflowCommand,
-  reason: string,
-): WorkflowCommandResolution {
-  return {
-    kind: "invalid",
-    reason,
-    requiredPermission: command.requiredPermission ?? "write",
-    body: renderCommandHelp(
-      {
-        workflows: [workflow],
-        blocks: [],
-        agents: [],
-        schemas: [],
-        comments: [],
-        tools: [],
-      },
-      reason,
-    ),
-  };
-}
-
-function applyWorkflowInputs(
-  schema: Record<string, WorkflowInput>,
-  values: Record<string, string>,
-): { ok: true; value: Record<string, string> } | { ok: false; error: string } {
-  const unexpectedInput = firstUnexpectedInput(schema, values);
-  if (unexpectedInput) {
-    return { ok: false, error: `Unexpected input '${unexpectedInput}'` };
-  }
-
-  const result: Record<string, string> = {};
-  for (const [key, input] of Object.entries(schema)) {
-    const applied = applyWorkflowInput(key, input, values[key]);
-    if (!applied.ok) {
-      return applied;
-    }
-    if (applied.value !== undefined) {
-      result[key] = applied.value;
-    }
-  }
-  return { ok: true, value: result };
-}
-
-function firstUnexpectedInput(
-  schema: Record<string, WorkflowInput>,
-  values: Record<string, string>,
-): string | undefined {
-  const expected = new Set(Object.keys(schema));
-  for (const key of Object.keys(values)) {
-    if (!expected.has(key)) {
-      return key;
-    }
-  }
-  return undefined;
-}
-
-function applyWorkflowInput(
-  key: string,
-  input: WorkflowInput,
-  rawValue: string | undefined,
-): { ok: true; value: string | undefined } | { ok: false; error: string } {
-  const value = rawValue ?? input.default;
-  if (value === undefined && input.required) {
-    return { ok: false, error: `Missing required input '${key}'` };
-  }
-  if (value !== undefined && input.enum && !input.enum.includes(value)) {
-    return { ok: false, error: `Input '${key}' must be one of: ${input.enum.join(", ")}` };
-  }
-  return { ok: true, value };
+export function permissionDeniedHelp(plan: RuntimePlan, required: CommandPermissionLevel): string {
+  return renderPlanCommandHelp(plan, `Permission denied: requires ${required}.`);
 }
 
 function effectiveRepositoryPermission(

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { PrReview, ReviewFinding, RuntimeRegistry } from "../types.js";
+import type { PrReview, ReviewFinding } from "../types.js";
 import {
   parseDiffManifest,
   parsePiprConfig,
   parsePullRequestEventContext,
-  parseRuntimeRegistry,
+  parseRuntimeSettings,
   parseValidatedReview,
 } from "../types.js";
 
@@ -25,29 +25,6 @@ const finding: ReviewFinding = {
 const review: PrReview = {
   summary: { body: "Looks fine." },
   inlineFindings: [finding],
-};
-
-const registry: RuntimeRegistry = {
-  workflows: [
-    {
-      id: "pipr/review",
-      description: "Review",
-      source: "test",
-      events: ["pull_request.opened"],
-      steps: [{ id: "review", block: "core/run-agent" }],
-    },
-  ],
-  blocks: [
-    {
-      id: "core/run-agent",
-      description: "Run review",
-      source: "test",
-    },
-  ],
-  agents: [],
-  schemas: [],
-  comments: [],
-  tools: [],
 };
 
 describe("runtime boundary schemas", () => {
@@ -157,11 +134,19 @@ describe("runtime boundary schemas", () => {
     ).toThrow();
   });
 
-  it("rejects malformed runtime registries", () => {
+  it("rejects malformed runtime settings", () => {
     expect(() =>
-      parseRuntimeRegistry({
-        ...registry,
-        blocks: [{ id: "core/run-agent", description: "Run review" }],
+      parseRuntimeSettings({
+        source: ".pipr/config.ts",
+        config: {
+          defaultProvider: "deepseek",
+          providers: [],
+          publication: {
+            maxInlineComments: 5,
+            minConfidence: 0.75,
+          },
+        },
+        warnings: [],
       }),
     ).toThrow();
   });

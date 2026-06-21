@@ -39,19 +39,19 @@ expectFailure("secondary section missing", {
   ],
 });
 
-expectFailure("unexpected selected workflows", {
+expectFailure("unexpected selected tasks", {
   ...validFullFixture(),
   issueComments: [
     {
       body: fullMainCommentBody().replace(
-        "Selected workflows: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
-        "Selected workflows: `pipr/review`",
+        "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
+        "Selected tasks: `pipr/review`",
       ),
     },
   ],
 });
 
-expectFailure("path-missed workflow was selected", {
+expectFailure("path-missed task was selected", {
   ...validFullFixture(),
   issueComments: [
     {
@@ -129,7 +129,7 @@ function fullMainCommentBody(): string {
     "",
     "- **Fixture inline finding**: Full-flow act reached inline publication.",
     "",
-    "Selected workflows: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
+    "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
   ].join("\n");
 }
 

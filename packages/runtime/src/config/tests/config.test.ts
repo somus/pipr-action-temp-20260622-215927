@@ -1,48 +1,54 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject } from "../init.js";
-import { loadRuntimeConfig, loadRuntimeProject } from "../project.js";
+import {
+  inspectRuntimePlan,
+  loadRuntimeConfig,
+  loadRuntimeProject,
+  validateProject,
+} from "../project.js";
+import { loadTypescriptConfig } from "../ts-loader.js";
 
 describe("loadRuntimeProject", () => {
-  it("requires an initialized materialized config tree", async () => {
+  it("requires an initialized TypeScript config", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
 
     await expect(loadRuntimeProject({ rootDir })).rejects.toThrow(
-      ".pipr/config.yaml is required. Run pipr init to create it.",
+      ".pipr/config.ts is required. Run pipr init to create it.",
     );
   });
 
-  it("rejects old versioned config files", async () => {
+  it("rejects invalid TypeScript config exports", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
     await mkdir(path.join(rootDir, ".pipr"));
-    await writeFile(path.join(rootDir, ".pipr", "config.yaml"), "version: 1\n");
+    await writeFile(path.join(rootDir, ".pipr", "config.ts"), "export default {};\n");
 
-    await expect(loadRuntimeProject({ rootDir })).rejects.toThrow("Invalid input");
+    await expect(loadRuntimeProject({ rootDir })).rejects.toThrow(
+      "default export must be created by definePipr()",
+    );
   });
 
-  it("normalizes materialized provider config for current runtime execution", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
-    await initOfficialMinimalProject({ rootDir });
+  it("normalizes TypeScript model config for current runtime execution", async () => {
+    const rootDir = await newInitializedProject();
 
-    const resolved = await loadRuntimeConfig({ rootDir });
+    const settings = await loadRuntimeConfig({ rootDir });
 
-    expect(resolved.source).toContain(".pipr/config.yaml");
-    expect(resolved.config.defaultProvider).toBe("deepseek");
-    expect(resolved.config.providers[0]).toMatchObject({
+    expect(settings.source).toContain(".pipr/config.ts");
+    expect(settings.config.defaultProvider).toBe("deepseek");
+    expect(settings.config.providers[0]).toMatchObject({
       id: "deepseek",
       provider: "deepseek",
       model: "deepseek-v4-pro",
       apiKeyEnv: "DEEPSEEK_API_KEY",
       thinking: "high",
     });
-    expect(resolved.config.publication.maxInlineComments).toBeUndefined();
+    expect(settings.config.publication.maxInlineComments).toBe(5);
   });
 
   it("checks provider env vars only when requested", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
-    await initOfficialMinimalProject({ rootDir });
+    const rootDir = await newInitializedProject();
 
     await expect(
       loadRuntimeConfig({ rootDir, env: {}, requireProviderEnv: false }),
@@ -55,4 +61,173 @@ describe("loadRuntimeProject", () => {
       "Missing provider env vars: DEEPSEEK_API_KEY",
     );
   });
+
+  it("type-checks .pipr/config.ts during validation", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(
+      rootDir,
+      `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model: string = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  });
+
+  pipr.review({
+    model,
+    instructions: "Review this change.",
+  });
 });
+`,
+    );
+
+    await expect(validateProject({ rootDir })).rejects.toThrow("TypeScript config check failed");
+  });
+
+  it("can load a TypeScript config without type-checking it", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(
+      rootDir,
+      `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model: string = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  });
+
+  pipr.review({
+    model,
+    instructions: "Review this change.",
+  });
+});
+`,
+    );
+
+    await expect(loadTypescriptConfig({ rootDir, typecheck: false })).resolves.toMatchObject({
+      source: path.join(rootDir, ".pipr", "config.ts"),
+    });
+  });
+
+  it("requires tsconfig.json when type-checking a TypeScript config", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
+    await mkdir(path.join(rootDir, ".pipr"));
+    await writePiprConfig(
+      rootDir,
+      `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  });
+  pipr.review({ model, instructions: "Review this change." });
+});
+`,
+    );
+
+    await expect(loadTypescriptConfig({ rootDir, typecheck: true })).rejects.toThrow(
+      ".pipr/tsconfig.json is required for pipr check",
+    );
+  });
+
+  it("rejects async TypeScript config callbacks", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(
+      rootDir,
+      `import { definePipr } from "@pipr/sdk";
+
+export default definePipr(async () => {});
+`,
+    );
+
+    await expect(loadTypescriptConfig({ rootDir })).rejects.toThrow(
+      "definePipr configuration callback must be synchronous",
+    );
+  });
+
+  it("type-checks user plugins and lists registered custom tools", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(
+      rootDir,
+      `import { definePipr, definePlugin } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const memory = pipr.use(definePlugin((pluginPipr) => ({
+    store: pluginPipr.tool({
+      name: "pipr_store_memory",
+      description: "Store reviewer memory.",
+      input: pluginPipr.schemas.summary,
+      output: pluginPipr.schemas.summary,
+      execute: async (_ctx, input) => input,
+    }),
+    search: pluginPipr.tool({
+      name: "pipr_search_memories",
+      description: "Search reviewer memories.",
+      input: pluginPipr.schemas.summary,
+      output: pluginPipr.schemas.summary,
+      execute: async (_ctx, input) => input,
+    }),
+  })));
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  });
+  const agent = pipr.agent({
+    name: "reviewer",
+    model,
+    instructions: "Review.",
+    output: pipr.schemas.review,
+    tools: [...pipr.tools.readOnly, memory.store, memory.search],
+    prompt: (input: { manifest: unknown }, context) => {
+      void context.change.title;
+      return pipr.prompt\`Review \${input.manifest}\`;
+    },
+  });
+  const task = pipr.task("review", async (ctx) => {
+    const manifest = await ctx.change.diffManifest({ compressed: true, maxPreviewLines: 1 });
+    const result = await ctx.pi.run(agent, { manifest });
+    ctx.output.metadata({ title: ctx.change.title });
+    ctx.output.findings(result.inlineFindings);
+  });
+  pipr.on.changeRequest(["opened"], task);
+  pipr.command("@pipr review", { permission: "write" }, task);
+  pipr.local("review", task);
+  pipr.review({
+    name: "default-review",
+    model,
+    instructions: "Review.",
+    command: false,
+    on: false,
+    localName: false,
+  });
+});
+`,
+    );
+
+    const loaded = await validateProject({ rootDir });
+    expect(inspectRuntimePlan(loaded.plan, ".pipr/config.ts").tools).toEqual([
+      "pipr_store_memory",
+      "pipr_search_memories",
+    ]);
+  });
+
+  it("removes the temporary config copy after loading", async () => {
+    const rootDir = await newInitializedProject();
+
+    const loaded = await loadTypescriptConfig({ rootDir });
+
+    await expect(access(loaded.tempRoot)).rejects.toThrow();
+  });
+});
+
+async function newInitializedProject(): Promise<string> {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
+  await initOfficialMinimalProject({ rootDir });
+  return rootDir;
+}
+
+async function writePiprConfig(rootDir: string, contents: string): Promise<void> {
+  await writeFile(path.join(rootDir, ".pipr", "config.ts"), contents);
+}

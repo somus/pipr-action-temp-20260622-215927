@@ -1,6 +1,6 @@
 import path from "node:path";
 
-type ResolvedConfigDir = {
+type ContainedConfigDirectory = {
   configDir: string;
   projectDir: string;
   relativeConfigDir: string;
@@ -10,7 +10,7 @@ type ResolvedConfigDir = {
 export function resolveContainedConfigDir(options: {
   rootDir: string;
   configDir?: string;
-}): ResolvedConfigDir {
+}): ContainedConfigDirectory {
   const configDir = options.configDir ?? ".pipr";
   const rootDir = path.resolve(options.rootDir);
   const projectDir = path.resolve(rootDir, configDir);

@@ -6,7 +6,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 
 - Start from the linked Linear issue or maintainer direction.
 - Keep changes scoped to pipr's TypeScript package surface, Docker Action, `.pipr/` configuration behavior, docs, and local test fixtures.
-- Use [docs/CONTEXT.md](docs/CONTEXT.md) for product language. Use `pipr`, `.pipr/`, `Pi Agent Runner`, `Review Workflow`, `Diff Manifest`, `Review Finding`, `Main Review Comment`, and `Inline Review Comment`.
+- Use [docs/CONTEXT.md](docs/CONTEXT.md) for product language. Use `pipr`, `.pipr/config.ts`, `PIPR SDK`, `Pi Agent Runner`, `Review Task`, `Diff Manifest`, `Review Finding`, `Main Review Comment`, and `Inline Review Comment`.
 - Treat [docs/adr](docs/adr) as the source for architectural decisions.
 - Do not commit real local sessions, secrets, credentials, private logs, unredacted user data, or provider keys.
 
@@ -32,8 +32,8 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Keep Fallow as repo quality tooling only. Do not put Fallow into pipr's review runtime.
 - Keep package public surfaces small. Export only deliberate APIs from package roots.
 - Put implementation details behind internal modules. Do not export helpers only for tests or convenience.
-- Keep Docker Action, CLI command handling, runtime workflow, config loading, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In the review workflow, diff parsing, Pi execution, and review validation are not userland blocks; they are internal to `core/run-agent`.
-- Keep user configuration under `.pipr/`. `.pi` is only an internal Pi home inside the Docker image.
+- Keep Docker Action, CLI command handling, TypeScript config loading, task execution, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In review tasks, diff parsing, Pi execution, and review validation are runtime-owned through `ctx.change.diffManifest()` and `ctx.pi.run()`, not userland blocks.
+- Keep user configuration in `.pipr/config.ts`. `.pi` is only an internal Pi home inside the Docker image.
 - Preserve schema-first reviewer output: validate structured JSON, allow one repair attempt, and drop invalid findings with metadata.
 - Keep inline publishing strict: same-range comments only, capped count, confidence filtering, invalid finding drops, and marker dedupe.
 - Do not add backward compatibility aliases, legacy fallbacks, or migration shims for unreleased APIs unless explicitly requested.
@@ -43,7 +43,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 ## File Organization
 
 - Keep package root `src` small. Prefer `src/index.ts` plus deliberate public exports.
-- Organize package internals into domain folders such as `src/action`, `src/config`, `src/diff`, `src/pi`, `src/registry`, `src/review`, `src/workflow`, and `src/shared`.
+- Organize package internals into domain folders such as `src/action`, `src/config`, `src/diff`, `src/pi`, `src/review`, and `src/shared`.
 - Name modules by current responsibility. Avoid `legacy`, `compat`, or old-system names for unreleased code.
 - Keep docs in `docs/`; keep ADRs in `docs/adr/`.
 - Keep local Action fixtures under `test/fixtures/`.
@@ -62,7 +62,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 ## TDD And Verification
 
 - Use TDD for behavior changes: write or port one failing behavior test, implement the minimum, then refactor while green.
-- Add tests for config merge behavior, provider ID resolution, registry resolution, workflow expressions, diff parsing, schema validation, comment rendering, GitHub publishing, and dry-run boundaries when those areas change.
+- Add tests for TypeScript config loading, provider resolution, plan inspection, task execution, diff parsing, schema validation, comment rendering, GitHub publishing, and dry-run boundaries when those areas change.
 - Run the narrowest relevant package tests during development.
 - Run `mise run check` before opening or updating a PR.
 - Run `mise run check-actions` after Action, Docker, workflow, Pi CLI mapping, or event fixture changes.

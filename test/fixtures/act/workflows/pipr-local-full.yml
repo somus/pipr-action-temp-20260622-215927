@@ -44,7 +44,7 @@ jobs:
           PIPR_GITHUB_FIXTURE_PATH: ${{ github.workspace }}/test/fixtures/act/github-publication-full.json
           PIPR_PI_EXECUTABLE: ${{ github.workspace }}/test/fixtures/act/fake-pi
         with:
-          config-dir: packages/runtime/distribution/official-minimal/.pipr
+          config-dir: .pipr
       - name: Assert fake GitHub fixture
         shell: bash
         env:

@@ -1,16 +1,15 @@
 # Runtime-owned review kernel
 
-The default Review Workflow calls `core/run-agent` directly. The Official Minimal Distribution does not ship a custom review block.
+The default `pipr.review()` recipe calls the runtime-owned review kernel through `ctx.change.diffManifest()` and `ctx.pi.run()`. The TypeScript config does not expose diff creation or review validation as userland blocks.
 
-`core/run-agent` owns the deterministic review kernel:
+The review kernel owns:
 
 - build the Diff Manifest from local git state
-- apply trusted Workflow and Agent path gates to the Diff Manifest
 - run Pi with the selected reviewer agent and provider
 - perform the single repair pass for invalid reviewer JSON
 - validate `PrReview` output against the runtime-owned `core/pr-review` schema and Diff Manifest ranges
 - return a validated review for comment rendering
 
-Diff creation and review validation are internal to `core/run-agent` in the Core MVP. This keeps workflows from bypassing the deterministic safety checks needed before Main Review Comment and Inline Review Comment publication.
+Diff creation and review validation are internal to the runtime in the MVP. This keeps TypeScript tasks from bypassing the deterministic safety checks needed before Main Review Comment and Inline Review Comment publication.
 
-Workflows may compose around the review kernel and comment handlers, but the model-facing review path must pass through `core/run-agent`. Pull request event runs may select multiple enabled workflows; the runtime computes the Diff Manifest once, applies each workflow path gate, and runs selected workflows in parallel with isolated workflow state and scoped Diff Manifest views.
+Tasks may compose around the review kernel, but model-facing inline review must use the runtime-owned `core/pr-review` schema when it wants Inline Review Comments. Pull request event runs may select multiple tasks; the runtime computes the Diff Manifest once and runs selected tasks in parallel with isolated task state.

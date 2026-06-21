@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -38,8 +39,38 @@ type ToolResult = {
   details: unknown;
 };
 
+type CustomToolData = {
+  tools: Array<{ name: string; description?: string }>;
+};
+
 export default function piprRuntimeTools(pi: PiExtensionHost): void {
-  const dataPath = runtimeDataPath();
+  const registrations = toolRegistrations();
+  if (registrations.length === 0) {
+    throw new Error("PIPR_RUNTIME_TOOLS_DATA or PIPR_CUSTOM_TOOLS_DATA is required");
+  }
+  for (const registration of registrations) {
+    registration.register(pi, registration.dataPath);
+  }
+}
+
+function toolRegistrations(): Array<{
+  dataPath: string;
+  register(pi: PiExtensionHost, dataPath: string): void;
+}> {
+  return [
+    registration(runtimeDataPath(), registerRuntimeReadTools),
+    registration(customToolsDataPath(), registerCustomTools),
+  ].filter((item) => item !== undefined);
+}
+
+function registration(
+  dataPath: string | undefined,
+  register: (pi: PiExtensionHost, dataPath: string) => void,
+) {
+  return dataPath ? { dataPath, register } : undefined;
+}
+
+function registerRuntimeReadTools(pi: PiExtensionHost, dataPath: string): void {
   const dataRoot = path.dirname(dataPath);
 
   pi.registerTool({
@@ -84,10 +115,31 @@ export default function piprRuntimeTools(pi: PiExtensionHost): void {
   });
 }
 
-function runtimeDataPath(): string {
+function registerCustomTools(pi: PiExtensionHost, dataPath: string): void {
+  const bridgeUrl = customToolBridgeUrl();
+  const bridgeToken = customToolBridgeToken();
+  const data = loadCustomToolData(dataPath);
+  for (const tool of data.tools) {
+    pi.registerTool({
+      name: tool.name,
+      label: tool.name,
+      description: tool.description ?? "pipr custom config tool.",
+      parameters: {
+        type: "object",
+        additionalProperties: true,
+      },
+      async execute(_toolCallId, params) {
+        const result = await callCustomTool(bridgeUrl, bridgeToken, tool.name, params);
+        return textResult(result);
+      },
+    });
+  }
+}
+
+function runtimeDataPath(): string | undefined {
   const dataPath = process.env.PIPR_RUNTIME_TOOLS_DATA;
   if (!dataPath) {
-    throw new Error("PIPR_RUNTIME_TOOLS_DATA is required for pipr runtime tools");
+    return undefined;
   }
   if (!path.isAbsolute(dataPath)) {
     throw new Error("PIPR_RUNTIME_TOOLS_DATA must be an absolute path");
@@ -95,8 +147,80 @@ function runtimeDataPath(): string {
   return dataPath;
 }
 
+function customToolsDataPath(): string | undefined {
+  const dataPath = process.env.PIPR_CUSTOM_TOOLS_DATA;
+  if (!dataPath) {
+    return undefined;
+  }
+  if (!path.isAbsolute(dataPath)) {
+    throw new Error("PIPR_CUSTOM_TOOLS_DATA must be an absolute path");
+  }
+  return dataPath;
+}
+
+function customToolBridgeUrl(): string {
+  const value = process.env.PIPR_CUSTOM_TOOLS_BRIDGE_URL;
+  if (!value) {
+    throw new Error("PIPR_CUSTOM_TOOLS_BRIDGE_URL is required for pipr custom tools");
+  }
+  return value;
+}
+
+function customToolBridgeToken(): string {
+  const value = process.env.PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN;
+  if (!value) {
+    throw new Error("PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN is required for pipr custom tools");
+  }
+  return value;
+}
+
 async function loadData(dataPath: string): Promise<RuntimeToolData> {
   return JSON.parse(await readFile(dataPath, "utf8")) as RuntimeToolData;
+}
+
+function loadCustomToolData(dataPath: string): CustomToolData {
+  return JSON.parse(readFileSync(dataPath, "utf8")) as CustomToolData;
+}
+
+async function callCustomTool(
+  bridgeUrl: string,
+  bridgeToken: string,
+  tool: string,
+  params: unknown,
+): Promise<unknown> {
+  const response = await fetch(`${bridgeUrl}/call`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${bridgeToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ tool, params }),
+  });
+  const payload = await parseCustomToolBridgePayload(response, tool);
+  assertCustomToolBridgeOk(response, payload, tool);
+  return Reflect.get(payload, "result");
+}
+
+async function parseCustomToolBridgePayload(
+  response: Response,
+  tool: string,
+): Promise<Record<string, unknown>> {
+  const payload = (await response.json()) as unknown;
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error(`Custom tool '${tool}' returned invalid bridge response`);
+  }
+  return payload as Record<string, unknown>;
+}
+
+function assertCustomToolBridgeOk(
+  response: Response,
+  payload: Record<string, unknown>,
+  tool: string,
+): void {
+  if (!response.ok || Reflect.get(payload, "ok") !== true) {
+    const error = Reflect.get(payload, "error");
+    throw new Error(typeof error === "string" ? error : `Custom tool '${tool}' failed`);
+  }
 }
 
 function textResult(value: unknown): ToolResult {

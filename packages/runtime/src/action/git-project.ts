@@ -21,7 +21,7 @@ export async function loadRuntimeProjectFromGitCommit(options: {
   const files = listConfigFilesAtCommit(options.rootDir, options.commitSha, configDir.gitPath);
   if (files.length === 0) {
     throw new Error(
-      `${configDir.configDir}/config.yaml is required at base commit ${options.commitSha}`,
+      `${configDir.configDir}/config.ts is required at base commit ${options.commitSha}`,
     );
   }
 

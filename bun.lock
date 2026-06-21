@@ -31,12 +31,19 @@
       "version": "0.0.0",
       "dependencies": {
         "@octokit/rest": "22.0.1",
+        "@pipr/sdk": "workspace:*",
         "picomatch": "4.0.4",
-        "yaml": "2.9.0",
         "zod": "4.4.3",
       },
       "devDependencies": {
         "@types/picomatch": "4.0.3",
+        "vitest": "4.1.9",
+      },
+    },
+    "packages/sdk": {
+      "name": "@pipr/sdk",
+      "version": "0.0.0",
+      "devDependencies": {
         "vitest": "4.1.9",
       },
     },
@@ -139,6 +146,8 @@
     "@pipr/cli": ["@pipr/cli@workspace:packages/cli"],
 
     "@pipr/runtime": ["@pipr/runtime@workspace:packages/runtime"],
+
+    "@pipr/sdk": ["@pipr/sdk@workspace:packages/sdk"],
 
     "@quansync/fs": ["@quansync/fs@1.0.0", "", { "dependencies": { "quansync": "^1.0.0" } }, "sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ=="],
 

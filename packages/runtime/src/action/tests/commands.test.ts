@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
-import { initOfficialMinimalProject } from "../../config/init.js";
 import type { GitHubPublicationClient } from "../../review/publish.js";
 import type { GitHubCommandClient } from "../command-router.js";
 import { runActionCommand } from "../commands.js";
@@ -37,7 +37,7 @@ describe("runActionCommand issue_comment dispatch", () => {
         reason: "issue_comment did not target a pull request",
       });
     } finally {
-      await rm(rootDir, { recursive: true, force: true });
+      await removeWorkspace(rootDir);
     }
   });
 
@@ -56,7 +56,7 @@ describe("runActionCommand issue_comment dispatch", () => {
       expect(result.kind === "command-help" ? result.body : "").toContain("@pipr review");
       await expectPiNotCalled(workspace);
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 
@@ -82,7 +82,7 @@ describe("runActionCommand issue_comment dispatch", () => {
       });
       await expectPiNotCalled(workspace);
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 
@@ -108,11 +108,11 @@ describe("runActionCommand issue_comment dispatch", () => {
         reason: "issue_comment action 'edited' is not supported",
       });
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 
-  it("denies commands when commenter permission is below the workflow requirement", async () => {
+  it("denies commands when commenter permission is below the task command requirement", async () => {
     const workspace = await createCommandWorkspace();
     try {
       const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", {
@@ -127,13 +127,33 @@ describe("runActionCommand issue_comment dispatch", () => {
       expect(result.kind === "command-help" ? result.body : "").toContain("requires write");
       await expectPiNotCalled(workspace);
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 
-  it("skips issue comment command workflows when paths do not match", async () => {
+  it("does not parse command arguments before permission passes", async () => {
     const workspace = await createCommandWorkspace({
-      baseWorkflowYaml: commandWorkflowYaml({ paths: ["docs/**"] }),
+      baseConfigTs: reviewConfigTs({ parseSideEffect: true }),
+    });
+    try {
+      Reflect.set(globalThis, "__piprParseCalled", false);
+      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", {
+        permission: "read",
+        role_name: "read",
+      });
+
+      expect(result).toMatchObject({ kind: "command-help" });
+      expect(Reflect.get(globalThis, "__piprParseCalled")).toBe(false);
+      await expectPiNotCalled(workspace);
+    } finally {
+      Reflect.deleteProperty(globalThis, "__piprParseCalled");
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("returns help when a trusted base config does not register a command", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ command: false }),
       checkoutBaseBeforeRun: true,
     });
     try {
@@ -142,13 +162,11 @@ describe("runActionCommand issue_comment dispatch", () => {
         role_name: "write",
       });
 
-      expect(result).toMatchObject({ kind: "ignored" });
-      expect(result.kind === "ignored" ? result.reason : "").toContain(
-        "Workflow 'pipr/review' skipped",
-      );
+      expect(result).toMatchObject({ kind: "command-help" });
+      expect(result.kind === "command-help" ? result.reason : "").toContain("unknown pipr command");
       await expectPiNotCalled(workspace);
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 
@@ -168,13 +186,79 @@ describe("runActionCommand issue_comment dispatch", () => {
       expect(result.kind === "review" ? result.review.validated.validFindings : []).toEqual([]);
       await expectReviewRanAtHead(result, workspace);
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 });
 
 describe("runActionCommand pull_request dispatch", () => {
-  it("checks out the PR head before running the review workflow", async () => {
+  it("marks the GitHub Action workspace as a git safe directory before trusted config reads", async () => {
+    const workspace = await createCommandWorkspace();
+    const homeDir = await mkdtemp(path.join(os.tmpdir(), "pipr-action-home-"));
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writePullRequestEvent(eventPath, workspace);
+
+      const result = await runActionCommand({
+        rootDir: workspace.rootDir,
+        configDir: ".pipr",
+        eventPath,
+        dryRun: true,
+        env: {
+          ...pullRequestEnv(workspace.rootDir, eventPath),
+          GITHUB_ACTIONS: "true",
+          HOME: homeDir,
+        },
+        githubPublicationClient: failingGitHubPublicationClient(),
+        piExecutable: workspace.piExecutable,
+      });
+
+      expect(result).toMatchObject({ kind: "dry-run" });
+      await expect(readFile(path.join(homeDir, ".gitconfig"), "utf8")).resolves.toContain(
+        `directory = ${workspace.rootDir}`,
+      );
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+      await removeWorkspace(homeDir);
+    }
+  });
+
+  it("loads trusted base config in dry-run without executing PR-head config", async () => {
+    const workspace = await createCommandWorkspace({
+      headConfigTs: maliciousHeadConfigTs(),
+      checkoutBaseBeforeRun: false,
+    });
+    const sideEffectPath = path.join(workspace.rootDir, "dry-run-side-effect");
+    const previous = process.env.PIPR_DRY_RUN_SIDE_EFFECT_PATH;
+    process.env.PIPR_DRY_RUN_SIDE_EFFECT_PATH = sideEffectPath;
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writePullRequestEvent(eventPath, workspace);
+
+      const result = await runActionCommand({
+        rootDir: workspace.rootDir,
+        configDir: ".pipr",
+        eventPath,
+        dryRun: true,
+        env: pullRequestEnv(workspace.rootDir, eventPath),
+        githubPublicationClient: failingGitHubPublicationClient(),
+        piExecutable: workspace.piExecutable,
+      });
+
+      expect(result).toMatchObject({ kind: "dry-run" });
+      await expect(readFile(sideEffectPath, "utf8")).rejects.toThrow();
+      await expectPiNotCalled(workspace);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PIPR_DRY_RUN_SIDE_EFFECT_PATH;
+      } else {
+        process.env.PIPR_DRY_RUN_SIDE_EFFECT_PATH = previous;
+      }
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("checks out the PR head before running the review task", async () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     try {
       const eventPath = path.join(workspace.rootDir, "event.json");
@@ -194,13 +278,13 @@ describe("runActionCommand pull_request dispatch", () => {
       expect(result).toMatchObject({ kind: "review" });
       await expectReviewRanAtHead(result, workspace);
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 
-  it("skips publication when pull request paths do not match the workflow", async () => {
+  it("skips publication when no change request task is registered", async () => {
     const workspace = await createCommandWorkspace({
-      baseWorkflowYaml: commandWorkflowYaml({ paths: ["docs/**"] }),
+      baseConfigTs: reviewConfigTs({ event: false }),
       checkoutBaseBeforeRun: true,
     });
     try {
@@ -219,11 +303,11 @@ describe("runActionCommand pull_request dispatch", () => {
 
       expect(result).toMatchObject({ kind: "ignored" });
       expect(result.kind === "ignored" ? result.reason : "").toContain(
-        "No enabled workflows matched",
+        "No tasks matched the change request event",
       );
       await expectPiNotCalled(workspace);
     } finally {
-      await rm(workspace.rootDir, { recursive: true, force: true });
+      await removeWorkspace(workspace.rootDir);
     }
   });
 });
@@ -236,7 +320,7 @@ type CommandWorkspace = {
 };
 
 async function createCommandWorkspace(
-  options: { baseWorkflowYaml?: string; checkoutBaseBeforeRun?: boolean } = {},
+  options: { baseConfigTs?: string; checkoutBaseBeforeRun?: boolean; headConfigTs?: string } = {},
 ): Promise<CommandWorkspace> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-action-command-"));
   runGit(rootDir, ["init", "--initial-branch=main"]);
@@ -244,10 +328,10 @@ async function createCommandWorkspace(
   runGit(rootDir, ["config", "user.email", "pipr@example.test"]);
   runGit(rootDir, ["config", "core.hooksPath", "/dev/null"]);
   runGit(rootDir, ["config", "commit.gpgsign", "false"]);
-  await initOfficialMinimalProject({ rootDir });
+  await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
   await writeFile(
-    path.join(rootDir, ".pipr", "workflows", "review.yaml"),
-    options.baseWorkflowYaml ?? commandWorkflowYaml(),
+    path.join(rootDir, ".pipr", "config.ts"),
+    options.baseConfigTs ?? reviewConfigTs(),
   );
   await mkdir(path.join(rootDir, "src"));
   await writeFile(path.join(rootDir, "src", "a.ts"), "export const value = 1;\n");
@@ -255,8 +339,8 @@ async function createCommandWorkspace(
   runGit(rootDir, ["commit", "--no-verify", "-m", "base"]);
   const baseSha = runGit(rootDir, ["rev-parse", "HEAD"]).trim();
   await writeFile(
-    path.join(rootDir, ".pipr", "workflows", "review.yaml"),
-    headOnlyCommandWorkflowYaml(),
+    path.join(rootDir, ".pipr", "config.ts"),
+    options.headConfigTs ?? headOnlyConfigTs(),
   );
   await writeFile(path.join(rootDir, "src", "a.ts"), "export const value = 2;\n");
   runGit(rootDir, ["add", "."]);
@@ -314,71 +398,83 @@ async function expectReviewRanAtHead(
   expect(currentGitHead(workspace.rootDir)).toBe(workspace.headSha);
 }
 
-function commandWorkflowYaml(options: { paths?: string[] } = {}): string {
+function reviewConfigTs(
+  options: { command?: boolean; event?: boolean; parseSideEffect?: boolean } = {},
+): string {
+  const template = "$";
   return [
-    "apiVersion: pipr.dev/v1",
-    "kind: Workflow",
-    "id: pipr/review",
-    ...pathLines(options.paths),
-    "inputs:",
-    "  scope:",
-    "    type: string",
-    "    default: changed",
-    "    enum: [changed, full]",
-    "on:",
-    "  events:",
-    "    - pull_request.opened",
-    "  commands:",
-    "    - name: review",
-    '      pattern: "@pipr review [--scope <scope>]"',
-    "      requiredPermission: write",
-    "steps:",
-    "  - id: review",
-    "    uses: core/run-agent",
-    "    with:",
-    "      agent: pipr/reviewer",
-    "  - id: main-comment",
-    "    uses: core/main-comment",
-    "    with:",
-    `      review: ${expr("steps.review.outputs.result")}`,
-    "  - id: inline-comments",
-    "    uses: core/inline-comments",
-    "    with:",
-    `      review: ${expr("steps.review.outputs.result")}`,
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "export default definePipr((pipr) => {",
+    '  const model = pipr.model("deepseek/deepseek-v4-pro", {',
+    '    name: "deepseek",',
+    '    apiKey: pipr.secret("DEEPSEEK_API_KEY"),',
+    '    options: { thinking: "high" },',
+    "  });",
+    "  const reviewer = pipr.agent({",
+    '    name: "reviewer",',
+    "    model,",
+    '    instructions: "Review this change.",',
+    "    output: pipr.schemas.review,",
+    `    prompt: (input) => pipr.prompt\`Review scope: ${template}{input.scope}\\n${template}{pipr.compactManifest(input.manifest)}\`,`,
+    "  });",
+    "  const task = pipr.task('review', async (ctx, input = {}) => {",
+    "    const manifest = await ctx.change.diffManifest({ compressed: true });",
+    "    const result = await ctx.pi.run(reviewer, { manifest, scope: input.scope ?? 'changed' });",
+    "    ctx.output.summary(result.summary);",
+    "    ctx.output.findings(result.inlineFindings);",
+    "  });",
+    options.event === false ? "" : '  pipr.on.changeRequest(["opened"], task);',
+    options.command === false
+      ? ""
+      : [
+          '  pipr.command("@pipr review [--scope <scope>]", {',
+          '    permission: "write",',
+          "    parse(args) {",
+          options.parseSideEffect ? "      globalThis.__piprParseCalled = true;" : "",
+          "      const scope = args.scope ?? 'changed';",
+          "      if (scope !== 'changed' && scope !== 'full') {",
+          "        throw new Error(\"Input 'scope' must be one of: changed, full\");",
+          "      }",
+          "      return { scope };",
+          "    },",
+          "  }, task);",
+        ].join("\n"),
+    "});",
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+function headOnlyConfigTs(): string {
+  return [
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "export default definePipr((pipr) => {",
+    '  const model = pipr.model("deepseek/deepseek-v4-pro", {',
+    '    name: "deepseek",',
+    '    apiKey: pipr.secret("DEEPSEEK_API_KEY"),',
+    "  });",
+    "  const task = pipr.task('head-only', async () => {});",
+    '  pipr.command("@pipr head-only", { permission: "write" }, task);',
+    "  void model;",
+    "});",
   ].join("\n");
 }
 
-function pathLines(paths: string[] | undefined): string[] {
-  if (!paths) {
-    return [];
-  }
-  return ["paths:", "  include:", ...paths.map((item) => `    - ${item}`)];
-}
-
-function headOnlyCommandWorkflowYaml(): string {
+function maliciousHeadConfigTs(): string {
   return [
-    "apiVersion: pipr.dev/v1",
-    "kind: Workflow",
-    "id: pipr/review",
-    "on:",
-    "  events:",
-    "    - pull_request.opened",
-    "  commands:",
-    "    - name: head-only",
-    '      aliases: ["@pipr head-only"]',
-    "steps:",
-    "  - id: review",
-    "    uses: core/run-agent",
-    "    with:",
-    "      agent: pipr/reviewer",
-    "  - id: main-comment",
-    "    uses: core/main-comment",
-    "    with:",
-    `      review: ${expr("steps.review.outputs.result")}`,
-    "  - id: inline-comments",
-    "    uses: core/inline-comments",
-    "    with:",
-    `      review: ${expr("steps.review.outputs.result")}`,
+    'import { writeFileSync } from "node:fs";',
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "if (process.env.PIPR_DRY_RUN_SIDE_EFFECT_PATH) {",
+    '  writeFileSync(process.env.PIPR_DRY_RUN_SIDE_EFFECT_PATH, "executed");',
+    "}",
+    "",
+    "export default definePipr((pipr) => {",
+    "  const task = pipr.task('head-only', async () => {});",
+    '  pipr.command("@pipr head-only", { permission: "write" }, task);',
+    "});",
   ].join("\n");
 }
 
@@ -410,6 +506,8 @@ async function writePullRequestEvent(
       repository: { full_name: "local/pipr" },
       pull_request: {
         number: 1,
+        title: "Test PR",
+        body: "Test body",
         base: {
           sha: workspace.baseSha,
           repo: { full_name: "local/pipr" },
@@ -430,6 +528,8 @@ function fakeGitHubClient(
         repo: "local/pipr",
         baseSha: workspace.baseSha,
         headSha: workspace.headSha,
+        title: "Test PR",
+        description: "Test body",
       };
     },
     async getRepositoryPermission() {
@@ -519,14 +619,24 @@ function pullRequestEnv(rootDir: string, eventPath: string): NodeJS.ProcessEnv {
   };
 }
 
+async function removeWorkspace(rootDir: string): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await rm(rootDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 19) {
+        throw error;
+      }
+      await delay(100);
+    }
+  }
+}
+
 function runGit(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
 }
 
 function currentGitHead(cwd: string): string {
   return runGit(cwd, ["rev-parse", "HEAD"]).trim();
-}
-
-function expr(source: string): string {
-  return ["$", "{{ ", source, " }}"].join("");
 }

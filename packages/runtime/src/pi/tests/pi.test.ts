@@ -12,7 +12,7 @@ import {
   piThinkingLevels,
 } from "../contract.js";
 import { toPiProviderInvocation } from "../provider.js";
-import { buildPiArgs, createReadOnlyWorkspace, runPi } from "../runner.js";
+import { buildPiArgs, createReadOnlyWorkspace, type PiRunOptions, runPi } from "../runner.js";
 import { piRuntimeReadToolNames } from "../runtime-tools.js";
 
 describe("Pi contract", () => {
@@ -171,20 +171,51 @@ describe("buildPiArgs", () => {
       "/tmp/pipr-session",
       {
         extensionPath: "/tmp/runtime-tools-extension.mjs",
-        dataPath: "/tmp/pipr-runtime-tools-data.json",
+        runtimeRead: {
+          extensionPath: "/tmp/runtime-tools-extension.mjs",
+          dataPath: "/tmp/pipr-runtime-tools-data.json",
+          toolNames: piRuntimeReadToolNames,
+        },
         toolNames: piRuntimeReadToolNames,
       },
     );
 
     expect(args).toContain("--no-extensions");
-    expect(args).toContain("--extension");
-    expect(args[args.indexOf("--extension") + 1]).toBe("/tmp/runtime-tools-extension.mjs");
-    expect(args[args.indexOf("--tools") + 1]).toBe(
-      "read,grep,find,ls,pipr_read_diff,pipr_read_at_ref",
+    expect(args).toContain("--no-extensions");
+    expectPiExtension(args, "/tmp/runtime-tools-extension.mjs");
+    expect(expectPiTools(args)).toBe("read,grep,find,ls,pipr_read_diff,pipr_read_at_ref");
+    expect(expectPiTools(args)).not.toContain("bash");
+    expect(expectPiTools(args)).not.toContain("edit");
+    expect(expectPiTools(args)).not.toContain("write");
+  });
+
+  it("adds registered custom tools through the same explicit extension", () => {
+    const args = buildPiArgs(
+      {
+        id: "backup",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        thinking: "high",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+      },
+      "Review this diff.",
+      "/tmp/pipr-session",
+      {
+        extensionPath: "/tmp/runtime-tools-extension.mjs",
+        custom: {
+          extensionPath: "/tmp/runtime-tools-extension.mjs",
+          dataPath: "/tmp/pipr-custom-tools-data.json",
+          bridgeUrl: "http://127.0.0.1:1234",
+          bridgeToken: "token",
+          toolNames: ["plugin_echo"],
+          async close() {},
+        },
+        toolNames: ["plugin_echo"],
+      },
     );
-    expect(args[args.indexOf("--tools") + 1]).not.toContain("bash");
-    expect(args[args.indexOf("--tools") + 1]).not.toContain("edit");
-    expect(args[args.indexOf("--tools") + 1]).not.toContain("write");
+
+    expectPiExtension(args, "/tmp/runtime-tools-extension.mjs");
+    expect(expectPiTools(args)).toBe("read,grep,find,ls,plugin_echo");
   });
 
   it("drops symlinks from the read-only workspace copy", async () => {
@@ -240,6 +271,9 @@ describe("buildPiArgs", () => {
       expect(result.stdout).toContain("PIPR_PROVIDER_ID=backup");
       expect(result.stdout).not.toContain(`HOME=${hostHome}`);
       expect(result.stdout).not.toContain("PIPR_RUNTIME_TOOLS_DATA=");
+      expect(result.stdout).not.toContain("PIPR_CUSTOM_TOOLS_DATA=");
+      expect(result.stdout).not.toContain("PIPR_CUSTOM_TOOLS_BRIDGE_URL=");
+      expect(result.stdout).not.toContain("PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN=");
       expect(result.stdout).not.toContain("SECRET_SHOULD_NOT_LEAK");
     } finally {
       restoreEnv("DEEPSEEK_API_KEY", previousProviderKey);
@@ -249,41 +283,47 @@ describe("buildPiArgs", () => {
   });
 
   it("passes runtime tool data env only when condensed runtime tools are enabled", async () => {
-    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
-    const piExecutable = path.join(workspace, "fake-pi.sh");
-    try {
-      await writeFile(piExecutable, "#!/bin/sh\nprintenv\nprintf 'ARGS=%s\\n' \"$*\"\n");
-      await chmod(piExecutable, 0o755);
+    const result = await runFakePiWithToolOptions({
+      runtimeTools: {
+        manifest: emptyDiffManifest(),
+        toolResponseMaxBytes: 10_000,
+      },
+    });
 
-      const result = await runPi({
-        workspace,
-        piExecutable,
-        prompt: "Review this diff.",
-        env: {
-          DEEPSEEK_API_KEY: "provided-key",
-          PATH: process.env.PATH,
-        },
-        provider: {
-          id: "deepseek",
-          provider: "deepseek",
-          model: "deepseek-v4-pro",
-          thinking: "high",
-          apiKeyEnv: "DEEPSEEK_API_KEY",
-        },
-        runtimeTools: {
-          manifest: emptyDiffManifest(),
-          toolResponseMaxBytes: 10_000,
-        },
-      });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("PIPR_RUNTIME_TOOLS_DATA=");
+    expect(result.stdout).toContain("runtime-tools/data.json");
+    expect(result.stdout).toContain("--extension");
+    expect(result.stdout).toMatch(/runtime-tools-extension\.(ts|mjs)/);
+  });
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("PIPR_RUNTIME_TOOLS_DATA=");
-      expect(result.stdout).toContain("runtime-tools/data.json");
-      expect(result.stdout).toContain("--extension");
-      expect(result.stdout).toMatch(/runtime-tools-extension\.(ts|mjs)/);
-    } finally {
-      await rm(workspace, { recursive: true, force: true });
-    }
+  it("passes custom tool bridge env only when custom tools are enabled", async () => {
+    const result = await runFakePiWithToolOptions({
+      customTools: {
+        context: { run: { id: "test" } },
+        tools: [
+          {
+            name: "plugin_echo",
+            description: "Echo input.",
+            input: passthroughSchema(),
+            output: passthroughSchema(),
+            async execute(_context, input) {
+              return input;
+            },
+          },
+        ],
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("PIPR_CUSTOM_TOOLS_DATA=");
+    expect(result.stdout).toContain("custom-tools/data.json");
+    expect(result.stdout).toContain("PIPR_CUSTOM_TOOLS_BRIDGE_URL=http://127.0.0.1:");
+    expect(result.stdout).toContain("PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN=");
+    expect(result.stdout).toContain("--extension");
+    expect(result.stdout).toMatch(/runtime-tools-extension\.(ts|mjs)/);
+    expect(result.stdout).toContain("read,grep,find,ls,plugin_echo");
+    expect(result.stdout).not.toContain("PIPR_RUNTIME_TOOLS_DATA=");
   });
 
   it("copies provider keys from the supplied source env", async () => {
@@ -358,12 +398,59 @@ function emptyDiffManifest(): DiffManifest {
   };
 }
 
+function expectPiExtension(args: string[], extensionPath: string): void {
+  expect(args).toContain("--extension");
+  expect(args[args.indexOf("--extension") + 1]).toBe(extensionPath);
+}
+
+function expectPiTools(args: string[]): string {
+  return args[args.indexOf("--tools") + 1] ?? "";
+}
+
+async function runFakePiWithToolOptions(
+  options: Pick<PiRunOptions, "runtimeTools" | "customTools">,
+) {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
+  const piExecutable = path.join(workspace, "fake-pi.sh");
+  try {
+    await writeFile(piExecutable, "#!/bin/sh\nprintenv\nprintf 'ARGS=%s\\n' \"$*\"\n");
+    await chmod(piExecutable, 0o755);
+    return await runPi({
+      workspace,
+      piExecutable,
+      prompt: "Review this diff.",
+      env: {
+        DEEPSEEK_API_KEY: "provided-key",
+        PATH: process.env.PATH,
+      },
+      provider: {
+        id: "deepseek",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        thinking: "high",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+      },
+      ...options,
+    });
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+}
+
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
     delete process.env[key];
   } else {
     process.env[key] = value;
   }
+}
+
+function passthroughSchema() {
+  return {
+    parse(value: unknown) {
+      return value;
+    },
+  };
 }
 
 async function chmodTree(target: string, mode: number): Promise<void> {

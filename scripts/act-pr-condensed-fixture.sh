@@ -22,10 +22,11 @@ pipr_overlay_current_worktree \
   "packages/runtime/src/pi/tests/runtime-tools.test.ts" \
   "packages/runtime/src/diff/path-filter.ts" \
   "packages/runtime/src/diff/tests/path-filter.test.ts" \
-  "packages/runtime/src/review/agent-template.ts" \
   "packages/runtime/src/review/manifest-payload.ts" \
-  "packages/runtime/src/review/tests/agent-template.test.ts" \
   "packages/runtime/src/review/tests/manifest-payload.test.ts" \
+  "packages/runtime/src/review/task-runtime.ts" \
+  ".pipr/tsconfig.json" \
+  ".pipr/types/pipr-sdk.d.ts" \
   "scripts/assert-act-fixture-helpers.mjs" \
   "scripts/assert-act-condensed-fixture.mjs" \
   "test/fixtures/act/fake-pi" \
@@ -41,25 +42,31 @@ cp \
 chmod +x "$worktree/test/fixtures/act/fake-pi"
 pipr_prepare_act_workflow "$worktree" "$worktree/.github/workflows/pipr-local-condensed.yml"
 
-cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/config.yaml" <<'EOF'
-apiVersion: pipr.dev/v1
-kind: Config
-providers:
-  - id: deepseek
-    provider: deepseek
-    model: deepseek-v4-pro
-    apiKeyEnv: DEEPSEEK_API_KEY
-    thinking: high
-workflows:
-  - pipr/review
-limits:
-  timeoutSeconds: 300
-  diffManifest:
-    fullMaxBytes: 1
-    fullMaxEstimatedTokens: 1
-    condensedMaxBytes: 262144
-    condensedMaxEstimatedTokens: 65536
-    toolResponseMaxBytes: 4096
+cat >"$worktree/.pipr/config.ts" <<'EOF'
+import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
+  pipr.limits({
+    timeoutSeconds: 300,
+    diffManifest: {
+      fullMaxBytes: 1,
+      fullMaxEstimatedTokens: 1,
+      condensedMaxBytes: 262144,
+      condensedMaxEstimatedTokens: 65536,
+      toolResponseMaxBytes: 4096,
+    },
+  });
+  pipr.review({
+    model,
+    instructions: "Review the condensed act fixture.",
+    inlineComments: { max: 5 },
+  });
+});
 EOF
 
 cat >"$worktree/test/fixtures/act/project/sample.ts" <<'EOF'

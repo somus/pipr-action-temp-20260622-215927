@@ -14,6 +14,8 @@ const githubPullRequestPayloadSchema = z.looseObject({
   pull_request: z
     .looseObject({
       number: z.number().optional(),
+      title: z.string().optional(),
+      body: z.string().nullable().optional(),
       base: z
         .looseObject({
           sha: z.string().optional(),
@@ -83,6 +85,8 @@ export async function loadPullRequestEventContext(
     action: payload.action,
     repo: readRepo(payload, pullRequest, env),
     pullRequestNumber: readPullRequestNumber(payload, pullRequest),
+    title: pullRequest.title ?? "",
+    description: pullRequest.body ?? "",
     baseSha: readBaseSha(pullRequest),
     headSha: readHeadSha(pullRequest),
     workspace: readWorkspace(env),

@@ -5,37 +5,33 @@ import {
   initOfficialMinimalProject,
 } from "../config/init.js";
 import {
+  inspectRuntimePlan,
   type LoadedRuntimeProject,
-  loadRuntimeConfig,
   loadRuntimeProject,
   validateProject,
 } from "../config/project.js";
-import { renderRegistryGraph } from "../registry/registry.js";
 import {
   createGitHubPublicationClient,
   type GitHubPublicationClient,
   type PublicationResult,
   publishPublicationPlan,
 } from "../review/publish.js";
-import { type ReviewRuntimeResult, runReviewRuntime } from "../review/runtime.js";
+import { type ReviewRuntimeResult, runTaskRuntime } from "../review/task-runtime.js";
 import type {
   PiprConfig,
   ProviderConfig,
   PullRequestEventContext,
-  RegistryCollectionName,
-  RegistryEntry,
-  ResolvedConfig,
-  RuntimeRegistry,
+  RuntimeSettings,
 } from "../types.js";
 import { parsePiprConfig, parseProviderConfig, parsePullRequestEventContext } from "../types.js";
 import {
   createGitHubCommandClient,
   type GitHubCommandClient,
   hasRequiredRepositoryPermission,
-  listWorkflowCommandEntries,
+  type PlanCommandResolution,
+  parsePlanCommandInputs,
   permissionDeniedHelp,
-  resolveWorkflowCommand,
-  type WorkflowCommandResolution,
+  resolvePlanCommand,
 } from "./command-router.js";
 import {
   type IssueCommentEventContext,
@@ -43,6 +39,7 @@ import {
   loadPullRequestEventContext,
 } from "./event.js";
 import { loadRuntimeProjectFromGitCommit } from "./git-project.js";
+import { ensureGitHubWorkspaceSafeDirectory } from "./git-safe-directory.js";
 
 const defaultActionProvider: ProviderConfig = {
   id: "deepseek",
@@ -81,11 +78,21 @@ export type ActionCommandOptions = RuntimeCommandOptions & {
   githubPublicationClient?: GitHubPublicationClient;
 };
 
+export type LocalTaskCommandOptions = RuntimeCommandOptions & {
+  localName: string;
+  baseSha: string;
+  headSha?: string;
+  piExecutable?: string;
+};
+
 export type DryRunCommandResult = {
   configSource: string;
   event: PullRequestEventContext;
-  registry: RuntimeRegistry;
 };
+
+export type InspectCommandResult = import("../config/project.js").InspectRuntimePlan;
+
+export type LocalTaskCommandResult = ReviewRuntimeResult;
 
 export type ActionCommandResult =
   | {
@@ -123,22 +130,20 @@ export async function runInitCommand(
   });
 }
 
-export async function runValidateCommand(options: RuntimeCommandOptions): Promise<ResolvedConfig> {
+export async function runValidateCommand(options: RuntimeCommandOptions): Promise<RuntimeSettings> {
   return (
     await validateProject({
       ...options,
       requireProviderEnv: options.requireProviderEnv ?? false,
     })
-  ).resolved;
+  ).settings;
 }
 
-export async function runExplainConfigCommand(
+export async function runInspectCommand(
   options: RuntimeCommandOptions,
-): Promise<ResolvedConfig> {
-  return await loadRuntimeConfig({
-    ...options,
-    requireProviderEnv: options.requireProviderEnv ?? false,
-  });
+): Promise<InspectCommandResult> {
+  const runtime = await loadRuntimeProject({ ...options, requireProviderEnv: false });
+  return inspectRuntimePlan(runtime.plan, runtime.settings.source);
 }
 
 export async function runDryRunCommand(
@@ -151,50 +156,61 @@ export async function runDryRunCommand(
     GITHUB_EVENT_NAME: "pull_request",
   });
   return {
-    configSource: runtime.resolved.source,
+    configSource: runtime.settings.source,
     event,
-    registry: runtime.registry,
   };
 }
 
-export async function runGraphCommand(options: RuntimeCommandOptions): Promise<string> {
-  const runtime = await loadRuntimeProject({ ...options, requireProviderEnv: false });
-  return renderRegistryGraph(runtime.registry);
-}
-
-export async function runListCommand(
-  options: RuntimeCommandOptions,
-  collection: Extract<RegistryCollectionName, "blocks" | "tools" | "agents">,
-): Promise<RegistryEntry[]> {
-  const runtime = await loadRuntimeProject({ ...options, requireProviderEnv: false });
-  return runtime.registry[collection];
-}
-
-export async function runListCommandsCommand(
-  options: RuntimeCommandOptions,
-): Promise<RegistryEntry[]> {
-  const runtime = await loadRuntimeProject({ ...options, requireProviderEnv: false });
-  return listWorkflowCommandEntries(runtime.registry);
+export async function runLocalTaskCommand(
+  options: LocalTaskCommandOptions,
+): Promise<LocalTaskCommandResult> {
+  const runtime = await loadRuntimeProject({
+    ...options,
+    requireProviderEnv: true,
+  });
+  const local = runtime.plan.locals.find((entry) => entry.name === options.localName);
+  if (!local) {
+    throw new Error(`Local entry '${options.localName}' was not registered`);
+  }
+  const headSha = options.headSha ?? runGit(options.rootDir, ["rev-parse", "HEAD"]).trim();
+  return await runTaskRuntime({
+    workspace: options.rootDir,
+    config: runtime.settings.config,
+    event: parsePullRequestEventContext({
+      eventName: "local",
+      action: "updated",
+      repo: "local/repository",
+      pullRequestNumber: 1,
+      baseSha: options.baseSha,
+      headSha,
+      workspace: options.rootDir,
+    }),
+    env: options.env,
+    plan: runtime.plan,
+    taskName: local.task.name,
+    piExecutable: options.piExecutable,
+  });
 }
 
 export async function runActionCommand(
   options: ActionCommandOptions,
 ): Promise<ActionCommandResult> {
+  ensureGitHubWorkspaceSafeDirectory({ rootDir: options.rootDir, env: options.env });
   if (actionEventName(options) === "issue_comment") {
     return await runIssueCommentActionCommand(options);
   }
   const event = await loadPullRequestEventContext(options.eventPath, options.env ?? process.env);
   if (options.dryRun) {
-    const runtime = await loadRuntimeProject({
+    const trustedRuntime = await loadRuntimeProjectFromGitCommit({
       rootDir: options.rootDir,
       configDir: options.configDir,
+      commitSha: event.baseSha,
       env: options.env,
-      requireProviderEnv: false,
     });
     return {
       kind: "dry-run",
       event,
-      configSource: runtime.resolved.source,
+      configSource: trustedRuntime.settings.source,
     };
   }
   const trustedRuntime = await loadRuntimeProjectFromGitCommit({
@@ -203,7 +219,7 @@ export async function runActionCommand(
     commitSha: event.baseSha,
     env: options.env,
   });
-  const provider = trustedActionProvider(options, trustedRuntime.resolved.config);
+  const provider = trustedActionProvider(options, trustedRuntime.settings.config);
   ensurePullRequestHeadCheckout(options.rootDir, event);
   const completed = await runTrustedReviewAndPublish({ options, trustedRuntime, provider, event });
   if (completed.kind === "skipped") {
@@ -213,7 +229,7 @@ export async function runActionCommand(
   return {
     kind: "review",
     event,
-    configSource: trustedRuntime.resolved.source,
+    configSource: trustedRuntime.settings.source,
     review: completed.review,
     publication: completed.publication,
   };
@@ -238,7 +254,7 @@ type PreparedIssueCommentCommand =
       github: GitHubCommandClient;
       event: PullRequestEventContext;
       trustedRuntime: LoadedRuntimeProject;
-      resolution: Exclude<WorkflowCommandResolution, { kind: "ignored" }>;
+      resolution: Exclude<PlanCommandResolution, { kind: "ignored" }>;
     };
 
 async function prepareIssueCommentCommand(
@@ -268,6 +284,8 @@ async function prepareIssueCommentCommand(
     action: comment.action,
     repo: pullRequest.repo,
     pullRequestNumber: comment.issueNumber,
+    title: pullRequest.title,
+    description: pullRequest.description,
     baseSha: pullRequest.baseSha,
     headSha: pullRequest.headSha,
     workspace: comment.workspace,
@@ -278,7 +296,7 @@ async function prepareIssueCommentCommand(
     commitSha: event.baseSha,
     env: options.env,
   });
-  const resolution = resolveWorkflowCommand(trustedRuntime.registry, line);
+  const resolution = resolvePlanCommand(trustedRuntime.plan, line);
   if (resolution.kind === "ignored") {
     return { kind: "ignored", reason: resolution.reason };
   }
@@ -301,8 +319,8 @@ async function dispatchIssueCommentCommand(
     return {
       kind: "command-help",
       event: prepared.event,
-      configSource: prepared.trustedRuntime.resolved.source,
-      body: permissionDeniedHelp(prepared.trustedRuntime.registry, requiredPermission),
+      configSource: prepared.trustedRuntime.settings.source,
+      body: permissionDeniedHelp(prepared.trustedRuntime.plan, requiredPermission),
       reason: `permission denied for '${prepared.line}'`,
     };
   }
@@ -310,21 +328,38 @@ async function dispatchIssueCommentCommand(
     return {
       kind: "command-help",
       event: prepared.event,
-      configSource: prepared.trustedRuntime.resolved.source,
+      configSource: prepared.trustedRuntime.settings.source,
       body: prepared.resolution.body,
       reason: prepared.resolution.reason,
     };
   }
 
-  const provider = trustedActionProvider(options, prepared.trustedRuntime.resolved.config);
+  const parsedResolution = parsePlanCommandInputs(
+    prepared.trustedRuntime.plan,
+    prepared.resolution.invocation,
+  );
+  if (parsedResolution.kind === "invalid") {
+    return {
+      kind: "command-help",
+      event: prepared.event,
+      configSource: prepared.trustedRuntime.settings.source,
+      body: parsedResolution.body,
+      reason: parsedResolution.reason,
+    };
+  }
+  if (parsedResolution.kind !== "matched") {
+    return { kind: "ignored", reason: "command dispatch did not resolve to a runnable task" };
+  }
+
+  const provider = trustedActionProvider(options, prepared.trustedRuntime.settings.config);
   ensurePullRequestHeadCheckout(options.rootDir, prepared.event);
   const completed = await runTrustedReviewAndPublish({
     options,
     trustedRuntime: prepared.trustedRuntime,
     provider,
     event: prepared.event,
-    workflowId: prepared.resolution.invocation.workflowId,
-    workflowInputs: prepared.resolution.invocation.inputs,
+    taskName: parsedResolution.invocation.taskName,
+    taskInput: parsedResolution.invocation.inputs,
   });
   if (completed.kind === "skipped") {
     return { kind: "ignored", reason: completed.reason };
@@ -332,8 +367,8 @@ async function dispatchIssueCommentCommand(
   return {
     kind: "review",
     event: prepared.event,
-    command: prepared.resolution.invocation.commandName,
-    configSource: prepared.trustedRuntime.resolved.source,
+    command: parsedResolution.invocation.commandName,
+    configSource: prepared.trustedRuntime.settings.source,
     review: completed.review,
     publication: completed.publication,
   };
@@ -344,26 +379,25 @@ async function runTrustedReviewAndPublish(options: {
   trustedRuntime: LoadedRuntimeProject;
   provider: ProviderConfig;
   event: PullRequestEventContext;
-  workflowId?: string;
-  workflowInputs?: unknown;
+  taskName?: string;
+  taskInput?: unknown;
 }): Promise<
   | { kind: "skipped"; reason: string }
   | { kind: "completed"; review: ReviewRuntimeResult; publication: PublicationResult }
 > {
-  const review = await runReviewRuntime({
+  const review = await runTaskRuntime({
     workspace: options.options.rootDir,
     config: trustedActionConfig(
-      options.trustedRuntime.resolved.config,
+      options.trustedRuntime.settings.config,
       options.options,
       options.provider,
     ),
     event: options.event,
     env: options.options.env,
-    project: options.trustedRuntime.project,
-    registry: options.trustedRuntime.registry,
     providerOverride: options.provider,
-    workflowId: options.workflowId,
-    workflowInputs: options.workflowInputs,
+    plan: options.trustedRuntime.plan,
+    taskName: options.taskName,
+    taskInput: options.taskInput,
     trustedConfigSha: readTrustedRuntimeSha(options.trustedRuntime),
     trustedConfigHash: readTrustedRuntimeHash(options.trustedRuntime),
     piExecutable: options.options.piExecutable,
@@ -443,11 +477,13 @@ function readTrustedProviderOption(
   inputName: string,
   fallback: string,
 ): string {
-  return firstNonEmptyString([
-    trustedProviderOptions(options)[optionKey],
-    readActionInput(actionEnv(options), inputName),
-    fallback,
-  ]);
+  return (
+    [
+      trustedProviderOptions(options)[optionKey],
+      readActionInput(actionEnv(options), inputName),
+      fallback,
+    ].find((value) => value !== undefined && value.length > 0) ?? ""
+  );
 }
 
 function trustedProviderOptions(
@@ -462,15 +498,6 @@ function actionEnv(options: ActionCommandOptions): NodeJS.ProcessEnv {
 
 function actionEventName(options: ActionCommandOptions): string {
   return actionEnv(options).GITHUB_EVENT_NAME ?? "pull_request";
-}
-
-function firstNonEmptyString(values: Array<string | undefined>): string {
-  for (const value of values) {
-    if (value) {
-      return value;
-    }
-  }
-  return "";
 }
 
 function readActionInput(env: NodeJS.ProcessEnv, name: string): string | undefined {

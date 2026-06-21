@@ -2,10 +2,12 @@ import { execFileSync } from "node:child_process";
 import { access, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { reviewTestManifest } from "../../review/tests/fixtures.js";
 import type { DiffManifest } from "../../types.js";
+import { preparePiCustomTools } from "../custom-tools.js";
 import { preparePiRuntimeReadTools, readAtRef, readDiffFromManifest } from "../runtime-tools.js";
 
 describe("pipr runtime Pi read tools", () => {
@@ -84,7 +86,7 @@ describe("pipr runtime Pi read tools", () => {
         truncated: false,
       });
     } finally {
-      await rm(repo.root, { recursive: true, force: true });
+      await removeTree(repo.root);
     }
   });
 
@@ -156,7 +158,7 @@ describe("pipr runtime Pi read tools", () => {
         }),
       ).rejects.toThrow("Unknown Diff Manifest range");
     } finally {
-      await rm(workspace, { recursive: true, force: true });
+      await removeTree(workspace);
     }
   });
 
@@ -197,7 +199,7 @@ describe("pipr runtime Pi read tools", () => {
         truncated: true,
       });
     } finally {
-      await rm(repo.root, { recursive: true, force: true });
+      await removeTree(repo.root);
     }
   });
 
@@ -243,8 +245,8 @@ describe("pipr runtime Pi read tools", () => {
         truncated: true,
       });
     } finally {
-      await rm(repo.root, { recursive: true, force: true });
-      await rm(toolRoot, { recursive: true, force: true });
+      await removeTree(repo.root);
+      await removeTree(toolRoot);
     }
   });
 
@@ -265,12 +267,88 @@ describe("pipr runtime Pi read tools", () => {
       const extension = await import(pathToFileURL(prepared.extensionPath).href);
 
       expect(() => extension.default({ registerTool() {} })).toThrow(
-        "PIPR_RUNTIME_TOOLS_DATA is required",
+        "PIPR_RUNTIME_TOOLS_DATA or PIPR_CUSTOM_TOOLS_DATA is required",
       );
     } finally {
       restoreEnv("PIPR_RUNTIME_TOOLS_DATA", previousDataPath);
-      await rm(repo.root, { recursive: true, force: true });
-      await rm(toolRoot, { recursive: true, force: true });
+      await removeTree(repo.root);
+      await removeTree(toolRoot);
+    }
+  });
+
+  it("round trips custom config tools through the static extension bridge", async () => {
+    const toolRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-custom-tools-extension-"));
+    let observedContext: unknown;
+    const prepared = await preparePiCustomTools({
+      root: toolRoot,
+      request: {
+        context: { run: { id: "run-1" } },
+        tools: [
+          {
+            name: "plugin_echo",
+            description: "Echo input.",
+            input: summarySchema(),
+            output: summarySchema(),
+            async execute(context, input) {
+              observedContext = context;
+              return { body: `stored:${(input as { body: string }).body}` };
+            },
+          },
+        ],
+      },
+    });
+    try {
+      const tool = await loadExtensionToolWithEnv(prepared.extensionPath, "plugin_echo", {
+        PIPR_CUSTOM_TOOLS_DATA: prepared.dataPath,
+        PIPR_CUSTOM_TOOLS_BRIDGE_URL: prepared.bridgeUrl,
+        PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN: prepared.bridgeToken,
+      });
+
+      await expect(executeExtensionTool(tool, process.cwd(), { body: "memory" })).resolves.toEqual({
+        body: "stored:memory",
+      });
+      expect(observedContext).toEqual({ run: { id: "run-1" } });
+    } finally {
+      await prepared.close();
+      await removeTree(toolRoot);
+    }
+  });
+
+  it("reports custom config tool input and output validation errors", async () => {
+    const toolRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-custom-tools-validation-"));
+    const prepared = await preparePiCustomTools({
+      root: toolRoot,
+      request: {
+        context: {},
+        tools: [
+          {
+            name: "plugin_strict",
+            description: "Validate input.",
+            input: summarySchema(),
+            output: summarySchema(),
+            async execute() {
+              return { title: "missing body" };
+            },
+          },
+        ],
+      },
+    });
+    try {
+      const tool = await loadExtensionToolWithEnv(prepared.extensionPath, "plugin_strict", {
+        PIPR_CUSTOM_TOOLS_DATA: prepared.dataPath,
+        PIPR_CUSTOM_TOOLS_BRIDGE_URL: prepared.bridgeUrl,
+        PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN: prepared.bridgeToken,
+      });
+
+      await expect(executeExtensionTool(tool, process.cwd(), { title: "missing" })).rejects.toThrow(
+        "summary.body is required",
+      );
+      await expect(executeExtensionTool(tool, process.cwd(), { body: "ok" })).rejects.toThrow(
+        "summary.body is required",
+      );
+    } finally {
+      await prepared.close();
+      await removeTree(toolRoot);
     }
   });
 
@@ -317,8 +395,8 @@ describe("pipr runtime Pi read tools", () => {
         executeExtensionTool(diffTool, repo.root, { path: "src/missing.ts" }),
       ).rejects.toThrow("is not in the Diff Manifest");
     } finally {
-      await rm(repo.root, { recursive: true, force: true });
-      await rm(toolRoot, { recursive: true, force: true });
+      await removeTree(repo.root);
+      await removeTree(toolRoot);
     }
   });
 
@@ -343,7 +421,7 @@ describe("pipr runtime Pi read tools", () => {
         available: false,
       });
     } finally {
-      await rm(repo.root, { recursive: true, force: true });
+      await removeTree(repo.root);
     }
   });
 
@@ -371,7 +449,7 @@ describe("pipr runtime Pi read tools", () => {
         sourcePath: "src/a.ts",
       });
     } finally {
-      await rm(repo.root, { recursive: true, force: true });
+      await removeTree(repo.root);
     }
   });
 });
@@ -480,6 +558,20 @@ function runGit(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
 }
 
+async function removeTree(root: string): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await rm(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 9) {
+        throw error;
+      }
+      await delay(50);
+    }
+  }
+}
+
 async function initTestGitRepo(prefix: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), prefix));
   runGit(root, ["init", "-b", "main"]);
@@ -520,9 +612,38 @@ async function loadExtensionTool(
 ): Promise<{
   execute: (...args: unknown[]) => Promise<{ details?: unknown; content: Array<{ text: string }> }>;
 }> {
+  return await loadExtensionToolWithEnv(extensionPath, toolName, {
+    PIPR_RUNTIME_TOOLS_DATA: dataPath,
+  });
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
+}
+
+async function loadExtensionToolWithEnv(
+  extensionPath: string,
+  toolName: string,
+  env: Record<string, string>,
+): Promise<{
+  execute: (...args: unknown[]) => Promise<{ details?: unknown; content: Array<{ text: string }> }>;
+}> {
   const tools = new Map<string, unknown>();
-  const previousDataPath = process.env.PIPR_RUNTIME_TOOLS_DATA;
-  process.env.PIPR_RUNTIME_TOOLS_DATA = dataPath;
+  const envKeys = [
+    "PIPR_RUNTIME_TOOLS_DATA",
+    "PIPR_CUSTOM_TOOLS_DATA",
+    "PIPR_CUSTOM_TOOLS_BRIDGE_URL",
+    "PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN",
+  ];
+  const previous = new Map(envKeys.map((key) => [key, process.env[key]]));
+  for (const key of envKeys) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, env);
   try {
     const extension = await import(pathToFileURL(extensionPath).href);
     await extension.default({
@@ -531,7 +652,9 @@ async function loadExtensionTool(
       },
     });
   } finally {
-    restoreEnv("PIPR_RUNTIME_TOOLS_DATA", previousDataPath);
+    for (const [key, value] of previous) {
+      restoreEnv(key, value);
+    }
   }
   const tool = tools.get(toolName);
   if (!tool || typeof tool !== "object" || !("execute" in tool)) {
@@ -544,12 +667,19 @@ async function loadExtensionTool(
   };
 }
 
-function restoreEnv(key: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[key];
-    return;
-  }
-  process.env[key] = value;
+function summarySchema() {
+  return {
+    parse(value: unknown) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        typeof Reflect.get(value, "body") === "string"
+      ) {
+        return { body: Reflect.get(value, "body") as string };
+      }
+      throw new Error("summary.body is required");
+    },
+  };
 }
 
 async function executeExtensionTool(

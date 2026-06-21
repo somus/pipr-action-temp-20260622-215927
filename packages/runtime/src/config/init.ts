@@ -1,9 +1,8 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { lstat, mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadMaterializedProject } from "./config.js";
 import { isPathContained, resolveContainedConfigDir } from "./paths.js";
+import { loadRuntimeProject } from "./project.js";
 
 export type InitOfficialMinimalProjectOptions = {
   rootDir: string;
@@ -17,23 +16,20 @@ export type InitOfficialMinimalProjectResult = {
   overwritten: string[];
 };
 
-type DistributionFile = {
+type StarterFile = {
   relativePath: string;
   contents: string;
 };
 
-// TODO: Move the official pipr distribution files to a separate config repository.
-const officialMinimalRoot = resolveOfficialMinimalRoot();
-
 export function listOfficialMinimalFiles(): string[] {
-  return readOfficialMinimalFiles().map((file) => file.relativePath);
+  return starterFilePaths();
 }
 
 export async function initOfficialMinimalProject(
   options: InitOfficialMinimalProjectOptions,
 ): Promise<InitOfficialMinimalProjectResult> {
   const { configDir, projectDir } = resolveContainedConfigDir(options);
-  const targets = readOfficialMinimalFiles().map((file) => ({
+  const targets = (await starterFiles()).map((file) => ({
     ...file,
     absolutePath: path.join(projectDir, file.relativePath),
   }));
@@ -59,12 +55,24 @@ export async function initOfficialMinimalProject(
     }
   }
 
-  await loadMaterializedProject({ rootDir: options.rootDir, configDir });
+  await loadRuntimeProject({ rootDir: options.rootDir, configDir });
   return { configDir, created, overwritten };
 }
 
+async function starterFiles(): Promise<StarterFile[]> {
+  return [
+    { relativePath: "config.ts", contents: starterConfigTs },
+    { relativePath: "tsconfig.json", contents: starterTsconfig },
+    { relativePath: path.join("types", "pipr-sdk.d.ts"), contents: await sdkDeclaration() },
+  ];
+}
+
+function starterFilePaths(): string[] {
+  return ["config.ts", "tsconfig.json", path.join("types", "pipr-sdk.d.ts")];
+}
+
 async function assertSafeTargetAncestors(
-  targets: Array<DistributionFile & { absolutePath: string }>,
+  targets: Array<StarterFile & { absolutePath: string }>,
   projectDir: string,
 ): Promise<void> {
   for (const target of targets) {
@@ -99,40 +107,8 @@ async function assertNoSymlinkAncestors(filePath: string, projectDir: string): P
   }
 }
 
-function readOfficialMinimalFiles(): DistributionFile[] {
-  return listDistributionRelativePaths(officialMinimalRoot).map((relativePath) => ({
-    relativePath,
-    contents: readFileSync(path.join(officialMinimalRoot, relativePath), "utf8"),
-  }));
-}
-
-function resolveOfficialMinimalRoot(): string {
-  const candidates = [
-    new URL("../../distribution/official-minimal/.pipr", import.meta.url),
-    new URL("../distribution/official-minimal/.pipr", import.meta.url),
-  ].map((candidate) => fileURLToPath(candidate));
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
-}
-
-function listDistributionRelativePaths(rootDir: string, relativeDir = ""): string[] {
-  const directory = path.join(rootDir, relativeDir);
-  return readdirSync(directory, { withFileTypes: true })
-    .flatMap((entry) => {
-      const relativePath = path.join(relativeDir, entry.name);
-      if (entry.isDirectory()) {
-        return listDistributionRelativePaths(rootDir, relativePath);
-      }
-      if (entry.isFile()) {
-        return [relativePath];
-      }
-      return [];
-    })
-    .sort((left, right) => left.localeCompare(right));
-}
-
 async function findExistingTargets(
-  targets: Array<DistributionFile & { absolutePath: string }>,
+  targets: Array<StarterFile & { absolutePath: string }>,
 ): Promise<string[]> {
   const existing: string[] = [];
   for (const target of targets) {
@@ -161,6 +137,70 @@ async function maybeLstat(
   }
 }
 
+async function sdkDeclaration(): Promise<string> {
+  const declaration = await readFile(await sdkDeclarationPath(), "utf8");
+  return [
+    "// biome-ignore-all format: generated from @pipr/sdk declarations",
+    "// biome-ignore-all assist/source/organizeImports: generated from @pipr/sdk declarations",
+    'declare module "@pipr/sdk" {',
+    declaration
+      .replace(/^declare /gm, "")
+      .replace(/^\/\/# sourceMappingURL=.*$/gm, "")
+      .trim(),
+    "}",
+    "",
+  ].join("\n");
+}
+
+async function sdkDeclarationPath(): Promise<string> {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(moduleDir, "../../sdk/dist/index.d.mts"),
+    path.resolve(moduleDir, "../../../sdk/dist/index.d.mts"),
+  ];
+  for (const candidate of candidates) {
+    const stats = await maybeLstat(candidate);
+    if (stats?.isFile()) {
+      return candidate;
+    }
+  }
+  throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
+}
+
 function isPathInside(child: string, parent: string): boolean {
   return child !== parent && isPathContained(child, parent);
 }
+
+const starterConfigTs = `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
+
+  pipr.review({
+    model,
+    instructions: \`
+      Review the pull request diff for correctness, security,
+      maintainability, and test risk.
+      Return only high-confidence findings that target valid diff ranges.
+    \`,
+    inlineComments: { max: 5 },
+    timeout: "5m",
+  });
+});
+`;
+
+const starterTsconfig = `{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": ["./**/*.ts"]
+}
+`;

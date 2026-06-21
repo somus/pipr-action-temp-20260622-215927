@@ -85,17 +85,14 @@ describe("comments", () => {
     expect(body).toContain("# pipr Review");
   });
 
-  it("renders the Main Review Comment from a CommentTemplate", () => {
+  it("renders the Main Review Comment from a MainCommentLayout", () => {
     const body = renderMainComment({
       event: { pullRequestNumber: 1, headSha: "abc123" },
       review: validated.review,
       validFindings: [],
       droppedCount: 0,
       providerModel: "deepseek-v4-pro",
-      template: {
-        apiVersion: "pipr.dev/v1",
-        kind: "CommentTemplate",
-        id: "pipr/main",
+      layout: {
         marker: "pipr:custom-main",
         heading: "Custom Review",
         sections: [
@@ -163,42 +160,42 @@ describe("comments", () => {
   it("reduces main sections deterministically", () => {
     const reduced = reduceMainSectionContributions([
       {
-        workflowId: "b/workflow",
+        sourceId: "b/task",
         sectionId: "summary",
         policy: "replace",
         priority: 5,
         value: "B",
       },
       {
-        workflowId: "a/workflow",
+        sourceId: "a/task",
         sectionId: "summary",
         policy: "replace",
         priority: 5,
         value: "A",
       },
       {
-        workflowId: "a/workflow",
+        sourceId: "a/task",
         sectionId: "details",
         policy: "append",
         priority: 1,
         value: "one",
       },
       {
-        workflowId: "b/workflow",
+        sourceId: "b/task",
         sectionId: "details",
         policy: "append",
         priority: 2,
         value: "two",
       },
       {
-        workflowId: "a/workflow",
+        sourceId: "a/task",
         sectionId: "findings",
         policy: "list",
         priority: 1,
         value: "first",
       },
       {
-        workflowId: "b/workflow",
+        sourceId: "b/task",
         sectionId: "findings",
         policy: "list",
         priority: 2,
@@ -214,7 +211,7 @@ describe("comments", () => {
   it("dedupes structured list items by itemKey", () => {
     const reduced = reduceMainSectionContributions([
       {
-        workflowId: "a/workflow",
+        sourceId: "a/task",
         sectionId: "findings",
         policy: "list",
         priority: 1,
@@ -225,7 +222,7 @@ describe("comments", () => {
         ],
       },
       {
-        workflowId: "b/workflow",
+        sourceId: "b/task",
         sectionId: "findings",
         policy: "list",
         priority: 1,
@@ -240,15 +237,15 @@ describe("comments", () => {
   it("rejects conflicting main section policies", () => {
     expect(() =>
       reduceMainSectionContributions([
-        { workflowId: "a", sectionId: "summary", policy: "exclusive", priority: 1, value: "A" },
-        { workflowId: "b", sectionId: "summary", policy: "exclusive", priority: 1, value: "B" },
+        { sourceId: "a", sectionId: "summary", policy: "exclusive", priority: 1, value: "A" },
+        { sourceId: "b", sectionId: "summary", policy: "exclusive", priority: 1, value: "B" },
       ]),
     ).toThrow("multiple exclusive writers");
 
     expect(() =>
       reduceMainSectionContributions([
-        { workflowId: "a", sectionId: "summary", policy: "replace", priority: 1, value: "A" },
-        { workflowId: "b", sectionId: "summary", policy: "append", priority: 1, value: "B" },
+        { sourceId: "a", sectionId: "summary", policy: "replace", priority: 1, value: "A" },
+        { sourceId: "b", sectionId: "summary", policy: "append", priority: 1, value: "B" },
       ]),
     ).toThrow("mixed merge policies");
   });
@@ -257,22 +254,19 @@ describe("comments", () => {
     const plan = buildPublicationPlan({
       event: { pullRequestNumber: 1, headSha: "head" },
       mainContributions: reviewToMainSectionContributions({
-        workflowId: "pipr/review",
+        sourceId: "pipr/review",
         validated: { ...validated, validFindings: [] },
       }),
       inlineItems: [],
       metadata: {
         runtimeVersion: "0.0.0",
         reviewedHeadSha: "head",
-        selectedWorkflows: ["pipr/review"],
-        failedWorkflows: [],
+        selectedTasks: ["review"],
+        failedTasks: [],
         validFindings: 0,
         droppedFindings: 0,
       },
-      template: {
-        apiVersion: "pipr.dev/v1",
-        kind: "CommentTemplate",
-        id: "pipr/main",
+      layout: {
         marker: "pipr:main-comment",
         heading: "Review",
         sections: [

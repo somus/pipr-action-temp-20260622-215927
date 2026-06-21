@@ -8,7 +8,6 @@ export type CommandPatternParseResult =
   | { ok: false; error: string };
 
 const piprCommandPrefix = "@pipr";
-export const piprHelpCommandLine = "@pipr help";
 
 export function firstNonEmptyLine(value: string): string | undefined {
   return value

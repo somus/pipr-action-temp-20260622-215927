@@ -3,6 +3,11 @@ import { chmod, cp, lstat, mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import type { DiffManifest, ProviderConfig } from "../types.js";
+import {
+  type PiCustomToolRequest,
+  type PreparedPiCustomTools,
+  preparePiCustomTools,
+} from "./custom-tools.js";
 import { toPiProviderInvocation } from "./provider.js";
 import { type PreparedPiRuntimeReadTools, preparePiRuntimeReadTools } from "./runtime-tools.js";
 
@@ -17,6 +22,7 @@ export type PiRunOptions = {
     manifest: DiffManifest;
     toolResponseMaxBytes: number;
   };
+  customTools?: PiCustomToolRequest;
 };
 
 export type PiRunResult = {
@@ -34,25 +40,40 @@ type PiRunSandbox = {
   tmp: string;
 };
 
+type PreparedPiTool = PreparedPiRuntimeReadTools | PreparedPiCustomTools;
+
+export type PreparedPiTools = {
+  extensionPath: string;
+  runtimeRead?: PreparedPiRuntimeReadTools;
+  custom?: PreparedPiCustomTools;
+  toolNames: readonly string[];
+};
+
 export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
   const started = Date.now();
   const sandbox = await createPiRunSandbox(options.workspace);
+  let preparedTools: PreparedPiTools | undefined;
   try {
-    const runtimeTools = options.runtimeTools
+    const runtimeRead = options.runtimeTools
       ? await preparePiRuntimeReadTools({
           root: sandbox.root,
           sourceWorkspace: options.workspace,
           request: options.runtimeTools,
         })
       : undefined;
-    const args = buildPiArgs(options.provider, options.prompt, sandbox.sessionDir, runtimeTools);
+    const customTools = options.customTools
+      ? await preparePiCustomTools({ root: sandbox.root, request: options.customTools })
+      : undefined;
+    preparedTools = mergePreparedPiTools(runtimeRead, customTools);
+    const args = buildPiArgs(options.provider, options.prompt, sandbox.sessionDir, preparedTools);
     return await runProcess(options.piExecutable ?? "pi", args, {
       cwd: sandbox.workspace,
-      env: buildPiEnv(options.provider, sandbox, options.env, runtimeTools),
+      env: buildPiEnv(options.provider, sandbox, options.env, preparedTools),
       started,
       timeoutSeconds: options.timeoutSeconds,
     });
   } finally {
+    await preparedTools?.custom?.close();
     await chmodRecursive(sandbox.root, 0o755);
     await rm(sandbox.root, { recursive: true, force: true });
   }
@@ -62,7 +83,7 @@ export function buildPiArgs(
   provider: ProviderConfig,
   prompt: string,
   sessionDir = ".pipr/pi-sessions",
-  runtimeTools?: PreparedPiRuntimeReadTools,
+  runtimeTools?: PreparedPiTools,
 ): string[] {
   const invocation = toPiProviderInvocation(provider);
   const toolNames = [...invocation.tools, ...(runtimeTools?.toolNames ?? [])];
@@ -96,7 +117,7 @@ function buildPiEnv(
   provider: ProviderConfig,
   sandbox: Pick<PiRunSandbox, "home" | "sessionDir" | "tmp">,
   sourceEnv: NodeJS.ProcessEnv = process.env,
-  runtimeTools?: PreparedPiRuntimeReadTools,
+  runtimeTools?: PreparedPiTools,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     HOME: sandbox.home,
@@ -108,14 +129,44 @@ function buildPiEnv(
     TMPDIR: sandbox.tmp,
     USER: "pipr",
   };
-  if (runtimeTools) {
-    env.PIPR_RUNTIME_TOOLS_DATA = runtimeTools.dataPath;
+  if (runtimeTools?.runtimeRead) {
+    env.PIPR_RUNTIME_TOOLS_DATA = runtimeTools.runtimeRead.dataPath;
+  }
+  if (runtimeTools?.custom) {
+    env.PIPR_CUSTOM_TOOLS_DATA = runtimeTools.custom.dataPath;
+    env.PIPR_CUSTOM_TOOLS_BRIDGE_URL = runtimeTools.custom.bridgeUrl;
+    env.PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN = runtimeTools.custom.bridgeToken;
   }
   for (const key of ["BUN_INSTALL", "LANG", "PATH"]) {
     copyEnvValue(env, sourceEnv, key);
   }
   copyEnvValue(env, sourceEnv, provider.apiKeyEnv);
   return env;
+}
+
+function mergePreparedPiTools(
+  runtimeRead: PreparedPiRuntimeReadTools | undefined,
+  custom: PreparedPiCustomTools | undefined,
+): PreparedPiTools | undefined {
+  const tools = [runtimeRead, custom].filter((tool) => tool !== undefined);
+  const first = tools[0];
+  if (!first) {
+    return undefined;
+  }
+  assertSharedExtensionPath(tools);
+  return {
+    extensionPath: first.extensionPath,
+    runtimeRead,
+    custom,
+    toolNames: tools.flatMap((tool) => [...tool.toolNames]),
+  };
+}
+
+function assertSharedExtensionPath(tools: PreparedPiTool[]): void {
+  const extensionPaths = new Set(tools.map((tool) => tool.extensionPath));
+  if (extensionPaths.size > 1) {
+    throw new Error("pipr runtime and custom tools must use the same Pi extension");
+  }
 }
 
 async function createPiRunSandbox(workspace: string): Promise<PiRunSandbox> {

@@ -20,7 +20,9 @@ pipr_overlay_current_worktree \
   "$worktree" \
   "packages/runtime/src/diff/path-filter.ts" \
   "packages/runtime/src/diff/tests/path-filter.test.ts" \
-  "packages/runtime/src/review/agent-template.ts" \
+  "packages/runtime/src/review/task-runtime.ts" \
+  ".pipr/tsconfig.json" \
+  ".pipr/types/pipr-sdk.d.ts" \
   "scripts/assert-act-fixture-helpers.mjs" \
   "scripts/assert-act-orchestrator-fixture.mjs" \
   "test/fixtures/act/fake-pi" \
@@ -36,88 +38,45 @@ cp \
 chmod +x "$worktree/test/fixtures/act/fake-pi"
 pipr_prepare_act_workflow "$worktree" "$worktree/.github/workflows/pipr-local-orchestrator.yml"
 
-cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/agents/specialist.md" <<'EOF'
----
-apiVersion: pipr.dev/v1
-kind: Agent
-id: pipr/specialist-reviewer
-inputs:
-  focus:
-    type: string
-    required: true
-    enum: [correctness, security, tests]
-provider: deepseek
-output:
-  schema: core/pr-review
----
+cat >"$worktree/.pipr/config.ts" <<'EOF'
+import { definePipr } from "@pipr/sdk";
 
-Focus: ${{ inputs.focus }}
-Return a focused specialist review.
-EOF
-
-cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/agents/orchestrator.md" <<'EOF'
----
-apiVersion: pipr.dev/v1
-kind: Agent
-id: pipr/review-orchestrator
-inputs:
-  reviews:
-    type: json
-    required: true
-provider: deepseek
-output:
-  schema: core/pr-review
----
-
-Specialist reviews:
-${{ inputs.reviews }}
-EOF
-
-cat >"$worktree/packages/runtime/distribution/official-minimal/.pipr/workflows/review.yaml" <<'EOF'
-apiVersion: pipr.dev/v1
-kind: Workflow
-id: pipr/review
-description: Three specialist reviewers plus orchestrator fixture.
-on:
-  events:
-    - pull_request.opened
-steps:
-  - id: correctness
-    uses: core/run-agent
-    with:
-      agent: pipr/specialist-reviewer
-      inputs:
-        focus: correctness
-  - id: security
-    uses: core/run-agent
-    with:
-      agent: pipr/specialist-reviewer
-      inputs:
-        focus: security
-  - id: tests
-    uses: core/run-agent
-    with:
-      agent: pipr/specialist-reviewer
-      inputs:
-        focus: tests
-  - id: review
-    uses: core/run-agent
-    with:
-      agent: pipr/review-orchestrator
-      inputs:
-        reviews:
-          correctness: ${{ steps.correctness.outputs.result }}
-          security: ${{ steps.security.outputs.result }}
-          tests: ${{ steps.tests.outputs.result }}
-  - id: main-comment
-    uses: core/main-comment
-    with:
-      review: ${{ steps.review.outputs.result }}
-      template: pipr/main
-  - id: inline-comments
-    uses: core/inline-comments
-    with:
-      review: ${{ steps.review.outputs.result }}
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
+  const specialist = pipr.agent({
+    name: "specialist-reviewer",
+    model,
+    instructions: "Return a focused specialist review.",
+    output: pipr.schemas.review,
+    prompt: (input) => pipr.prompt`Focus: ${input.focus}\n${pipr.compactManifest(input.manifest)}`,
+  });
+  const orchestrator = pipr.agent({
+    name: "review-orchestrator",
+    model,
+    instructions: "Merge specialist reviews into one final review.",
+    output: pipr.schemas.review,
+    prompt: (input) => pipr.prompt`Specialist reviews:\n${pipr.json(input.reviews)}`,
+  });
+  const task = pipr.task("review", async (ctx) => {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const [correctness, security, tests] = await Promise.all([
+      ctx.pi.run(specialist, { manifest, focus: "correctness" }),
+      ctx.pi.run(specialist, { manifest, focus: "security" }),
+      ctx.pi.run(specialist, { manifest, focus: "tests" }),
+    ]);
+    const result = await ctx.pi.run(orchestrator, {
+      manifest,
+      reviews: { correctness, security, tests },
+    });
+    ctx.output.summary(result.summary);
+    ctx.output.findings(result.inlineFindings);
+  });
+  pipr.on.changeRequest(["opened"], task);
+});
 EOF
 
 cat >"$worktree/test/fixtures/act/project/sample.ts" <<'EOF'

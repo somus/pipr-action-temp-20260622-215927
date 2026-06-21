@@ -1,86 +1,99 @@
+import { buildPiprPlan, definePipr } from "@pipr/sdk";
 import { describe, expect, it } from "vitest";
-import { createRuntimeRegistry } from "../../registry/registry.js";
 import {
   createGitHubCommandClient,
   hasRequiredRepositoryPermission,
-  listWorkflowCommandEntries,
-  resolveWorkflowCommand,
+  parsePlanCommandInputs,
+  permissionDeniedHelp,
+  resolvePlanCommand,
 } from "../command-router.js";
 
-describe("workflow command routing", () => {
-  it("matches required positional and optional named arguments into workflow inputs", () => {
-    const registry = createRuntimeRegistry({
-      modules: {
-        workflows: [
+describe("plan command routing", () => {
+  it("matches required positional and optional named arguments into task inputs", () => {
+    const plan = buildPiprPlan(
+      definePipr((pipr) => {
+        const task = pipr.task<{ finding: string; scope: "changed" | "full" }>("explain", () => {});
+        pipr.command(
+          "@pipr explain <finding> [--scope <scope>]",
           {
-            id: "pipr/explain",
-            description: "Explain finding",
-            source: "test",
-            events: [],
-            inputs: {
-              finding: { type: "string", required: true },
-              scope: { type: "string", default: "changed", enum: ["changed", "full"] },
+            permission: "read",
+            parse(arguments_) {
+              const scope = arguments_.scope ?? "changed";
+              if (scope !== "changed" && scope !== "full") {
+                throw new Error("scope must be changed or full");
+              }
+              const narrowedScope: "changed" | "full" = scope;
+              return { finding: arguments_.finding, scope: narrowedScope };
             },
-            commands: [
-              {
-                name: "explain",
-                pattern: "@pipr explain <finding> [--scope <scope>]",
-                requiredPermission: "read",
-              },
-            ],
-            steps: [{ id: "review", block: "core/run-agent" }],
           },
-        ],
-      },
-    });
+          task,
+        );
+      }),
+    );
 
-    expect(resolveWorkflowCommand(registry, "@pipr explain FND-123")).toMatchObject({
+    expect(resolvePlanCommand(plan, "@pipr explain FND-123")).toMatchObject({
       kind: "matched",
       invocation: {
-        workflowId: "pipr/explain",
+        taskName: "explain",
         commandName: "explain",
-        inputs: { finding: "FND-123", scope: "changed" },
+        arguments: { finding: "FND-123" },
       },
     });
-    expect(resolveWorkflowCommand(registry, "@pipr explain FND-123 --scope full")).toMatchObject({
+    const full = resolvePlanCommand(plan, "@pipr explain FND-123 --scope full");
+    expect(full).toMatchObject({
+      kind: "matched",
+      invocation: {
+        arguments: { finding: "FND-123", scope: "full" },
+      },
+    });
+    expect(
+      full.kind === "matched" ? parsePlanCommandInputs(plan, full.invocation) : full,
+    ).toMatchObject({
       kind: "matched",
       invocation: {
         inputs: { finding: "FND-123", scope: "full" },
       },
     });
-    expect(resolveWorkflowCommand(registry, "@pipr explain FND-123 --scope all")).toMatchObject({
+    const invalid = resolvePlanCommand(plan, "@pipr explain FND-123 --scope all");
+    expect(
+      invalid.kind === "matched" ? parsePlanCommandInputs(plan, invalid.invocation) : invalid,
+    ).toMatchObject({
       kind: "invalid",
-      reason: "Input 'scope' must be one of: changed, full",
+      reason: "scope must be changed or full",
     });
   });
 
-  it("exposes built-in help and workflow command entries", () => {
-    const registry = createRuntimeRegistry({
-      modules: {
-        workflows: [
-          {
-            id: "pipr/review",
-            description: "Review",
-            source: "test",
-            events: [],
-            commands: [{ name: "review", aliases: ["@pipr review"] }],
-            steps: [{ id: "review", block: "core/run-agent" }],
-          },
-        ],
-      },
-    });
+  it("ignores non-pipr comments and renders permission denial help", () => {
+    const plan = buildPiprPlan(
+      definePipr((pipr) => {
+        const task = pipr.task("review", () => {});
+        pipr.command("@pipr review", {}, task);
+      }),
+    );
 
-    expect(resolveWorkflowCommand(registry, "@pipr help")).toMatchObject({
-      kind: "help",
-      requiredPermission: "read",
-    });
-    expect(listWorkflowCommandEntries(registry).map((entry) => entry.id)).toEqual([
-      "@pipr help",
-      "@pipr review",
-    ]);
-    expect(resolveWorkflowCommand(registry, "@piprbot review")).toMatchObject({
+    expect(resolvePlanCommand(plan, "@piprbot review")).toMatchObject({
       kind: "ignored",
       reason: "comment did not target pipr",
+    });
+    expect(permissionDeniedHelp(plan, "write")).toContain("Permission denied");
+  });
+
+  it("matches a later longer command when an earlier prefix command rejects extra args", () => {
+    const plan = buildPiprPlan(
+      definePipr((pipr) => {
+        const review = pipr.task("review", () => {});
+        const explain = pipr.task("explain", () => {});
+        pipr.command("@pipr review", {}, review);
+        pipr.command("@pipr review <finding>", { permission: "read" }, explain);
+      }),
+    );
+
+    expect(resolvePlanCommand(plan, "@pipr review FND-123")).toMatchObject({
+      kind: "matched",
+      invocation: {
+        taskName: "explain",
+        arguments: { finding: "FND-123" },
+      },
     });
   });
 

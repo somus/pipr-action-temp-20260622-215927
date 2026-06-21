@@ -30,11 +30,11 @@ function assertMainComment(body) {
   assert(body.includes("Full fixture secondary section"), "secondary section missing");
   assert(
     body.includes(
-      "Selected workflows: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
+      "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
     ),
-    "unexpected selected workflows",
+    "unexpected selected tasks",
   );
-  assert(!body.includes("pipr/docs-only"), "path-missed workflow was selected");
+  assert(!body.includes("pipr/docs-only"), "path-missed task was selected");
   assert(
     countOccurrences(body, "Fixture inline finding") === 1,
     "duplicate findings were not deduped in main comment",
@@ -81,7 +81,7 @@ function assertParallelPiCalls(telemetryPath) {
     (event) => event.phase === "start" && event.promptKind === "full",
   );
   assert(fullStarts.length >= 3, `expected at least 3 full Pi calls, got ${fullStarts.length}`);
-  assert(maxActiveCalls(events) >= 2, "workflow Pi calls did not overlap");
+  assert(maxActiveCalls(events) >= 2, "task Pi calls did not overlap");
 }
 
 function maxActiveCalls(events) {

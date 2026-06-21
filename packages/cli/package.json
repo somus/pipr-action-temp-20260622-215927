@@ -7,9 +7,9 @@
     "pipr": "./src/main.ts"
   },
   "scripts": {
-    "build": "tsdown src/main.ts --dts --format esm --out-dir dist",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "build": "bun run --cwd ../runtime build && tsdown src/main.ts --dts --format esm --out-dir dist",
+    "typecheck": "bun run --cwd ../runtime build && tsc --noEmit",
+    "test": "bun run --cwd ../runtime build && vitest run",
     "lint": "biome check src",
     "format:check": "biome check src",
     "check": "bun run lint && bun run typecheck && bun run test && bun run build"

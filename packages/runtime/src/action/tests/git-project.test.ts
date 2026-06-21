@@ -2,28 +2,35 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { initOfficialMinimalProject } from "../../config/init.js";
 import { runGit } from "../../diff/git.js";
 import { loadRuntimeProjectFromGitCommit } from "../git-project.js";
 
 describe("loadRuntimeProjectFromGitCommit", () => {
-  it("loads config files whose git paths contain tabs", async () => {
+  it("loads trusted TypeScript config imports whose git paths contain tabs", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-git-project-"));
     await initGitRepo(rootDir);
-    await initOfficialMinimalProject({ rootDir });
+    await mkdir(path.join(rootDir, ".pipr", "prompts"), { recursive: true });
     await writeFile(
-      path.join(rootDir, ".pipr", "agents", "reviewer\tcopy.md"),
+      path.join(rootDir, ".pipr", "prompts", "reviewer\tcopy.ts"),
+      'export const reviewerInstructions = "Review copy."; \n',
+    );
+    await writeFile(
+      path.join(rootDir, ".pipr", "config.ts"),
       [
-        "---",
-        "apiVersion: pipr.dev/v1",
-        "kind: Agent",
-        "id: pipr/reviewer-copy",
-        "provider: deepseek",
-        "output:",
-        "  schema: core/pr-review",
-        "---",
+        'import { definePipr } from "@pipr/sdk";',
+        'import { reviewerInstructions } from "./prompts/reviewer\tcopy.ts";',
         "",
-        "Review copy.",
+        "export default definePipr((pipr) => {",
+        '  const deepseek = pipr.model("deepseek/deepseek-v4-pro", {',
+        '    name: "deepseek",',
+        '    apiKey: pipr.secret("DEEPSEEK_API_KEY"),',
+        '    options: { thinking: "high" },',
+        "  });",
+        "  pipr.review({",
+        "    model: deepseek,",
+        "    instructions: reviewerInstructions,",
+        "  });",
+        "});",
       ].join("\n"),
     );
     runGit(["add", "."], rootDir);
@@ -35,9 +42,7 @@ describe("loadRuntimeProjectFromGitCommit", () => {
       commitSha: baseSha,
     });
 
-    expect(runtime.project.componentFiles["pipr/reviewer-copy"]?.source).toContain(
-      "reviewer\tcopy.md",
-    );
+    expect(runtime.plan.agents[0]?.definition.instructions).toBe("Review copy.");
   });
 
   it("fails clearly when the base commit does not contain pipr config", async () => {
@@ -53,7 +58,7 @@ describe("loadRuntimeProjectFromGitCommit", () => {
         rootDir,
         commitSha: baseSha,
       }),
-    ).rejects.toThrow(".pipr/config.yaml is required at base commit");
+    ).rejects.toThrow(".pipr/config.ts is required at base commit");
   });
 });
 

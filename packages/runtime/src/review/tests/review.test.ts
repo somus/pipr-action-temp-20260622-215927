@@ -41,12 +41,10 @@ describe("validatePrReview", () => {
     expect(prReviewJsonSchema).toMatchObject({
       type: "object",
       properties: {
-        nonInlineFindings: {
-          type: "array",
-          prefixItems: [],
-        },
+        inlineFindings: { type: "array" },
       },
     });
+    expect(prReviewJsonSchema).not.toHaveProperty(["properties", "nonInlineFindings"]);
   });
 
   it("rejects reviewer output outside the published schema contract", () => {
@@ -70,20 +68,14 @@ describe("validatePrReview", () => {
     ).toThrow();
   });
 
-  it("reserves non-inline findings as empty-only", () => {
-    expect(
-      parsePrReview({
-        summary: { body: "Looks fine." },
-        inlineFindings: [],
-      }).nonInlineFindings,
-    ).toBeUndefined();
-    expect(
+  it("rejects non-inline findings in the MVP", () => {
+    expect(() =>
       parsePrReview({
         summary: { body: "Looks fine." },
         inlineFindings: [],
         nonInlineFindings: [],
-      }).nonInlineFindings,
-    ).toEqual([]);
+      }),
+    ).toThrow();
     expect(() =>
       parsePrReview({
         summary: { body: "Looks fine." },

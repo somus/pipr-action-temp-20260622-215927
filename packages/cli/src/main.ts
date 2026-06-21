@@ -2,17 +2,15 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { inspect, parseArgs } from "node:util";
 import * as core from "@actions/core";
-import type { GitHubPublicationClient, RegistryEntry } from "@pipr/runtime";
+import type { GitHubPublicationClient } from "@pipr/runtime";
 import {
   type ActionCommandResult,
   PublicationError,
   runActionCommand,
   runDryRunCommand,
-  runExplainConfigCommand,
-  runGraphCommand,
   runInitCommand,
-  runListCommand,
-  runListCommandsCommand,
+  runInspectCommand,
+  runLocalTaskCommand,
   runValidateCommand,
 } from "@pipr/runtime";
 
@@ -27,6 +25,9 @@ type CliOptions = {
     apiKeyEnv?: string;
   };
   requireEnv: boolean;
+  base?: string;
+  head?: string;
+  piExecutable?: string;
 };
 
 type CommandHandler = (options: CliOptions) => Promise<void> | void;
@@ -36,30 +37,27 @@ const help = `pipr
 
 Commands:
   init [--config-dir .pipr] [--force]
-                                   Create editable official minimal config
+                                   Create editable TypeScript config
   action [--config-dir .pipr] [--provider-id id] [--provider name] [--model model] [--api-key-env ENV]
                                    Run inside GitHub Docker Action
-  validate [--config-dir .pipr] [--require-env]
-                                   Validate resolved config
+  check [--config-dir .pipr] [--require-env]
+                                   Type-load config and validate the runtime plan
   dry-run --event event.json [--config-dir .pipr]
                                    Load config and event without publishing
-  graph [--config-dir .pipr]       Print resolved workflow graph
-  explain-config [--config-dir .pipr]
-                                   Print resolved config and source
-  list-blocks|list-tools|list-agents|list-commands [--config-dir .pipr]
+  inspect [--config-dir .pipr]     Print models, agents, tasks, commands, locals, and tools
+  review --base sha [--head sha] [--config-dir .pipr]
+                                   Run local review entrypoint without publishing
+  run name --base sha [--head sha] [--config-dir .pipr]
+                                   Run a named local entrypoint without publishing
 `;
 
 const commandHandlers: Record<string, CommandHandler> = {
   init: runInit,
   action: runAction,
-  validate: runValidate,
+  check: runCheck,
   "dry-run": runDryRun,
-  graph: printGraph,
-  "explain-config": runExplainConfig,
-  "list-blocks": listBlocks,
-  "list-tools": listTools,
-  "list-agents": listAgents,
-  "list-commands": listCommands,
+  inspect: runInspect,
+  review: runReview,
   help: printHelp,
   "--help": printHelp,
   "-h": printHelp,
@@ -67,6 +65,10 @@ const commandHandlers: Record<string, CommandHandler> = {
 
 async function main(): Promise<void> {
   const [command = "help", ...args] = process.argv.slice(2);
+  if (command === "run") {
+    await runLocal(args);
+    return;
+  }
   const handler = getCommandHandler(command);
   if (!handler) {
     throw new Error(`Unknown pipr command '${command}'`);
@@ -177,17 +179,59 @@ async function runInit(options: CliOptions): Promise<void> {
   );
 }
 
-async function runValidate(options: CliOptions): Promise<void> {
-  const resolved = await runValidateCommand({
+async function runCheck(options: CliOptions): Promise<void> {
+  const settings = await runValidateCommand({
     rootDir: process.cwd(),
     configDir: options.configDir,
     env: process.env,
     requireProviderEnv: options.requireEnv,
   });
-  console.log(`valid: ${resolved.source}`);
-  for (const warning of resolved.warnings) {
+  console.log(`valid: ${settings.source}`);
+  for (const warning of settings.warnings) {
     console.log(`warning: ${warning}`);
   }
+}
+
+async function runInspect(options: CliOptions): Promise<void> {
+  const result = await runInspectCommand({
+    rootDir: process.cwd(),
+    configDir: options.configDir,
+    env: process.env,
+  });
+  console.log(inspect(result, { depth: 8, colors: false }));
+}
+
+async function runReview(options: CliOptions): Promise<void> {
+  await runLocalEntrypoint("review", options);
+}
+
+async function runLocal(args: string[]): Promise<void> {
+  const [localName, ...options] = args;
+  if (!localName || isHelpOption(localName)) {
+    printHelp();
+    return;
+  }
+  await runLocalEntrypoint(localName, parseOptions(options));
+}
+
+async function runLocalEntrypoint(localName: string, options: CliOptions): Promise<void> {
+  if (!options.base) {
+    throw new Error(`pipr ${localName} requires --base <sha>`);
+  }
+  const result = await runLocalTaskCommand({
+    rootDir: process.cwd(),
+    configDir: options.configDir,
+    env: process.env,
+    localName,
+    baseSha: options.base,
+    headSha: options.head,
+    piExecutable: options.piExecutable,
+  });
+  if (result.kind === "skipped") {
+    console.log(`skipped: ${result.skipReason ?? "no task matched"}`);
+    return;
+  }
+  console.log(result.mainComment);
 }
 
 async function runDryRun(options: CliOptions): Promise<void> {
@@ -205,20 +249,10 @@ async function runDryRun(options: CliOptions): Promise<void> {
       {
         configSource: result.configSource,
         event: result.event,
-        registry: result.registry,
       },
       { depth: 6, colors: false },
     ),
   );
-}
-
-async function runExplainConfig(options: CliOptions): Promise<void> {
-  const resolved = await runExplainConfigCommand({
-    rootDir: process.cwd(),
-    configDir: options.configDir,
-    env: process.env,
-  });
-  console.log(inspect(resolved, { depth: 8, colors: false }));
 }
 
 function parseOptions(args: string[]): CliOptions {
@@ -229,6 +263,9 @@ function parseOptions(args: string[]): CliOptions {
     force: values.force === true,
     trustedProvider: readTrustedProviderOptions(values),
     requireEnv: values["require-env"] === true,
+    base: stringOption(values.base),
+    head: stringOption(values.head),
+    piExecutable: stringOption(values["pi-executable"]),
   };
 }
 
@@ -246,6 +283,9 @@ function parseCliArgs(args: string[]) {
       model: { type: "string" },
       "api-key-env": { type: "string" },
       "require-env": { type: "boolean" },
+      base: { type: "string" },
+      head: { type: "string" },
+      "pi-executable": { type: "string" },
     },
   }).values;
 }
@@ -380,60 +420,8 @@ async function writeFixture(fixturePath: string, fixture: GitHubPublicationFixtu
   await writeFile(fixturePath, JSON.stringify(fixture));
 }
 
-async function printGraph(options: CliOptions): Promise<void> {
-  console.log(
-    await runGraphCommand({
-      rootDir: process.cwd(),
-      configDir: options.configDir,
-      env: process.env,
-    }),
-  );
-}
-
 function printHelp(): void {
   console.log(help);
-}
-
-async function listBlocks(options: CliOptions): Promise<void> {
-  listEntries(await loadEntries(options, "blocks"));
-}
-
-async function listTools(options: CliOptions): Promise<void> {
-  listEntries(await loadEntries(options, "tools"));
-}
-
-async function listAgents(options: CliOptions): Promise<void> {
-  listEntries(await loadEntries(options, "agents"));
-}
-
-async function listCommands(options: CliOptions): Promise<void> {
-  listEntries(
-    await runListCommandsCommand({
-      rootDir: process.cwd(),
-      configDir: options.configDir,
-      env: process.env,
-    }),
-  );
-}
-
-function loadEntries(
-  options: CliOptions,
-  collection: "blocks" | "tools" | "agents",
-): Promise<RegistryEntry[]> {
-  return runListCommand(
-    {
-      rootDir: process.cwd(),
-      configDir: options.configDir,
-      env: process.env,
-    },
-    collection,
-  );
-}
-
-function listEntries(entries: RegistryEntry[]): void {
-  for (const entry of entries) {
-    console.log(`${entry.id}\t${entry.description}`);
-  }
 }
 
 main().catch((error: unknown) => {

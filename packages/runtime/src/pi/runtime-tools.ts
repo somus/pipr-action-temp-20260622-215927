@@ -57,13 +57,13 @@ export async function preparePiRuntimeReadTools(options: {
   const dataPath = path.join(toolRoot, "data.json");
   await writeFile(dataPath, JSON.stringify(data), "utf8");
   return {
-    extensionPath: await runtimeToolsExtensionPath(),
+    extensionPath: await piRuntimeToolsExtensionPath(),
     dataPath,
     toolNames: piRuntimeReadToolNames,
   };
 }
 
-async function runtimeToolsExtensionPath(): Promise<string> {
+export async function piRuntimeToolsExtensionPath(): Promise<string> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.join(moduleDir, "pi", "runtime-tools-extension.mjs"),

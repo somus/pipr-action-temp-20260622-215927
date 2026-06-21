@@ -1,0 +1,20 @@
+import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
+
+  pipr.review({
+    model,
+    instructions: `
+      Review the pull request diff for correctness, security,
+      maintainability, and test risk.
+      Return only high-confidence findings that target valid diff ranges.
+    `,
+    inlineComments: { max: 5 },
+    timeout: "5m",
+  });
+});

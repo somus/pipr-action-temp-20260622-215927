@@ -1,6 +1,6 @@
 # pipr
 
-pipr is a Pi-powered GitHub PR automation runtime. The current runtime validates `.pipr/` configuration, loads GitHub pull request events, builds a local Diff Manifest, runs Pi for schema-first review JSON, validates findings against commentable ranges, reduces workflow contributions into one publication plan, then upserts the Main Review Comment and publishes Inline Review Comments.
+pipr is a Pi-powered GitHub PR automation runtime. The current runtime validates `.pipr/config.ts`, loads GitHub pull request events, builds a local Diff Manifest, runs Pi for schema-first review JSON, validates findings against commentable ranges, reduces task contributions into one publication plan, then upserts the Main Review Comment and publishes Inline Review Comments.
 
 ## Development
 
@@ -30,14 +30,14 @@ The GHCR image workflow is manual and does not publish by default. Until `ghcr.i
 
 ## Repository setup
 
-Start a repository by materializing the official minimal pipr distribution:
+Start a repository with the TypeScript config:
 
 ```bash
 pipr init
-pipr validate
+pipr check
 ```
 
-`pipr init` creates editable files under `.pipr/` for config, workflows, the reviewer agent, and comment templates. Workflow-owned command triggers live under `Workflow.on.commands`. The PR review schema is runtime-owned as `core/pr-review`. The minimal distribution does not create custom blocks; the default review flow calls `core/run-agent` directly. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
+`pipr init` creates `.pipr/config.ts`, `.pipr/tsconfig.json`, and `.pipr/types/pipr-sdk.d.ts`. Existing pipr files are not replaced unless `pipr init --force` is used. `config-dir` must resolve inside the repository root.
 
 ## GitHub Action shape
 
@@ -77,15 +77,7 @@ jobs:
 
 The source Action metadata still uses `runs.image: Dockerfile`. The prebuilt GHCR image path is prepared for later publishing, but root `action.yml` will stay source-compatible until the project is available on GitHub.
 
-The Docker Action pins provider execution from trusted Action inputs, not from PR-authored
-`.pipr/config.yaml`. This keeps a pull request from redirecting the provider backend, model,
-or API-key environment variable.
-
-The provider profile's `thinking` value stays in `.pipr/config.yaml`. Non-dry Action runs read it
-from the pull request base commit, then map it to Pi's `--thinking` flag.
-Provider secrets stay env-only through `apiKeyEnv`; pipr does not pass raw keys with
-`--api-key`. Pi runs with `--tools read,grep,find,ls`, so the reviewer can inspect the
-read-only workspace without `bash`, `write`, or `edit`.
+The Docker Action pins provider execution from trusted Action inputs, not from PR-authored `.pipr/config.ts`. This keeps a pull request from redirecting the provider backend, model, or API-key environment variable. The provider profile's `thinking` value stays in the base-commit TypeScript config and maps to Pi's `--thinking` flag. Provider secrets stay env-only through `pipr.secret("ENV_NAME")`; pipr does not pass raw keys with `--api-key`. Pi runs with `--tools read,grep,find,ls`, so the reviewer can inspect the read-only workspace without `bash`, `write`, or `edit`.
 
 For small pull requests, pipr sends the full Diff Manifest in the reviewer prompt. If the
 serialized manifest exceeds configured byte or estimated-token limits, pipr sends a condensed
@@ -94,139 +86,102 @@ manifest that preserves deterministic mapping fields and attaches runtime-owned 
 `.pipr/` plugin tools and never expose GitHub APIs, shell access, writes, comment publishing, or
 path-only base file reads.
 
-The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load the
-materialized workflow, agent, comment-template, optional custom schema, and optional block registry from
-the pull request base commit. That base-commit `.pipr/` tree is trusted review authority, while
-runtime-owned `core/run-agent` owns deterministic diff creation, Pi execution, and review
-validation. Runtime-owned publication code owns comment reduction, stale-head checks, main-comment
-upsert, inline marker dedupe, and GitHub comment writes. Invalid or deleted PR-head
-`.pipr/` files cannot block the trusted review run. The base commit must contain the materialized
-`.pipr/` tree.
+The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load `.pipr/config.ts` and local imports from the pull request base commit. Pi still reviews the PR head. Runtime-owned code owns deterministic diff creation, Pi execution, review validation, publication reduction, stale-head checks, main-comment upsert, inline marker dedupe, and GitHub comment writes. Invalid or deleted PR-head `.pipr/` files cannot block the trusted review run. The base commit must contain `.pipr/config.ts`.
 
-## Minimal config
+## Minimal Config
 
-Normal setup uses `pipr init`, which writes `.pipr/config.yaml` in the materialized `pipr.dev/v1` format:
+Normal setup uses `pipr init`, which writes `.pipr/config.ts`:
 
-```yaml
-apiVersion: pipr.dev/v1
-kind: Config
+```ts
+import { definePipr } from "@pipr/sdk";
 
-providers:
-  - id: deepseek
-    provider: deepseek
-    model: deepseek-v4-pro
-    apiKeyEnv: DEEPSEEK_API_KEY
-    thinking: high
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
 
-workflows:
-  - pipr/review
-
-limits:
-  timeoutSeconds: 300
+  pipr.review({
+    model,
+    instructions: `
+      Review the pull request diff for correctness, security,
+      maintainability, and test risk.
+      Return only high-confidence findings that target valid diff ranges.
+    `,
+    inlineComments: { max: 5 },
+    timeout: "5m",
+  });
+});
 ```
 
 Diff Manifest prompt limits are optional. Defaults are `128 KiB` or `32k` estimated tokens for
 the full manifest, then `256 KiB` or `64k` estimated tokens for the condensed manifest:
 
-```yaml
-limits:
-  timeoutSeconds: 300
-  diffManifest:
-    fullMaxBytes: 131072
-    fullMaxEstimatedTokens: 32000
-    condensedMaxBytes: 262144
-    condensedMaxEstimatedTokens: 64000
-    toolResponseMaxBytes: 65536
+```ts
+pipr.limits({
+  timeoutSeconds: 300,
+  diffManifest: {
+    fullMaxBytes: 131072,
+    fullMaxEstimatedTokens: 32000,
+    condensedMaxBytes: 262144,
+    condensedMaxEstimatedTokens: 64000,
+    toolResponseMaxBytes: 65536,
+  },
+});
 ```
 
-The bundled workflow calls the safe review primitive directly, then renders comments:
+## Power User Config
 
-```yaml
-paths:
-  include: ["src/**", "packages/**"]
-  exclude: ["**/*.md"]
+The public authoring surface is the `@pipr/sdk` builder. Use `pipr.model`, `pipr.agent`, `pipr.task`, `pipr.command`, `pipr.local`, and `pipr.on.changeRequest` for custom review flows. A task receives a context with `ctx.change.diffManifest()`, `ctx.pi.run(agent, input)`, and `ctx.output.summary/findings/section/metadata`.
 
-on:
-  events:
-    - pull_request.opened
-    - pull_request.synchronize
-    - pull_request.reopened
-  commands:
-    - name: review
-      aliases: ["@pipr review"]
-      requiredPermission: write
+```ts
+const security = pipr.agent({
+  name: "security-reviewer",
+  model,
+  instructions: "Review only security risk.",
+  output: pipr.schemas.review,
+  prompt: (input) => pipr.prompt`
+    Review this pull request for security issues.
+    ${pipr.compactManifest(input.manifest)}
+  `,
+});
 
-steps:
-  - id: review
-    uses: core/run-agent
-    with:
-      agent: pipr/reviewer
-  - id: main-comment
-    uses: core/main-comment
-    with:
-      review: ${{ steps.review.outputs.result }}
-      template: pipr/main
-  - id: inline-comments
-    uses: core/inline-comments
-    with:
-      review: ${{ steps.review.outputs.result }}
+const task = pipr.task("security-review", async (ctx) => {
+  const manifest = await ctx.change.diffManifest({ compressed: true });
+  const result = await ctx.pi.run(security, { manifest });
+  ctx.output.summary(result.summary, { key: "security", merge: "append" });
+  ctx.output.findings(result.inlineFindings);
+});
+
+pipr.on.changeRequest(["opened", "updated"], task);
+pipr.command("@pipr security", { permission: "write" }, task);
+pipr.local("security", task);
 ```
 
-Review workflows must expose the reserved runtime step ids `review`, `main-comment`, and `inline-comments`.
-Workflow and Agent `paths` use repo-relative glob patterns. `include` defaults to all files, `exclude` wins, dotfiles are matched, patterns without `/` match basenames at any depth, and renamed files match both `path` and `previousPath`. Pull request events run every enabled workflow whose event and paths match in parallel; command comments run only the matched workflow and still respect paths.
+Model fallback and retry are part of the MVP API. `ctx.pi.run(agent, input, { model, fallbacks })`
+overrides the agent's primary model and fallback list. Otherwise pipr uses `agent.model`, then
+`agent.fallbacks`, then the config default model. Invalid structured output gets one repair attempt
+by default; transient Pi execution retries default to zero. Set `agent.retry.invalidOutput` and
+`agent.retry.transientFailure` to override those counts per agent. GitHub Action provider inputs are
+an explicit trust-boundary override: when they are present, pipr uses only that trusted provider and
+does not run agent or task fallbacks.
 
-`core/main-comment` emits named Main Review Comment section contributions. Passing `review` emits the default `summary` and `findings` sections. Passing `sectionId` and `value` emits one explicit section. `merge` defaults to `exclusive`, so multiple workflows writing the same section fail unless they explicitly choose `append`, `replace`, or `list`. `list` can dedupe structured items with `itemKey`.
+`definePlugin`, `pipr.use`, and `pipr.tool` support explicit TypeScript plugin registration.
+Plugin tools are typed and visible in the runtime plan, but attaching custom plugin tools to Pi
+agents fails closed in the MVP. Pi only receives pipr's built-in read-only tools plus runtime-owned
+Diff Manifest helper tools for condensed runs. Review output for inline publication must use
+`pipr.schemas.review`; non-inline findings are not part of the MVP Review Result.
 
-```yaml
-steps:
-  - id: summary
-    uses: core/main-comment
-    with:
-      sectionId: summary
-      value: ${{ steps.review.outputs.result.review.summary.body }}
-      merge: exclusive
-      priority: 100
+Command triggers run only for `issue_comment` events that target pull requests. pipr checks `github.event.issue.pull_request`, fetches PR metadata, checks the commenter with GitHub's collaborator permission API, parses command arguments, and only then starts the task. Permissions are ordered `read < triage < write < maintain < admin`; command permission defaults to `write`.
+
+The runtime computes the Diff Manifest once per review run and shares it with all matching tasks. Pull request tasks run concurrently and publish one combined publication plan. Main Review Comment section writes default to `exclusive`; use `append`, `replace`, or `list` when multiple tasks intentionally share a section.
+
+Use `pipr inspect` to see registered models, agents, tasks, events, commands, locals, and tools from the TypeScript runtime plan.
+
+Local entrypoints run the same task logic without GitHub publication. They require an explicit base commit:
+
+```bash
+pipr review --base origin/main
+pipr run security --base origin/main --head HEAD
 ```
-
-Command triggers run only for `issue_comment` events that target pull requests. pipr checks `github.event.issue.pull_request`, fetches PR metadata, checks the commenter with GitHub's collaborator permission API, parses command arguments, and only then starts the workflow. Permissions are ordered `read < triage < write < maintain < admin`; `requiredPermission` defaults to `write`.
-
-Agents may declare `string` or `json` inputs. `core/run-agent` validates those inputs before Pi runs, and Agent markdown can embed them with `${{ inputs.name }}`. Objects and arrays render as stable pretty JSON. Agent `provider` may also be `${{ inputs.provider }}` or an inline provider object without an `id`; string providers must resolve to a configured provider id. Independent `core/run-agent` steps are scheduled from workflow `steps.*` dependencies, so specialist reviewers can run before a final reserved `review` orchestrator step.
-
-Agents may also declare `paths`. Agent paths narrow the workflow-scoped Diff Manifest before Pi runs. If no files remain, pipr returns an empty validated review for that Agent without calling Pi.
-
-```yaml
-steps:
-  - id: correctness
-    uses: core/run-agent
-    with:
-      agent: pipr/specialist-reviewer
-      inputs:
-        focus: correctness
-  - id: security
-    uses: core/run-agent
-    with:
-      agent: pipr/specialist-reviewer
-      inputs:
-        focus: security
-  - id: review
-    uses: core/run-agent
-    with:
-      agent: pipr/review-orchestrator
-      inputs:
-        reviews:
-          correctness: ${{ steps.correctness.outputs.result }}
-          security: ${{ steps.security.outputs.result }}
-```
-
-## Registry modules
-
-The materialized `.pipr/` tree contains conventional component files:
-
-- `.pipr/workflows/*.yaml`
-- `.pipr/agents/*.md`
-- `.pipr/comments/*.yaml`
-- `.pipr/schemas/*.json` for optional user schemas
-
-Custom `.pipr/blocks/*.yaml` files are supported for explicit user extensions, but the minimal distribution does not include one. Bundled product components use the `pipr/*` namespace. Runtime internals use the reserved `core/*` namespace, including the canonical `core/pr-review` schema.
-
-`pipr validate` checks the generated tree and reports source-file errors before model or GitHub publishing work starts. If `publication.maxInlineComments` is omitted, inline publication is uncapped for the current validated finding set.

@@ -281,7 +281,7 @@ function plan(options: { maxInlineComments?: number } = {}) {
   return buildPublicationPlan({
     event,
     mainContributions: reviewToMainSectionContributions({
-      workflowId: "pipr/review",
+      sourceId: "pipr/review",
       validated,
     }),
     inlineItems: prepareInlinePublicationItems({
@@ -295,8 +295,8 @@ function plan(options: { maxInlineComments?: number } = {}) {
       trustedConfigSha: "base",
       trustedConfigHash: "hash",
       reviewedHeadSha: "head",
-      selectedWorkflows: ["pipr/review"],
-      failedWorkflows: [],
+      selectedTasks: ["review"],
+      failedTasks: [],
       validFindings: 2,
       droppedFindings: 0,
     },

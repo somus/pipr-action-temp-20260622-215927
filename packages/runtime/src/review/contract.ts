@@ -34,7 +34,6 @@ export const prReviewSchema = z.strictObject({
     body: z.string().min(1),
   }),
   inlineFindings: z.array(reviewFindingSchema),
-  nonInlineFindings: z.tuple([]).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -73,7 +72,6 @@ export function reviewSchemaExample(): PrReview {
         fingerprintHint: "Optional stable dedupe hint.",
       },
     ],
-    nonInlineFindings: [],
     metadata: {},
   };
 }

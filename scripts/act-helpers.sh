@@ -30,10 +30,12 @@ pipr_ensure_act_runner_image() {
 pipr_clone_fixture_worktree() {
   local source_root="$1"
   local worktree="$2"
-  git clone --quiet "$source_root" "$worktree"
+  git clone --no-hardlinks --quiet "$source_root" "$worktree"
   git -C "$worktree" config user.email "pipr-act@example.invalid"
   git -C "$worktree" config user.name "pipr act fixture"
   git -C "$worktree" config commit.gpgsign false
+  git -C "$worktree" config gc.auto 0
+  git -C "$worktree" config maintenance.auto false
 }
 
 pipr_copy_source_file() {

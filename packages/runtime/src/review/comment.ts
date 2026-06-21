@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { CommentTemplateComponent } from "../config/schema.js";
 import type {
   DiffManifest,
   PrReview,
@@ -25,7 +24,7 @@ const mainSectionValueSchema = z.union([
 ]);
 
 export const mainSectionContributionSchema = z.strictObject({
-  workflowId: z.string().min(1),
+  sourceId: z.string().min(1),
   sectionId: z.string().min(1),
   policy: mainSectionMergePolicySchema,
   priority: z.number().int(),
@@ -93,12 +92,14 @@ export const publicationMetadataSchema = z.strictObject({
   trustedConfigHash: z.string().min(1).optional(),
   reviewedHeadSha: z.string().min(1),
   providerModels: z.array(z.string().min(1)).optional(),
-  selectedWorkflows: z.array(z.string().min(1)),
-  failedWorkflows: z.array(z.string().min(1)),
+  taskMetadata: z.record(z.string(), z.json()).optional(),
+  selectedTasks: z.array(z.string().min(1)),
+  failedTasks: z.array(z.string().min(1)),
   validFindings: z.number().int().min(0),
   droppedFindings: z.number().int().min(0),
   cappedInlineFindings: z.number().int().min(0),
 });
+export const publicationTaskMetadataSchema = z.record(z.string(), z.json());
 
 export type PublicationMetadata = z.infer<typeof publicationMetadataSchema>;
 
@@ -112,9 +113,21 @@ export const publicationPlanSchema = z.strictObject({
 
 export type PublicationPlan = z.infer<typeof publicationPlanSchema>;
 
+export type MainCommentLayout = {
+  marker: string;
+  heading: string;
+  sections: Array<{
+    id: string;
+    title: string;
+    order: number;
+    empty?: string;
+    collapsed?: boolean;
+  }>;
+};
+
 export type BuildPublicationPlanOptions = {
   event: Pick<PullRequestEventContext, "pullRequestNumber" | "headSha">;
-  template?: CommentTemplateComponent;
+  layout?: MainCommentLayout;
   mainContributions: MainSectionContribution[];
   inlineItems: InlinePublicationItem[];
   metadata: Omit<PublicationMetadata, "cappedInlineFindings">;
@@ -127,7 +140,7 @@ export type RenderMainCommentOptions = {
   validFindings: ReviewFinding[];
   droppedCount: number;
   providerModel: string;
-  template?: CommentTemplateComponent;
+  layout?: MainCommentLayout;
 };
 
 export function parseMainSectionContributions(value: unknown): MainSectionContribution[] {
@@ -143,7 +156,7 @@ export function parseInlineCommentDrafts(value: unknown): InlineCommentDraft[] {
 }
 
 export function buildPublicationPlan(options: BuildPublicationPlanOptions): PublicationPlan {
-  const template = options.template ?? defaultMainCommentTemplate();
+  const layout = options.layout ?? defaultMainCommentLayout();
   const cappedInlineItems =
     options.maxInlineComments === undefined
       ? options.inlineItems
@@ -159,10 +172,10 @@ export function buildPublicationPlan(options: BuildPublicationPlanOptions): Publ
   return publicationPlanSchema.parse({
     mainComment: renderMainCommentFromSections({
       event: options.event,
-      template,
+      layout,
       reducedSections,
     }),
-    mainMarker: template.marker,
+    mainMarker: layout.marker,
     pullRequestNumber: options.event.pullRequestNumber,
     inlineItems: cappedInlineItems,
     metadata,
@@ -188,7 +201,7 @@ export function reduceMainSectionContributions(
 }
 
 export function reviewToMainSectionContributions(options: {
-  workflowId: string;
+  sourceId: string;
   validated: ValidatedReview;
   summaryPolicy?: MainSectionMergePolicy;
   summaryPriority?: number;
@@ -196,7 +209,7 @@ export function reviewToMainSectionContributions(options: {
   const summary = options.validated.review.summary;
   const contributions: MainSectionContribution[] = [
     {
-      workflowId: options.workflowId,
+      sourceId: options.sourceId,
       sectionId: "summary",
       policy: options.summaryPolicy ?? "exclusive",
       priority: options.summaryPriority ?? 100,
@@ -210,7 +223,7 @@ export function reviewToMainSectionContributions(options: {
   }));
   if (findingItems.length > 0) {
     contributions.push({
-      workflowId: options.workflowId,
+      sourceId: options.sourceId,
       sectionId: "findings",
       policy: "list",
       priority: 0,
@@ -295,16 +308,16 @@ export function renderMainComment(options: RenderMainCommentOptions): string {
     runtimeVersion,
     reviewedHeadSha: options.event.headSha,
     providerModels: [options.providerModel],
-    selectedWorkflows: ["pipr/review"],
-    failedWorkflows: [],
+    selectedTasks: ["review"],
+    failedTasks: [],
     validFindings: options.validFindings.length,
     droppedFindings: options.droppedCount,
   };
   return buildPublicationPlan({
     event: options.event,
-    template: options.template,
+    layout: options.layout,
     mainContributions: reviewToMainSectionContributions({
-      workflowId: "pipr/review",
+      sourceId: "pipr/review",
       validated: {
         review: options.review,
         validFindings: options.validFindings,
@@ -316,11 +329,8 @@ export function renderMainComment(options: RenderMainCommentOptions): string {
   }).mainComment;
 }
 
-function defaultMainCommentTemplate(): CommentTemplateComponent {
+function defaultMainCommentLayout(): MainCommentLayout {
   return {
-    apiVersion: "pipr.dev/v1",
-    kind: "CommentTemplate",
-    id: "pipr/main",
     marker: mainCommentMarker,
     heading: "pipr Review",
     sections: [
@@ -333,15 +343,15 @@ function defaultMainCommentTemplate(): CommentTemplateComponent {
 
 function renderMainCommentFromSections(options: {
   event: Pick<PullRequestEventContext, "pullRequestNumber">;
-  template: CommentTemplateComponent;
+  layout: MainCommentLayout;
   reducedSections: Map<string, string>;
 }): string {
   return [
-    `<!-- ${options.template.marker} pr=${options.event.pullRequestNumber} -->`,
+    `<!-- ${options.layout.marker} pr=${options.event.pullRequestNumber} -->`,
     "",
-    `# ${options.template.heading}`,
+    `# ${options.layout.heading}`,
     "",
-    ...options.template.sections
+    ...options.layout.sections
       .toSorted((left, right) => left.order - right.order)
       .flatMap((section) => {
         const body = options.reducedSections.get(section.id) ?? section.empty ?? "";
@@ -422,8 +432,7 @@ function reduceListSection(_sectionId: string, contributions: MainSectionContrib
 
 function toPriorityOrder(contributions: MainSectionContribution[]): MainSectionContribution[] {
   return contributions.toSorted(
-    (left, right) =>
-      right.priority - left.priority || left.workflowId.localeCompare(right.workflowId),
+    (left, right) => right.priority - left.priority || left.sourceId.localeCompare(right.sourceId),
   );
 }
 
@@ -476,14 +485,17 @@ function metadataContribution(metadata: PublicationMetadata): MainSectionContrib
     metadata.providerModels?.length
       ? `Models: \`${metadata.providerModels.join(", ")}\`  `
       : undefined,
-    `Selected workflows: \`${metadata.selectedWorkflows.join(", ") || "none"}\`  `,
-    `Failed workflows: \`${metadata.failedWorkflows.join(", ") || "none"}\`  `,
+    metadata.taskMetadata
+      ? `Task metadata: \`${JSON.stringify(metadata.taskMetadata)}\`  `
+      : undefined,
+    `Selected tasks: \`${metadata.selectedTasks.join(", ") || "none"}\`  `,
+    `Failed tasks: \`${metadata.failedTasks.join(", ") || "none"}\`  `,
     `Valid inline findings: \`${metadata.validFindings}\`  `,
     `Dropped findings: \`${metadata.droppedFindings}\`  `,
     `Capped inline findings: \`${metadata.cappedInlineFindings}\``,
   ].filter((line): line is string => line !== undefined);
   return {
-    workflowId: "core/publication",
+    sourceId: "core/publication",
     sectionId: "metadata",
     policy: "append",
     priority: 0,

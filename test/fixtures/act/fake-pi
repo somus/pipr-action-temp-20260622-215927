@@ -39,9 +39,9 @@ if (prompt.includes('"mode": "condensed"')) {
   writeReview("Condensed fixture review", "Condensed act fixture reached Pi after runtime tools passed.");
 }
 
-writeFullFixtureReview();
+await writeFullFixtureReview();
 
-function writeFullFixtureReview() {
+async function writeFullFixtureReview() {
   const manifest = parsePromptJson("Diff Manifest:");
   const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
   const range =
@@ -89,7 +89,6 @@ function writeFullFixtureReview() {
           evidenceSnippet,
         },
       ],
-      nonInlineFindings: [],
     }),
   );
 }
@@ -225,7 +224,6 @@ function writeReview(title, body) {
     JSON.stringify({
       summary: { title, body },
       inlineFindings: [],
-      nonInlineFindings: [],
     }),
   );
   process.exit(0);
@@ -241,9 +239,19 @@ function parsePromptJson(startLabel, endLabel) {
   const start = prompt.indexOf(startLabel);
   assert(start !== -1, `prompt missing ${startLabel}`);
   const contentStart = start + startLabel.length;
-  const end = endLabel === undefined ? prompt.length : prompt.indexOf(endLabel, contentStart);
+  const end =
+    endLabel === undefined
+      ? readNextPromptSectionIndex(contentStart)
+      : prompt.indexOf(endLabel, contentStart);
   assert(end !== -1, `prompt missing ${endLabel}`);
   return JSON.parse(prompt.slice(contentStart, end).trim());
+}
+
+function readNextPromptSectionIndex(contentStart) {
+  const markers = ["\n\nDiff Manifest Runtime Context:", "\n\nCondensed manifest helper tools:"]
+    .map((marker) => prompt.indexOf(marker, contentStart))
+    .filter((index) => index !== -1);
+  return markers.length > 0 ? Math.min(...markers) : prompt.length;
 }
 
 async function loadRuntimeTools(extensionPath) {
