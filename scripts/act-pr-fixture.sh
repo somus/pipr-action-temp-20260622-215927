@@ -10,7 +10,7 @@ tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/pipr-act-dry-run.XXXXXX")"
 worktree="$tmp_root/worktree"
 
 cleanup() {
-  rm -rf "$tmp_root"
+  pipr_remove_act_tmp_root "$tmp_root"
 }
 trap cleanup EXIT
 

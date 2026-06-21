@@ -1,16 +1,28 @@
-export * from "./action/commands.js";
-export * from "./action/event.js";
-export * from "./config/init.js";
-export * from "./config/project.js";
-export * from "./config/ts-loader.js";
-export * from "./diff/diff.js";
-export * from "./pi/contract.js";
-export * from "./pi/provider.js";
-export * from "./pi/runner.js";
-export * from "./review/comment.js";
-export * from "./review/contract.js";
-export * from "./review/github.js";
-export * from "./review/publish.js";
-export * from "./review/review.js";
-export * from "./review/task-runtime.js";
-export * from "./types.js";
+export type {
+  ActionCommandOptions,
+  ActionCommandResult,
+  DryRunCommandOptions,
+  DryRunCommandResult,
+  InitCommandOptions,
+  InspectCommandResult,
+  LocalTaskCommandOptions,
+  LocalTaskCommandResult,
+  RuntimeCommandOptions,
+} from "./action/commands.js";
+export {
+  runActionCommand,
+  runDryRunCommand,
+  runInitCommand,
+  runInspectCommand,
+  runLocalTaskCommand,
+  runValidateCommand,
+} from "./action/commands.js";
+export type { PublicationResult } from "./review/publish.js";
+export { PublicationError } from "./review/publish.js";
+export type {
+  DiffManifest,
+  PiprConfig,
+  ProviderConfig,
+  PullRequestEventContext,
+  RuntimeSettings,
+} from "./types.js";

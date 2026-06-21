@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "build": "bun run --cwd ../sdk build && tsdown src/index.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
+    "build": "bun run --cwd ../sdk build && tsdown src/index.ts src/action/fixture-dependencies.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
     "typecheck": "bun run --cwd ../sdk build && tsc --noEmit",
     "test": "bun run --cwd ../sdk build && vitest run",
     "lint": "biome check src",

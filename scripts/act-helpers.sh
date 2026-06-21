@@ -38,6 +38,18 @@ pipr_clone_fixture_worktree() {
   git -C "$worktree" config maintenance.auto false
 }
 
+pipr_remove_act_tmp_root() {
+  local tmp_root="$1"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if rm -rf "$tmp_root" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  printf "warning: could not remove act fixture temp root: %s\n" "$tmp_root" >&2
+}
+
 pipr_copy_source_file() {
   local source_root="$1"
   local worktree="$2"
@@ -76,21 +88,38 @@ pipr_overlay_current_worktree() {
 
 pipr_write_act_action_metadata() {
   local root="$1"
+  local fixture_entrypoint="${2:-}"
   local image
   image="$(pipr_action_image)"
   (
     cd "$root"
-    bun "$pipr_act_helper_root/scripts/write-act-action-metadata.ts" action.yml .github/act/action.yml "$image"
+    if [[ -n "$fixture_entrypoint" ]]; then
+      bun "$pipr_act_helper_root/scripts/write-act-action-metadata.ts" \
+        action.yml \
+        .github/act/action.yml \
+        "$image" \
+        "$fixture_entrypoint"
+    else
+      bun "$pipr_act_helper_root/scripts/write-act-action-metadata.ts" \
+        action.yml \
+        .github/act/action.yml \
+        "$image"
+    fi
   )
 }
 
 pipr_prepare_act_workflow() {
   local root="$1"
   local workflow="$2"
+  local mode="${3:-}"
   local tmp
   tmp="$(mktemp "${TMPDIR:-/tmp}/pipr-act-workflow.XXXXXX")"
 
-  pipr_write_act_action_metadata "$root"
+  if [[ "$mode" == "fixture" ]]; then
+    pipr_write_act_action_metadata "$root" "/opt/pipr/scripts/act-action-fixture.ts"
+  else
+    pipr_write_act_action_metadata "$root"
+  fi
   awk '
     /^[[:space:]]*- uses: \.\/[[:space:]]*$/ {
       sub(/\.\/[[:space:]]*$/, "./.github/act")

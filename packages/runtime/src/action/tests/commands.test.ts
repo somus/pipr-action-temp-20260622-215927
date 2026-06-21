@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import type { GitHubPublicationClient } from "../../review/publish.js";
 import type { GitHubCommandClient } from "../command-router.js";
-import { runActionCommand } from "../commands.js";
+import { runActionCommandWithDependencies } from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {
   it("ignores issue comments that are not pull request comments", async () => {
@@ -24,7 +24,7 @@ describe("runActionCommand issue_comment dispatch", () => {
       );
 
       await expect(
-        runActionCommand({
+        runActionCommandWithDependencies({
           rootDir,
           configDir: ".pipr",
           eventPath,
@@ -67,7 +67,7 @@ describe("runActionCommand issue_comment dispatch", () => {
       await writeIssueCommentEvent(eventPath, "@pipr review");
 
       await expect(
-        runActionCommand({
+        runActionCommandWithDependencies({
           rootDir: workspace.rootDir,
           configDir: ".pipr",
           eventPath,
@@ -93,7 +93,7 @@ describe("runActionCommand issue_comment dispatch", () => {
       await writeIssueCommentEvent(eventPath, "@pipr review", "edited");
 
       await expect(
-        runActionCommand({
+        runActionCommandWithDependencies({
           rootDir: workspace.rootDir,
           configDir: ".pipr",
           eventPath,
@@ -199,7 +199,7 @@ describe("runActionCommand pull_request dispatch", () => {
       const eventPath = path.join(workspace.rootDir, "event.json");
       await writePullRequestEvent(eventPath, workspace);
 
-      const result = await runActionCommand({
+      const result = await runActionCommandWithDependencies({
         rootDir: workspace.rootDir,
         configDir: ".pipr",
         eventPath,
@@ -235,7 +235,7 @@ describe("runActionCommand pull_request dispatch", () => {
       const eventPath = path.join(workspace.rootDir, "event.json");
       await writePullRequestEvent(eventPath, workspace);
 
-      const result = await runActionCommand({
+      const result = await runActionCommandWithDependencies({
         rootDir: workspace.rootDir,
         configDir: ".pipr",
         eventPath,
@@ -265,7 +265,7 @@ describe("runActionCommand pull_request dispatch", () => {
       await writePullRequestEvent(eventPath, workspace);
 
       expect(currentGitHead(workspace.rootDir)).toBe(workspace.baseSha);
-      const result = await runActionCommand({
+      const result = await runActionCommandWithDependencies({
         rootDir: workspace.rootDir,
         configDir: ".pipr",
         eventPath,
@@ -291,7 +291,7 @@ describe("runActionCommand pull_request dispatch", () => {
       const eventPath = path.join(workspace.rootDir, "event.json");
       await writePullRequestEvent(eventPath, workspace);
 
-      const result = await runActionCommand({
+      const result = await runActionCommandWithDependencies({
         rootDir: workspace.rootDir,
         configDir: ".pipr",
         eventPath,
@@ -369,7 +369,7 @@ async function runIssueCommentCommand(
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
   await writeIssueCommentEvent(eventPath, body);
-  return await runActionCommand({
+  return await runActionCommandWithDependencies({
     rootDir: workspace.rootDir,
     configDir: ".pipr",
     eventPath,
@@ -390,7 +390,7 @@ async function expectPiCalled(workspace: CommandWorkspace): Promise<void> {
 }
 
 async function expectReviewRanAtHead(
-  result: Awaited<ReturnType<typeof runActionCommand>>,
+  result: Awaited<ReturnType<typeof runActionCommandWithDependencies>>,
   workspace: CommandWorkspace,
 ): Promise<void> {
   expect(result).toMatchObject({ kind: "review" });

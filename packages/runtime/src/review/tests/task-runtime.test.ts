@@ -1,9 +1,9 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { type Agent, buildPiprPlan, definePipr, type ReviewResult } from "@pipr/sdk";
 import { describe, expect, it } from "vitest";
+import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest, PiprConfig, ProviderConfig, ReviewFinding } from "../../types.js";
 import { type PiRunner, type RunTaskRuntimeOptions, runTaskRuntime } from "../task-runtime.js";
-import { reviewTestManifest } from "./fixtures.js";
 
 const provider: ProviderConfig = {
   id: "deepseek",

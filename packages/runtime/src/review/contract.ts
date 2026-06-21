@@ -38,8 +38,6 @@ export const prReviewSchema = z.strictObject({
 });
 
 export type ReviewFinding = z.infer<typeof reviewFindingSchema>;
-export type ReviewFindingSeverity = ReviewFinding["severity"];
-export type ReviewFindingCategory = ReviewFinding["category"];
 export type PrReview = z.infer<typeof prReviewSchema>;
 
 export const prReviewJsonSchema = z.toJSONSchema(prReviewSchema);

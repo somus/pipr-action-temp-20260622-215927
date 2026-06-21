@@ -10,7 +10,7 @@ tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/pipr-act-orchestrator.XXXXXX")"
 worktree="$tmp_root/worktree"
 
 cleanup() {
-  rm -rf "$tmp_root"
+  pipr_remove_act_tmp_root "$tmp_root"
 }
 trap cleanup EXIT
 
@@ -36,7 +36,7 @@ cp \
   "$source_root/test/fixtures/act/workflows/pipr-local-orchestrator.yml" \
   "$worktree/.github/workflows/pipr-local-orchestrator.yml"
 chmod +x "$worktree/test/fixtures/act/fake-pi"
-pipr_prepare_act_workflow "$worktree" "$worktree/.github/workflows/pipr-local-orchestrator.yml"
+pipr_prepare_act_workflow "$worktree" "$worktree/.github/workflows/pipr-local-orchestrator.yml" fixture
 
 cat >"$worktree/.pipr/config.ts" <<'EOF'
 import { definePipr } from "@pipr/sdk";

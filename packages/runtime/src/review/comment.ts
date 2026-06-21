@@ -10,8 +10,8 @@ import { commentableRangeSchema, reviewSideSchema } from "../types.js";
 import { reviewFindingSchema } from "./contract.js";
 import { findingFingerprint } from "./review.js";
 
-export const mainCommentMarker = "pipr:main-comment";
-export const findingMarkerPrefix = "pipr:finding";
+const mainCommentMarker = "pipr:main-comment";
+const findingMarkerPrefix = "pipr:finding";
 export const runtimeVersion = "0.0.0";
 
 const mainSectionMergePolicySchema = z.enum(["exclusive", "replace", "append", "list"]);
@@ -32,12 +32,12 @@ export const mainSectionContributionSchema = z.strictObject({
   itemKey: z.string().min(1).optional(),
 });
 
-export const mainSectionContributionsSchema = z.array(mainSectionContributionSchema);
+const mainSectionContributionsSchema = z.array(mainSectionContributionSchema);
 
 export type MainSectionContribution = z.infer<typeof mainSectionContributionSchema>;
 export type MainSectionMergePolicy = MainSectionContribution["policy"];
 
-export const inlinePublicationItemSchema = z
+const inlinePublicationItemSchema = z
   .strictObject({
     finding: reviewFindingSchema,
     range: commentableRangeSchema,
@@ -81,12 +81,12 @@ export const inlinePublicationItemSchema = z
     }
   });
 
-export const inlinePublicationItemsSchema = z.array(inlinePublicationItemSchema);
+const inlinePublicationItemsSchema = z.array(inlinePublicationItemSchema);
 
 export type InlinePublicationItem = z.infer<typeof inlinePublicationItemSchema>;
 export type InlineCommentDraft = InlinePublicationItem;
 
-export const publicationMetadataSchema = z.strictObject({
+const publicationMetadataSchema = z.strictObject({
   runtimeVersion: z.string().min(1),
   trustedConfigSha: z.string().min(1).optional(),
   trustedConfigHash: z.string().min(1).optional(),
@@ -103,7 +103,7 @@ export const publicationTaskMetadataSchema = z.record(z.string(), z.json());
 
 export type PublicationMetadata = z.infer<typeof publicationMetadataSchema>;
 
-export const publicationPlanSchema = z.strictObject({
+const publicationPlanSchema = z.strictObject({
   mainComment: z.string().min(1),
   mainMarker: z.string().min(1),
   pullRequestNumber: z.number().int().positive(),
@@ -143,11 +143,7 @@ export type RenderMainCommentOptions = {
   layout?: MainCommentLayout;
 };
 
-export function parseMainSectionContributions(value: unknown): MainSectionContribution[] {
-  return mainSectionContributionsSchema.parse(value);
-}
-
-export function parseInlinePublicationItems(value: unknown): InlinePublicationItem[] {
+function parseInlinePublicationItems(value: unknown): InlinePublicationItem[] {
   return inlinePublicationItemsSchema.parse(value);
 }
 

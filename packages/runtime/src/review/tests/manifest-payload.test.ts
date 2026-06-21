@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import {
   condenseDiffManifest,
   measureDiffManifestPrompt,
   prepareDiffManifestPrompt,
 } from "../manifest-payload.js";
-import { reviewTestManifest } from "./fixtures.js";
 
 describe("Diff Manifest prompt payload", () => {
   it("keeps small manifests full and unchanged", () => {

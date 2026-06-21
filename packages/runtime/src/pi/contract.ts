@@ -22,13 +22,11 @@ export const piRequiredCliFlags = [
 ] as const;
 
 const nonEmptyStringSchema = z.string().min(1);
-export const piProviderIdSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/);
-export const piApiKeyEnvNameSchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
+const piProviderIdSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/);
+const piApiKeyEnvNameSchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
 
-export const piThinkingLevelSchema = z.enum(piThinkingLevels);
-export const piBuiltinToolNameSchema = z.enum(piBuiltinToolNames);
-export const piReadOnlyToolNameSchema = z.enum(piReadOnlyToolNames);
-export const piReadOnlyToolNamesSchema = z.tuple([
+const piThinkingLevelSchema = z.enum(piThinkingLevels);
+const piReadOnlyToolNamesSchema = z.tuple([
   z.literal("read"),
   z.literal("grep"),
   z.literal("find"),
@@ -43,7 +41,7 @@ export const piProviderProfileSchema = z.strictObject({
   thinking: piThinkingLevelSchema.optional(),
 });
 
-export const piProviderInvocationSchema = z.strictObject({
+const piProviderInvocationSchema = z.strictObject({
   provider: nonEmptyStringSchema,
   model: nonEmptyStringSchema,
   apiKeyEnv: piApiKeyEnvNameSchema,
@@ -52,8 +50,6 @@ export const piProviderInvocationSchema = z.strictObject({
 });
 
 export type PiThinkingLevel = z.infer<typeof piThinkingLevelSchema>;
-export type PiBuiltinToolName = z.infer<typeof piBuiltinToolNameSchema>;
-export type PiReadOnlyToolName = z.infer<typeof piReadOnlyToolNameSchema>;
 export type PiProviderProfile = z.infer<typeof piProviderProfileSchema>;
 export type PiProviderInvocation = z.infer<typeof piProviderInvocationSchema>;
 

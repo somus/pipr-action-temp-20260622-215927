@@ -176,114 +176,6 @@ describe("pipr CLI", () => {
     expect(result.piCalled).toBe(false);
   });
 
-  it("runs action runtime with fake Pi", async () => {
-    const result = await runActionWithGitWorkspace({});
-
-    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(result.stdout).toContain("pipr loaded PR #1 for local/pipr");
-    expect(result.stdout).toContain(
-      "pipr review produced 0 valid inline finding(s), 0 dropped finding(s)",
-    );
-    expect(result.stdout).toContain("pipr published main comment (created)");
-    expect(result.githubOutput).toContain(`Reviewed head: \`${result.headSha}\``);
-    expect(result.githubOutput).toContain(`Trusted config SHA: \`${result.baseSha}\``);
-  });
-
-  it("uses trusted Action provider inputs instead of PR-controlled config", async () => {
-    const result = await runActionWithGitWorkspace({
-      headConfigTs: configTs({ provider: "untrusted-backend", model: "untrusted-model" }),
-      env: {
-        DEEPSEEK_API_KEY: "trusted-key",
-        EVIL_API_KEY: "evil-key",
-      },
-      piScript: [
-        "#!/bin/sh",
-        'case " $* " in *" --provider deepseek "*) ;; *) echo "wrong provider: $*" >&2; exit 41;; esac',
-        'case " $* " in *" --model deepseek-v4-pro "*) ;; *) echo "wrong model: $*" >&2; exit 42;; esac',
-        '[ "$DEEPSEEK_API_KEY" = "trusted-key" ] || { echo "missing trusted key" >&2; exit 43; }',
-        '[ -z "$EVIL_API_KEY" ] || { echo "untrusted key leaked" >&2; exit 44; }',
-        noFindingsJsonCommand(),
-      ].join("\n"),
-    });
-
-    expect(`${result.stdout}\n${result.stderr}`).not.toContain("untrusted");
-    expect(result.exitCode).toBe(0);
-  });
-
-  it("passes custom trusted Action provider inputs into Pi", async () => {
-    const result = await runActionWithGitWorkspace({
-      actionArgs: [
-        "--provider-id",
-        "trusted-profile",
-        "--provider",
-        "trusted-backend",
-        "--model",
-        "trusted-model",
-        "--api-key-env",
-        "TRUSTED_API_KEY",
-      ],
-      env: {
-        TRUSTED_API_KEY: "trusted-key",
-      },
-      piScript: [
-        "#!/bin/sh",
-        'case " $* " in *" --provider trusted-backend "*) ;; *) echo "wrong provider: $*" >&2; exit 41;; esac',
-        'case " $* " in *" --model trusted-model "*) ;; *) echo "wrong model: $*" >&2; exit 42;; esac',
-        'case " $* " in *" --thinking high "*) ;; *) echo "wrong thinking: $*" >&2; exit 45;; esac',
-        '[ "$TRUSTED_API_KEY" = "trusted-key" ] || { echo "missing trusted key" >&2; exit 43; }',
-        noFindingsJsonCommand(),
-      ].join("\n"),
-    });
-
-    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-  });
-
-  it("does not let invalid PR-head config block trusted Action execution", async () => {
-    const result = await runActionWithGitWorkspace({
-      headConfigTs: "export default [\n",
-      piScript: ["#!/bin/sh", noFindingsJsonCommand()].join("\n"),
-    });
-
-    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-  });
-
-  it("pins Action instructions to the base commit while manifest includes PR-head config changes", async () => {
-    const result = await runActionWithGitWorkspace({
-      configTs: configTs({ instructions: "BASE PROMPT" }),
-      headConfigTs: configTs({ instructions: "HEAD PROMPT" }),
-      piScript: [
-        "#!/bin/sh",
-        "bun -e '",
-        'const prompt = process.argv.at(-1) ?? "";',
-        'const instructions = prompt.split("Instructions:\\n").at(1)?.split("\\n\\nPrompt:").at(0) ?? "";',
-        'if (instructions.includes("HEAD PROMPT")) { console.error("head prompt used"); process.exit(45); }',
-        'if (!instructions.includes("BASE PROMPT")) { console.error("base prompt missing"); process.exit(46); }',
-        'if (!prompt.includes(".pipr/config.ts")) { console.error("head config change missing from manifest"); process.exit(47); }',
-        'console.log(JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }));',
-        '\' -- "$@"',
-      ].join("\n"),
-    });
-
-    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-  });
-
-  it("executes base-commit task logic instead of PR-head task logic", async () => {
-    const result = await runActionWithGitWorkspace({
-      configTs: configTs({ piRuns: 2, summary: "Base task used." }),
-      headConfigTs: configTs({ piRuns: 1, summary: "Head task used." }),
-      piScript: [
-        "#!/bin/sh",
-        'printf "1\\n" >> "$(dirname "$0")/pi-called"',
-        'printf \'%s\\n\' \'{"summary":{"body":"Base task used."},"inlineFindings":[]}\'',
-      ].join("\n"),
-    });
-
-    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(result.piCallCount).toBe(2);
-    expect(result.githubOutput).toContain("Base task used.");
-    expect(result.githubOutput).not.toContain("Head task used.");
-  });
-
   it("inspects the TS runtime plan after config validation", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
     try {
@@ -309,18 +201,12 @@ describe("pipr CLI", () => {
 });
 
 async function runActionWithGitWorkspace(options: {
-  actionArgs?: string[];
-  configTs?: string;
   env?: NodeJS.ProcessEnv;
-  headConfigTs?: string;
-  githubFixture?: Record<string, unknown>;
   initConfig?: boolean;
-  piScript?: string;
 }): Promise<{
   exitCode: number;
   baseSha: string;
   headSha: string;
-  githubOutput: string;
   piCalled: boolean;
   piCallCount: number;
   stdout: string;
@@ -336,58 +222,32 @@ async function runActionWithGitWorkspace(options: {
     if (options.initConfig !== false) {
       await initWorkspaceConfig(workspace);
     }
-    await writeOptionalFile(path.join(workspace, ".pipr", "config.ts"), options.configTs);
     await mkdir(path.join(workspace, "src"));
     await writeFile(path.join(workspace, "src/a.ts"), "export const value = 1;\n");
     await runCommand("git", ["add", "."], workspace);
     await runCommand("git", ["commit", "--no-verify", "-m", "base"], workspace);
     const baseSha = (await runCommand("git", ["rev-parse", "HEAD"], workspace)).trim();
-    await writeOptionalFile(path.join(workspace, ".pipr", "config.ts"), options.headConfigTs);
     await writeFile(path.join(workspace, "src/a.ts"), "export const value = 2;\n");
     await runCommand("git", ["add", "."], workspace);
     await runCommand("git", ["commit", "--no-verify", "-m", "head"], workspace);
     const headSha = (await runCommand("git", ["rev-parse", "HEAD"], workspace)).trim();
     const eventPath = path.join(workspace, "event.json");
     const githubOutputPath = path.join(workspace, "github-output.txt");
-    const githubFixturePath = path.join(workspace, "github-fixture.json");
-    const piExecutable = path.join(workspace, "fake-pi.sh");
     await writeFile(eventPath, JSON.stringify(pullRequestPayload(baseSha, headSha)));
     await writeFile(githubOutputPath, "");
-    await writeFile(
-      githubFixturePath,
-      JSON.stringify({
-        ownerLogin: "github-actions[bot]",
-        headSha,
-        issueComments: [],
-        reviewComments: [],
-        reviewCommentPayloads: [],
-        ...(options.githubFixture ?? {}),
-      }),
-    );
-    await writeFile(
-      piExecutable,
-      options.piScript ?? ["#!/bin/sh", noFindingsJsonCommand()].join("\n"),
-    );
-    await chmod(piExecutable, 0o755);
 
-    const result = await runCli(["action", ...(options.actionArgs ?? [])], {
+    const result = await runCli(["action"], {
       DEEPSEEK_API_KEY: "provider-key",
       ...options.env,
       GITHUB_EVENT_PATH: eventPath,
       GITHUB_EVENT_NAME: "pull_request",
       GITHUB_OUTPUT: githubOutputPath,
       GITHUB_WORKSPACE: workspace,
-      PIPR_ENABLE_TEST_FIXTURES: "1",
-      PIPR_GITHUB_FIXTURE_PATH: githubFixturePath,
-      PIPR_PI_EXECUTABLE: piExecutable,
     });
     return {
       ...result,
       baseSha,
       headSha,
-      githubOutput: (await fileExists(githubOutputPath))
-        ? await readFile(githubOutputPath, "utf8")
-        : "",
       piCalled: await fileExists(path.join(workspace, "pi-called")),
       piCallCount: await countLines(path.join(workspace, "pi-called")),
     };
@@ -427,53 +287,6 @@ async function createLocalReviewWorkspace(): Promise<{
   return { rootDir, baseSha, piExecutable };
 }
 
-function configTs(
-  options: {
-    provider?: string;
-    model?: string;
-    instructions?: string;
-    piRuns?: number;
-    summary?: string;
-  } = {},
-): string {
-  const piRuns = options.piRuns ?? 1;
-  const template = "$";
-  const runLines = Array.from({ length: piRuns }, (_, index) =>
-    index === piRuns - 1
-      ? "    const result = await ctx.pi.run(reviewer, { manifest });"
-      : "    await ctx.pi.run(reviewer, { manifest });",
-  );
-  return [
-    'import { definePipr } from "@pipr/sdk";',
-    "",
-    "export default definePipr((pipr) => {",
-    `  const model = pipr.model("${options.provider ?? "deepseek"}/${options.model ?? "deepseek-v4-pro"}", {`,
-    '    name: "deepseek",',
-    '    apiKey: pipr.secret("DEEPSEEK_API_KEY"),',
-    '    options: { thinking: "high" },',
-    "  });",
-    "  const reviewer = pipr.agent({",
-    '    name: "review",',
-    "    model,",
-    `    instructions: ${JSON.stringify(options.instructions ?? "Review this change.")},`,
-    "    output: pipr.schemas.review,",
-    `    prompt: (input) => pipr.prompt\`Review this change.\\n${template}{pipr.compactManifest(input.manifest)}\`,`,
-    "  });",
-    "  const task = pipr.task('review', async (ctx) => {",
-    "    const manifest = await ctx.change.diffManifest({ compressed: true });",
-    ...runLines,
-    options.summary
-      ? `    ctx.output.summary(${JSON.stringify(options.summary)});`
-      : "    ctx.output.summary(result.summary);",
-    "    ctx.output.findings(result.inlineFindings);",
-    "  });",
-    '  pipr.on.changeRequest(["opened"], task);',
-    '  pipr.command("@pipr review", { permission: "write" }, task);',
-    '  pipr.local("review", task);',
-    "});",
-  ].join("\n");
-}
-
 function noFindingsJsonCommand(): string {
   return 'printf \'%s\\n\' \'{"summary":{"body":"No findings."},"inlineFindings":[]}\'';
 }
@@ -483,12 +296,6 @@ async function countLines(filePath: string): Promise<number> {
     return 0;
   }
   return (await readFile(filePath, "utf8")).split("\n").filter(Boolean).length;
-}
-
-async function writeOptionalFile(filePath: string, contents: string | undefined): Promise<void> {
-  if (contents !== undefined) {
-    await writeFile(filePath, contents);
-  }
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

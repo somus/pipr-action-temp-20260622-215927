@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
-import { readFile, writeFile } from "node:fs/promises";
 import { inspect, parseArgs } from "node:util";
 import * as core from "@actions/core";
-import type { GitHubPublicationClient } from "@pipr/runtime";
 import {
   type ActionCommandResult,
   PublicationError,
@@ -87,12 +85,7 @@ async function runAction(options: CliOptions): Promise<void> {
     env: process.env,
     eventPath: actionEventPath(),
     dryRun: isActionDryRun(),
-    piExecutable: process.env.PIPR_PI_EXECUTABLE,
     trustedProvider: options.trustedProvider,
-    githubPublicationClient: fixturePublicationClient({
-      fixturePath: process.env.PIPR_GITHUB_FIXTURE_PATH,
-      enabled: process.env.PIPR_ENABLE_TEST_FIXTURES === "1",
-    }),
   });
   handleActionResult(result);
 }
@@ -338,86 +331,6 @@ function actionEventPath(): string {
 
 function logActionEvent(event: { pullRequestNumber: number; repo: string }): void {
   core.info(`pipr loaded PR #${event.pullRequestNumber} for ${event.repo}`);
-}
-
-function fixturePublicationClient(options: {
-  fixturePath: string | undefined;
-  enabled: boolean;
-}): GitHubPublicationClient | undefined {
-  if (!options.fixturePath) {
-    return undefined;
-  }
-  if (!options.enabled) {
-    throw new Error("PIPR_GITHUB_FIXTURE_PATH requires PIPR_ENABLE_TEST_FIXTURES=1");
-  }
-  const fixturePath = options.fixturePath;
-  return {
-    async getAuthenticatedUserLogin() {
-      return (await readFixture(fixturePath)).ownerLogin;
-    },
-    async getPullRequestHeadSha() {
-      return (await readFixture(fixturePath)).headSha;
-    },
-    async listIssueComments() {
-      return (await readFixture(fixturePath)).issueComments;
-    },
-    async createIssueComment(options) {
-      const fixture = await readFixture(fixturePath);
-      const comment = {
-        id: fixture.issueComments.length + 1,
-        body: options.body,
-        authorLogin: fixture.ownerLogin,
-      };
-      fixture.issueComments.push(comment);
-      await writeFixture(fixturePath, fixture);
-      return { id: comment.id };
-    },
-    async updateIssueComment(options) {
-      const fixture = await readFixture(fixturePath);
-      const comment = fixture.issueComments.find((item) => item.id === options.commentId);
-      if (!comment) {
-        throw new Error(`Fixture issue comment ${options.commentId} not found`);
-      }
-      comment.body = options.body;
-      await writeFixture(fixturePath, fixture);
-      return { id: comment.id };
-    },
-    async listReviewComments() {
-      return (await readFixture(fixturePath)).reviewComments;
-    },
-    async createReviewComment(options) {
-      const fixture = await readFixture(fixturePath);
-      if (fixture.failReviewComment) {
-        throw new Error("fixture inline failed");
-      }
-      const comment = {
-        id: fixture.reviewComments.length + 1,
-        body: options.body,
-        authorLogin: fixture.ownerLogin,
-      };
-      fixture.reviewComments.push(comment);
-      fixture.reviewCommentPayloads.push(options);
-      await writeFixture(fixturePath, fixture);
-      return { id: comment.id };
-    },
-  };
-}
-
-type GitHubPublicationFixture = {
-  ownerLogin: string;
-  headSha: string;
-  issueComments: Array<{ id: number; body: string; authorLogin: string | undefined }>;
-  reviewComments: Array<{ id: number; body: string; authorLogin: string | undefined }>;
-  reviewCommentPayloads: unknown[];
-  failReviewComment?: boolean;
-};
-
-async function readFixture(fixturePath: string): Promise<GitHubPublicationFixture> {
-  return JSON.parse(await readFile(fixturePath, "utf8")) as GitHubPublicationFixture;
-}
-
-async function writeFixture(fixturePath: string, fixture: GitHubPublicationFixture): Promise<void> {
-  await writeFile(fixturePath, JSON.stringify(fixture));
 }
 
 function printHelp(): void {

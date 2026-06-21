@@ -5,7 +5,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { reviewTestManifest } from "../../review/tests/fixtures.js";
+import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest } from "../../types.js";
 import { preparePiCustomTools } from "../custom-tools.js";
 import { preparePiRuntimeReadTools, readAtRef, readDiffFromManifest } from "../runtime-tools.js";

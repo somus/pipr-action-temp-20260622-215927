@@ -5,21 +5,12 @@ import {
   type PrReview,
   parsePrReview,
   prReviewJsonSchema,
-  prReviewSchema,
   prReviewSchemaId,
   type ReviewFinding,
-  reviewFindingSchema,
   reviewSchemaExample,
 } from "./contract.js";
 
-export {
-  parsePrReview,
-  prReviewJsonSchema,
-  prReviewSchema,
-  prReviewSchemaId,
-  reviewFindingSchema,
-  reviewSchemaExample,
-};
+export { parsePrReview, prReviewJsonSchema, prReviewSchemaId, reviewSchemaExample };
 
 export type ValidateReviewOptions = {
   minConfidence: number;

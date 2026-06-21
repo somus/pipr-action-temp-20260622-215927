@@ -5,15 +5,13 @@ import { prReviewSchema, reviewFindingSchema } from "./review/contract.js";
 export type {
   PrReview,
   ReviewFinding,
-  ReviewFindingCategory,
-  ReviewFindingSeverity,
 } from "./review/contract.js";
 
 const nonEmptyStringSchema = z.string().min(1);
 
-export const providerConfigSchema = piProviderProfileSchema;
+const providerConfigSchema = piProviderProfileSchema;
 
-export const pathGlobPatternSchema = z
+const pathGlobPatternSchema = z
   .string()
   .min(1)
   .superRefine((pattern, context) => {
@@ -34,12 +32,12 @@ export const pathGlobPatternSchema = z
     }
   });
 
-export const pathFilterSchema = z.strictObject({
+const pathFilterSchema = z.strictObject({
   include: z.array(pathGlobPatternSchema).min(1).optional(),
   exclude: z.array(pathGlobPatternSchema).min(1).optional(),
 });
 
-export const diffManifestLimitsConfigSchema = z.strictObject({
+const diffManifestLimitsConfigSchema = z.strictObject({
   fullMaxBytes: z.number().int().positive().optional(),
   fullMaxEstimatedTokens: z.number().int().positive().optional(),
   condensedMaxBytes: z.number().int().positive().optional(),
@@ -47,7 +45,7 @@ export const diffManifestLimitsConfigSchema = z.strictObject({
   toolResponseMaxBytes: z.number().int().positive().optional(),
 });
 
-export const piprConfigSchema = z.strictObject({
+const piprConfigSchema = z.strictObject({
   defaultProvider: nonEmptyStringSchema,
   providers: z.array(providerConfigSchema).min(1),
   publication: z.strictObject({
@@ -62,13 +60,13 @@ export const piprConfigSchema = z.strictObject({
     .optional(),
 });
 
-export const runtimeSettingsSchema = z.strictObject({
+const runtimeSettingsSchema = z.strictObject({
   source: nonEmptyStringSchema,
   config: piprConfigSchema,
   warnings: z.array(z.string()),
 });
 
-export const pullRequestEventContextSchema = z.strictObject({
+const pullRequestEventContextSchema = z.strictObject({
   eventName: nonEmptyStringSchema,
   action: nonEmptyStringSchema.optional(),
   repo: nonEmptyStringSchema,
@@ -80,9 +78,9 @@ export const pullRequestEventContextSchema = z.strictObject({
   workspace: nonEmptyStringSchema,
 });
 
-export const fileStatusSchema = z.enum(["added", "modified", "removed", "renamed"]);
+const fileStatusSchema = z.enum(["added", "modified", "removed", "renamed"]);
 export const reviewSideSchema = z.enum(["RIGHT", "LEFT"]);
-export const rangeKindSchema = z.enum(["added", "deleted", "context", "mixed"]);
+const rangeKindSchema = z.enum(["added", "deleted", "context", "mixed"]);
 
 export const commentableRangeSchema = z.strictObject({
   id: nonEmptyStringSchema,
@@ -98,7 +96,7 @@ export const commentableRangeSchema = z.strictObject({
   preview: z.string().optional(),
 });
 
-export const diffHunkSchema = z.strictObject({
+const diffHunkSchema = z.strictObject({
   hunkIndex: z.number().int().positive(),
   header: nonEmptyStringSchema,
   oldStart: z.number().int().min(0),
@@ -108,7 +106,7 @@ export const diffHunkSchema = z.strictObject({
   contentHash: z.string().regex(/^[a-f0-9]{12}$/),
 });
 
-export const diffManifestFileSchema = z.strictObject({
+const diffManifestFileSchema = z.strictObject({
   path: nonEmptyStringSchema,
   previousPath: nonEmptyStringSchema.optional(),
   status: fileStatusSchema,
@@ -122,36 +120,30 @@ export const diffManifestFileSchema = z.strictObject({
   excludedReason: nonEmptyStringSchema.optional(),
 });
 
-export const diffManifestSchema = z.strictObject({
+const diffManifestSchema = z.strictObject({
   baseSha: nonEmptyStringSchema,
   headSha: nonEmptyStringSchema,
   mergeBaseSha: nonEmptyStringSchema,
   files: z.array(diffManifestFileSchema),
 });
 
-export const diffManifestPromptMetricsSchema = z.strictObject({
+const diffManifestPromptMetricsSchema = z.strictObject({
   bytes: z.number().int().min(0),
   estimatedTokens: z.number().int().min(0),
 });
 
-export const droppedFindingSchema = z.strictObject({
+const droppedFindingSchema = z.strictObject({
   finding: reviewFindingSchema,
   reason: nonEmptyStringSchema,
 });
 
-export const validatedReviewSchema = z.strictObject({
+const validatedReviewSchema = z.strictObject({
   review: prReviewSchema,
   validFindings: z.array(reviewFindingSchema),
   droppedFindings: z.array(droppedFindingSchema),
 });
 
-export const commandPermissionLevelSchema = z.enum([
-  "read",
-  "triage",
-  "write",
-  "maintain",
-  "admin",
-]);
+const commandPermissionLevelSchema = z.enum(["read", "triage", "write", "maintain", "admin"]);
 
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export type PathFilter = z.infer<typeof pathFilterSchema>;
@@ -167,7 +159,6 @@ export type DiffHunk = z.infer<typeof diffHunkSchema>;
 export type DiffManifestFile = z.infer<typeof diffManifestFileSchema>;
 export type DiffManifest = z.infer<typeof diffManifestSchema>;
 export type DiffManifestPromptMetrics = z.infer<typeof diffManifestPromptMetricsSchema>;
-export type DroppedFinding = z.infer<typeof droppedFindingSchema>;
 export type ValidatedReview = z.infer<typeof validatedReviewSchema>;
 export type CommandPermissionLevel = z.infer<typeof commandPermissionLevelSchema>;
 

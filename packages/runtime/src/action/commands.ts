@@ -67,13 +67,16 @@ export type DryRunCommandOptions = RuntimeCommandOptions & {
 export type ActionCommandOptions = RuntimeCommandOptions & {
   eventPath: string;
   dryRun: boolean;
-  piExecutable?: string;
   trustedProvider?: {
     providerId?: string;
     provider?: string;
     model?: string;
     apiKeyEnv?: string;
   };
+};
+
+export type ActionCommandDependencyOptions = ActionCommandOptions & {
+  piExecutable?: string;
   githubClient?: GitHubCommandClient;
   githubPublicationClient?: GitHubPublicationClient;
 };
@@ -195,6 +198,12 @@ export async function runLocalTaskCommand(
 export async function runActionCommand(
   options: ActionCommandOptions,
 ): Promise<ActionCommandResult> {
+  return await runActionCommandWithDependencies(options);
+}
+
+export async function runActionCommandWithDependencies(
+  options: ActionCommandDependencyOptions,
+): Promise<ActionCommandResult> {
   ensureGitHubWorkspaceSafeDirectory({ rootDir: options.rootDir, env: options.env });
   if (actionEventName(options) === "issue_comment") {
     return await runIssueCommentActionCommand(options);
@@ -236,7 +245,7 @@ export async function runActionCommand(
 }
 
 async function runIssueCommentActionCommand(
-  options: ActionCommandOptions,
+  options: ActionCommandDependencyOptions,
 ): Promise<ActionCommandResult> {
   const prepared = await prepareIssueCommentCommand(options);
   if (prepared.kind === "ignored") {
@@ -258,7 +267,7 @@ type PreparedIssueCommentCommand =
     };
 
 async function prepareIssueCommentCommand(
-  options: ActionCommandOptions,
+  options: ActionCommandDependencyOptions,
 ): Promise<PreparedIssueCommentCommand> {
   const comment = await loadIssueCommentEventContext(options.eventPath, actionEnv(options));
   if (!comment.isPullRequest) {
@@ -304,7 +313,7 @@ async function prepareIssueCommentCommand(
 }
 
 async function dispatchIssueCommentCommand(
-  options: ActionCommandOptions,
+  options: ActionCommandDependencyOptions,
   prepared: Extract<PreparedIssueCommentCommand, { kind: "prepared" }>,
 ): Promise<ActionCommandResult> {
   const requiredPermission =
@@ -375,7 +384,7 @@ async function dispatchIssueCommentCommand(
 }
 
 async function runTrustedReviewAndPublish(options: {
-  options: ActionCommandOptions;
+  options: ActionCommandDependencyOptions;
   trustedRuntime: LoadedRuntimeProject;
   provider: ProviderConfig;
   event: PullRequestEventContext;
@@ -428,7 +437,7 @@ function readTrustedRuntimeHash(runtime: LoadedRuntimeProject): string | undefin
 
 function trustedActionConfig(
   trustedConfig: PiprConfig,
-  options: ActionCommandOptions,
+  options: ActionCommandDependencyOptions,
   provider: ProviderConfig,
 ): PiprConfig {
   const env = actionEnv(options);
@@ -443,7 +452,7 @@ function trustedActionConfig(
 }
 
 function trustedActionProvider(
-  options: ActionCommandOptions,
+  options: ActionCommandDependencyOptions,
   trustedConfig: PiprConfig,
 ): ProviderConfig {
   const providerId = readTrustedProviderOption(
@@ -472,8 +481,8 @@ function trustedActionProvider(
 }
 
 function readTrustedProviderOption(
-  options: ActionCommandOptions,
-  optionKey: keyof NonNullable<ActionCommandOptions["trustedProvider"]>,
+  options: ActionCommandDependencyOptions,
+  optionKey: keyof NonNullable<ActionCommandDependencyOptions["trustedProvider"]>,
   inputName: string,
   fallback: string,
 ): string {
@@ -487,16 +496,16 @@ function readTrustedProviderOption(
 }
 
 function trustedProviderOptions(
-  options: ActionCommandOptions,
-): NonNullable<ActionCommandOptions["trustedProvider"]> {
+  options: ActionCommandDependencyOptions,
+): NonNullable<ActionCommandDependencyOptions["trustedProvider"]> {
   return options.trustedProvider ?? {};
 }
 
-function actionEnv(options: ActionCommandOptions): NodeJS.ProcessEnv {
+function actionEnv(options: ActionCommandDependencyOptions): NodeJS.ProcessEnv {
   return options.env ?? process.env;
 }
 
-function actionEventName(options: ActionCommandOptions): string {
+function actionEventName(options: ActionCommandDependencyOptions): string {
   return actionEnv(options).GITHUB_EVENT_NAME ?? "pull_request";
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { PrReview } from "../../types.js";
 import {
   parsePrReview,
@@ -6,7 +7,6 @@ import {
   reviewSchemaExample,
   validatePrReview,
 } from "../review.js";
-import { reviewTestManifest } from "./fixtures.js";
 
 const manifest = reviewTestManifest({ includeExcludedLock: true });
 
