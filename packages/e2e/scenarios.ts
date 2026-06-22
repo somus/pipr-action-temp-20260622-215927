@@ -450,8 +450,26 @@ function gitOutput(cwd: string, args: string[]): string {
   return result.stdout.toString();
 }
 
-function removePath(path: string): void {
-  run("rm", ["-rf", path], sourceRoot);
+function removePath(targetPath: string): void {
+  let failure = "";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const result = Bun.spawnSync(["rm", "-rf", targetPath], {
+      cwd: sourceRoot,
+      env: Bun.env,
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+    if (result.exitCode === 0 || !pathExists(targetPath)) {
+      return;
+    }
+    failure = result.stderr.toString().trim() || result.stdout.toString().trim();
+    sleepSync(50);
+  }
+  throw new Error(`rm -rf ${targetPath} failed${failure ? `: ${failure}` : ""}`);
+}
+
+function sleepSync(milliseconds: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
 function pathExists(path: string): boolean {
