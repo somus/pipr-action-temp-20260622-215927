@@ -182,7 +182,9 @@ describe("runActionCommand pull_request dispatch", () => {
     const workspace = await createCommandWorkspace();
     const gitConfigDir = await mkdtemp(path.join(os.tmpdir(), "pipr-action-gitconfig-"));
     const previousHome = process.env.HOME;
+    const previousGitConfigEnv = snapshotGitConfigEnv();
     try {
+      clearGitConfigEnv(previousGitConfigEnv);
       const eventPath = path.join(workspace.rootDir, "event.json");
       await writePullRequestEvent(eventPath, workspace);
 
@@ -202,11 +204,15 @@ describe("runActionCommand pull_request dispatch", () => {
       });
 
       expect(result).toMatchObject({ kind: "dry-run" });
+      expect(process.env.GIT_CONFIG_COUNT).toBe("1");
+      expect(process.env.GIT_CONFIG_KEY_0).toBe("safe.directory");
+      expect(process.env.GIT_CONFIG_VALUE_0).toBe(workspace.rootDir);
       await expect(Bun.file(path.join(gitConfigDir, ".gitconfig")).text()).resolves.toContain(
         `directory = ${workspace.rootDir}`,
       );
     } finally {
       restoreEnv("HOME", previousHome);
+      restoreGitConfigEnv(previousGitConfigEnv);
       await removeWorkspace(workspace.rootDir);
       await removeWorkspace(gitConfigDir);
     }
@@ -614,8 +620,35 @@ function pullRequestEnv(rootDir: string, eventPath: string): NodeJS.ProcessEnv {
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
     delete process.env[key];
+    delete Bun.env[key];
   } else {
     process.env[key] = value;
+    Bun.env[key] = value;
+  }
+}
+
+function snapshotGitConfigEnv(): Map<string, string | undefined> {
+  const count = Number.parseInt(process.env.GIT_CONFIG_COUNT ?? "0", 10);
+  const limit = Number.isSafeInteger(count) && count >= 0 ? count : 0;
+  const snapshot = new Map<string, string | undefined>([
+    ["GIT_CONFIG_COUNT", process.env.GIT_CONFIG_COUNT],
+  ]);
+  for (let index = 0; index <= limit; index += 1) {
+    snapshot.set(`GIT_CONFIG_KEY_${index}`, process.env[`GIT_CONFIG_KEY_${index}`]);
+    snapshot.set(`GIT_CONFIG_VALUE_${index}`, process.env[`GIT_CONFIG_VALUE_${index}`]);
+  }
+  return snapshot;
+}
+
+function clearGitConfigEnv(snapshot: Map<string, string | undefined>): void {
+  for (const key of snapshot.keys()) {
+    restoreEnv(key, undefined);
+  }
+}
+
+function restoreGitConfigEnv(snapshot: Map<string, string | undefined>): void {
+  for (const [key, value] of snapshot) {
+    restoreEnv(key, value);
   }
 }
 

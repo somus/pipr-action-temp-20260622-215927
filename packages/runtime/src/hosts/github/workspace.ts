@@ -12,8 +12,10 @@ export function ensureGitHubWorkspaceSafeDirectory(options: {
     return;
   }
   const workspace = env.GITHUB_WORKSPACE ?? options.rootDir;
+  installSafeDirectoryEnv(workspace, env);
   const gitHome = gitGlobalConfigHome(env);
   process.env.HOME = gitHome;
+  Bun.env.HOME = gitHome;
   const result = Bun.spawnSync(
     ["git", "config", "--global", "--add", "safe.directory", workspace],
     {
@@ -27,6 +29,42 @@ export function ensureGitHubWorkspaceSafeDirectory(options: {
       `git safe.directory setup failed: ${result.stderr.toString().trim() || result.stdout.toString().trim()}`,
     );
   }
+}
+
+function installSafeDirectoryEnv(workspace: string, env: NodeJS.ProcessEnv): void {
+  const index = gitConfigEnvCount(env);
+  syncExistingGitConfigEnv(env, index);
+  setEnv("GIT_CONFIG_COUNT", String(index + 1), env);
+  setEnv(`GIT_CONFIG_KEY_${index}`, "safe.directory", env);
+  setEnv(`GIT_CONFIG_VALUE_${index}`, workspace, env);
+}
+
+function syncExistingGitConfigEnv(env: NodeJS.ProcessEnv, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    copyEnv(`GIT_CONFIG_KEY_${index}`, env);
+    copyEnv(`GIT_CONFIG_VALUE_${index}`, env);
+  }
+}
+
+function copyEnv(key: string, env: NodeJS.ProcessEnv): void {
+  const value = env[key] ?? process.env[key] ?? Bun.env[key];
+  if (value !== undefined) {
+    setEnv(key, value, env);
+  }
+}
+
+function setEnv(key: string, value: string, env: NodeJS.ProcessEnv): void {
+  env[key] = value;
+  process.env[key] = value;
+  Bun.env[key] = value;
+}
+
+function gitConfigEnvCount(env: NodeJS.ProcessEnv): number {
+  const count = Number.parseInt(
+    env.GIT_CONFIG_COUNT ?? process.env.GIT_CONFIG_COUNT ?? Bun.env.GIT_CONFIG_COUNT ?? "0",
+    10,
+  );
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
 }
 
 function gitGlobalConfigHome(env: NodeJS.ProcessEnv): string {
