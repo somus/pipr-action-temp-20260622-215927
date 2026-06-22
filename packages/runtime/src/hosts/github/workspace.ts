@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import type { ChangeRequestEventContext } from "../../types.js";
 
 export function ensureGitHubWorkspaceSafeDirectory(options: {

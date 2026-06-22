@@ -24,6 +24,5 @@ RUN bun install --frozen-lockfile \
   && ln -sf /opt/pipr/packages/cli/src/main.ts /usr/local/bin/pipr \
   && pipr action --help >/dev/null
 
-USER bun
 WORKDIR /workspace
 ENTRYPOINT ["pipr"]
