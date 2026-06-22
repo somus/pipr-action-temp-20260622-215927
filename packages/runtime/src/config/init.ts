@@ -139,6 +139,10 @@ async function sdkDeclaration(): Promise<string> {
   if (embedded?.includes('declare module "@pipr/sdk"')) {
     return embedded;
   }
+  const checkedIn = await checkedInSdkDeclaration();
+  if (checkedIn?.includes('declare module "@pipr/sdk"')) {
+    return checkedIn;
+  }
   const declarations = await rawSdkDeclarations();
   return [
     "// biome-ignore-all format: generated from @pipr/sdk declarations",
@@ -146,6 +150,13 @@ async function sdkDeclaration(): Promise<string> {
     ...declarations.map((declaration) => declarationModuleBlock(declaration)),
     "",
   ].join("\n");
+}
+
+async function checkedInSdkDeclaration(): Promise<string | undefined> {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const declarationPath = path.resolve(moduleDir, "../../../../.pipr/types/pipr-sdk.d.ts");
+  const stats = await maybeLstat(declarationPath);
+  return stats?.isFile() ? await Bun.file(declarationPath).text() : undefined;
 }
 
 type SdkDeclarationModule = {
