@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildPiprPlan, isPiprConfigFactory, type RuntimePlan } from "@pipr/sdk";
 import { resolveContainedConfigDir } from "./paths.js";
+import { embeddedSdkAssets } from "./sdk-assets.js";
 
 export type LoadTypescriptConfigOptions = {
   rootDir: string;
@@ -59,12 +60,11 @@ export async function loadTypescriptConfig(
 async function installSdkStub(configDir: string): Promise<void> {
   const sdkRoot = path.join(configDir, "node_modules", "@pipr", "sdk");
   await mkdir(sdkRoot, { recursive: true });
-  const sdkUrl = pathToFileURL(await sdkSourcePath()).href;
   await Bun.write(
     path.join(sdkRoot, "package.json"),
     JSON.stringify({ type: "module", exports: { ".": "./index.mjs" } }),
   );
-  await Bun.write(path.join(sdkRoot, "index.mjs"), `export * from ${JSON.stringify(sdkUrl)};\n`);
+  await Bun.write(path.join(sdkRoot, "index.mjs"), await sdkStubSource());
 }
 
 async function typecheckTypescriptConfig(configDir: string): Promise<void> {
@@ -73,6 +73,10 @@ async function typecheckTypescriptConfig(configDir: string): Promise<void> {
     throw new Error(`${configDir}/tsconfig.json is required for pipr check. Run pipr init.`);
   }
   const tscPath = await typescriptCliPath();
+  if (!tscPath) {
+    await typecheckTypescriptConfigWithApi(configDir, tsconfigPath);
+    return;
+  }
   const result = Bun.spawnSync(
     [process.execPath, tscPath, "--noEmit", "--pretty", "false", "-p", tsconfigPath],
     {
@@ -83,7 +87,9 @@ async function typecheckTypescriptConfig(configDir: string): Promise<void> {
     },
   );
   if (result.exitCode !== 0) {
-    const output = commandOutput(result);
+    const output = [result.stdout?.toString().trim(), result.stderr?.toString().trim()]
+      .filter(Boolean)
+      .join("\n");
     throw new Error(
       `TypeScript config check failed for ${path.join(configDir, "config.ts")}` +
         (output ? `:\n${output}` : ""),
@@ -91,7 +97,39 @@ async function typecheckTypescriptConfig(configDir: string): Promise<void> {
   }
 }
 
-async function typescriptCliPath(): Promise<string> {
+async function typecheckTypescriptConfigWithApi(
+  configDir: string,
+  tsconfigPath: string,
+): Promise<void> {
+  const ts = await import("typescript");
+  const config = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+  if (config.error) {
+    throw new Error(formatTypeScriptDiagnostics(ts, [config.error], configDir));
+  }
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, configDir);
+  const program = ts.createProgram(parsed.fileNames, parsed.options);
+  const diagnostics = [...parsed.errors, ...ts.getPreEmitDiagnostics(program)];
+  if (diagnostics.length > 0) {
+    throw new Error(
+      `TypeScript config check failed for ${path.join(configDir, "config.ts")}:\n` +
+        formatTypeScriptDiagnostics(ts, diagnostics, configDir),
+    );
+  }
+}
+
+function formatTypeScriptDiagnostics(
+  ts: typeof import("typescript"),
+  diagnostics: import("typescript").Diagnostic[],
+  configDir: string,
+): string {
+  return ts.formatDiagnostics(diagnostics, {
+    getCanonicalFileName: (fileName) => fileName,
+    getCurrentDirectory: () => configDir,
+    getNewLine: () => "\n",
+  });
+}
+
+async function typescriptCliPath(): Promise<string | undefined> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.resolve(moduleDir, "../../../../node_modules/typescript/bin/tsc"),
@@ -102,16 +140,22 @@ async function typescriptCliPath(): Promise<string> {
       return candidate;
     }
   }
-  throw new Error("Unable to locate TypeScript compiler for pipr check");
+  return undefined;
 }
 
-function commandOutput(result: ReturnType<typeof Bun.spawnSync>): string {
-  const stdout = result.stdout?.toString().trim();
-  const stderr = result.stderr?.toString().trim();
-  return [stdout, stderr].filter(Boolean).join("\n");
+async function sdkStubSource(): Promise<string> {
+  const sourcePath = await sdkSourcePath();
+  if (sourcePath) {
+    return `export * from ${JSON.stringify(pathToFileURL(sourcePath).href)};\n`;
+  }
+  const embedded = embeddedSdkAssets().module;
+  if (embedded) {
+    return embedded;
+  }
+  throw new Error("Unable to locate @pipr/sdk runtime module");
 }
 
-async function sdkSourcePath(): Promise<string> {
+async function sdkSourcePath(): Promise<string | undefined> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.resolve(moduleDir, "../../../sdk/src/index.ts"),
@@ -124,7 +168,7 @@ async function sdkSourcePath(): Promise<string> {
       return candidate;
     }
   }
-  throw new Error("Unable to locate @pipr/sdk runtime module");
+  return undefined;
 }
 
 function isIgnoredConfigCopyPath(source: string, configDir: string): boolean {

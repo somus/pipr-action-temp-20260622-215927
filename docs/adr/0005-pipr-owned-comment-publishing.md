@@ -1,5 +1,7 @@
 # pipr-owned Comment Publishing
 
+Status: Accepted
+
 Review tasks produce typed comment contributions. They do not call GitHub APIs directly.
 
 Comment Publishing:

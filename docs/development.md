@@ -1,0 +1,153 @@
+# Development
+
+## Setup
+
+```bash
+mise run install
+```
+
+Run the repository gate:
+
+```bash
+mise run check
+```
+
+This runs lint, typecheck, tests, build, format check, and Fallow.
+
+## Local Action e2e
+
+Use the local Action gate after editing the GitHub Action, Docker Action packaging, workflow fixtures, Pi CLI mapping, or PR event handling:
+
+```bash
+mise run check-actions
+```
+
+This command:
+
+- builds the local Docker Action image as `pipr-action:act`
+- verifies the installed Pi CLI contract
+- runs fixture self-tests
+- runs all local `act` scenarios
+
+Supported environment knobs:
+
+```bash
+PIPR_ACTION_IMAGE=pipr-action:act
+PIPR_SKIP_ACTION_IMAGE_BUILD=1
+PIPR_ACT_RUNNER_IMAGE=catthehacker/ubuntu:act-latest
+PIPR_ACT_PI_CALL_DIR=/tmp/pipr-pi-calls
+```
+
+Use `PIPR_SKIP_ACTION_IMAGE_BUILD=1` only when the target image already exists and should be reused.
+
+## CI Docker e2e
+
+CI does not run `act`. The CI workflow builds a local single-platform Docker image with `load: true`, tags it as `pipr-action:e2e`, and runs:
+
+```bash
+PIPR_ACTION_IMAGE=pipr-action:e2e bun run --cwd packages/e2e check:container
+```
+
+`check:container` verifies the Pi contract and runs direct-container equivalents of the dry-run, full, condensed, and orchestrator scenarios.
+
+To run the same check locally:
+
+```bash
+docker build -t pipr-action:e2e .
+PIPR_ACTION_IMAGE=pipr-action:e2e bun run --cwd packages/e2e check:container
+```
+
+## Docker image release
+
+The Docker image can be published by the release workflow or by the manual Docker image workflow:
+
+```text
+.github/workflows/release.yml
+.github/workflows/docker-image.yml
+```
+
+Both paths build a local `pipr-action:e2e` image and run `check:container` before publishing to GHCR. The manual workflow publishes only when the `push` input is `true`.
+
+The GHCR image name is:
+
+```text
+ghcr.io/somus/pipr-action
+```
+
+Publishing uses the tags:
+
+- release version, such as `0.1.0`
+- `sha-${{ github.sha }}`
+- `main`
+
+## npm and binary release
+
+GitHub Releases publish two artifacts:
+
+- compiled `pipr` CLI binaries attached to the release
+- `@pipr/sdk` published to npm
+
+Required release setup:
+
+- npm `@pipr` scope access
+- `@pipr/sdk` package already created on npm
+- npm trusted publisher configured for `somus/pipr`, workflow `release.yml`, allowed action `npm publish`
+- GHCR package write access through `GITHUB_TOKEN`
+
+The release workflow runs on `release.published`. The release tag must look like `v0.1.0`, and both root `package.json` and `packages/sdk/package.json` must match the tag without the leading `v`. The workflow grants `id-token: write` and uses npm trusted publishing, so it does not need an `NPM_TOKEN` secret.
+
+Configure trusted publishing through npm package settings, or with npm 11.15.0 or newer after the package exists:
+
+```bash
+cd packages/sdk
+npm trust github @pipr/sdk --repo somus/pipr --file release.yml --allow-publish
+```
+
+Build release binaries locally:
+
+```bash
+bun run build:release:cli
+```
+
+Build only the host binary:
+
+```bash
+bun run build:release:cli --host --outfile /tmp/pipr
+```
+
+Check the SDK package before publishing:
+
+```bash
+bun run --cwd packages/sdk build
+cd packages/sdk
+npm pack --dry-run --json
+```
+
+## GitHub push checklist
+
+Before pushing a public branch:
+
+```bash
+mise run check
+```
+
+For Action or Docker changes:
+
+```bash
+mise run check-actions
+```
+
+Initial remote setup:
+
+```bash
+git remote add origin git@github.com:somus/pipr.git
+git push -u origin main
+```
+
+Publish a GitHub Release from a semver tag when the package is ready:
+
+```bash
+gh release create v0.1.0 --draft --title v0.1.0 --generate-notes
+```
+
+The release workflow starts when the release is published.

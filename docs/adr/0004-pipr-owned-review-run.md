@@ -1,5 +1,7 @@
 # pipr-owned Review Run
 
+Status: Accepted
+
 The default `pipr.review()` recipe calls the pipr-owned Review Run through `ctx.change.diffManifest()` and `ctx.pi.run()`. The TypeScript config does not expose diff creation or review validation as userland blocks.
 
 The Review Run owns:

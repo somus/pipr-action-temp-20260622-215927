@@ -1,8 +1,25 @@
 {
   "name": "@pipr/sdk",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "TypeScript configuration SDK for pipr pull request review automation",
   "type": "module",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/somus/pipr.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/somus/pipr/issues"
+  },
+  "homepage": "https://github.com/somus/pipr#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "exports": {
@@ -17,6 +34,7 @@
     "test": "vitest run",
     "lint": "biome check src",
     "format:check": "biome check src",
+    "prepack": "bun run build",
     "check": "bun run lint && bun run typecheck && bun run test"
   },
   "devDependencies": {

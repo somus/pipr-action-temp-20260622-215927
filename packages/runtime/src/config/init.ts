@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPathContained, resolveContainedConfigDir } from "./paths.js";
 import { loadRuntimeProject } from "./project.js";
+import { embeddedSdkAssets } from "./sdk-assets.js";
 
 export type InitOfficialMinimalProjectOptions = {
   rootDir: string;
@@ -134,7 +135,7 @@ async function maybeLstat(
 }
 
 async function sdkDeclaration(): Promise<string> {
-  const declaration = await Bun.file(await sdkDeclarationPath()).text();
+  const declaration = await rawSdkDeclaration();
   return [
     "// biome-ignore-all format: generated from @pipr/sdk declarations",
     "// biome-ignore-all assist/source/organizeImports: generated from @pipr/sdk declarations",
@@ -148,7 +149,19 @@ async function sdkDeclaration(): Promise<string> {
   ].join("\n");
 }
 
-async function sdkDeclarationPath(): Promise<string> {
+async function rawSdkDeclaration(): Promise<string> {
+  const declarationPath = await sdkDeclarationPath();
+  if (declarationPath) {
+    return await Bun.file(declarationPath).text();
+  }
+  const embedded = embeddedSdkAssets().declaration;
+  if (embedded) {
+    return embedded;
+  }
+  throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
+}
+
+async function sdkDeclarationPath(): Promise<string | undefined> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.resolve(moduleDir, "../../sdk/dist/index.d.mts"),
@@ -160,7 +173,7 @@ async function sdkDeclarationPath(): Promise<string> {
       return candidate;
     }
   }
-  throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
+  return undefined;
 }
 
 const starterConfigTs = `import { definePipr } from "@pipr/sdk";
