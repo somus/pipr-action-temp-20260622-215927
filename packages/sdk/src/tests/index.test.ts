@@ -168,29 +168,27 @@ describe("definePipr", () => {
   it("validates builtin schema values", () => {
     expect("jsonSchema" in schemas.review).toBe(false);
     expect(() => schemas.summary.parse({ body: "Looks good." })).not.toThrow();
-    expect(() => schemas.summary.parse({ body: 123 })).toThrow("summary.body");
-    expect(() => schemas.summary.parse({ body: "Looks good.", risk: "low" })).toThrow(
-      "ReviewSummary.risk is not supported",
-    );
+    expect(() => schemas.summary.parse({ body: 123 })).toThrow("expected string");
+    expect(() => schemas.summary.parse({ body: "Looks good.", risk: "low" })).toThrow("risk");
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
         inlineFindings: [{ title: "Old title", ...validReviewFinding() }],
       }),
-    ).toThrow("ReviewFinding.title is not supported");
+    ).toThrow("title");
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
         inlineFindings: [],
         nonInlineFindings: [],
       }),
-    ).toThrow("nonInlineFindings is not supported");
+    ).toThrow("nonInlineFindings");
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
         inlineFindings: [validReviewFinding({ id: "finding-1" })],
       }),
-    ).toThrow("ReviewFinding.id is not supported");
+    ).toThrow("id");
     expect(
       schemas.review.parse({
         summary: { body: "Review." },
@@ -206,13 +204,13 @@ describe("definePipr", () => {
         summary: { body: "Review." },
         inlineFindings: [validReviewFinding({ data: { when: new Date() } })],
       }),
-    ).toThrow("finding.data must be JSON");
+    ).toThrow("Invalid input");
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
         inlineFindings: [validReviewFinding({ data: { values: new Map([["key", "value"]]) } })],
       }),
-    ).toThrow("finding.data must be JSON");
+    ).toThrow("Invalid input");
   });
 });
 

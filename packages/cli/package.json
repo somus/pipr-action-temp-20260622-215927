@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@actions/core": "3.0.1",
-    "@pipr/runtime": "workspace:*"
+    "@pipr/runtime": "workspace:*",
+    "commander": "15.0.0"
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { inspect, parseArgs } from "node:util";
+import { inspect } from "node:util";
 import * as core from "@actions/core";
 import {
   type ActionCommandResult,
@@ -11,132 +11,144 @@ import {
   runLocalTaskCommand,
   runValidateCommand,
 } from "@pipr/runtime";
+import { Command } from "commander";
+
+type ActionOptions = Parameters<typeof runActionCommand>[0];
 
 type CliOptions = {
   configDir: string;
   event?: string;
-  force: boolean;
-  trustedProvider?: {
-    providerId?: string;
-    provider?: string;
-    model?: string;
-    apiKeyEnv?: string;
-  };
-  requireEnv: boolean;
+  force?: boolean;
+  providerId?: string;
+  provider?: string;
+  model?: string;
+  apiKeyEnv?: string;
+  requireEnv?: boolean;
   base?: string;
   head?: string;
   piExecutable?: string;
 };
 
-type CommandHandler = (options: CliOptions) => Promise<void> | void;
-type LoadedActionResult = Exclude<ActionCommandResult, { kind: "ignored" }>;
-
-const help = `pipr
-
-Commands:
-  init [--config-dir .pipr] [--force]
-                                   Create editable TypeScript config
-  action [--config-dir .pipr] [--provider-id id] [--provider name] [--model model] [--api-key-env ENV]
-                                   Run inside GitHub Docker Action
-  check [--config-dir .pipr] [--require-env]
-                                   Type-load config and validate the runtime plan
-  dry-run --event event.json [--config-dir .pipr]
-                                   Load config and event without publishing
-  inspect [--config-dir .pipr]     Print models, agents, tasks, commands, locals, and tools
-  review --base sha [--head sha] [--config-dir .pipr]
-                                   Run local review entrypoint without publishing
-  run name --base sha [--head sha] [--config-dir .pipr]
-                                   Run a named local entrypoint without publishing
-`;
-
-const commandHandlers: Record<string, CommandHandler> = {
-  init: runInit,
-  action: runAction,
-  check: runCheck,
-  "dry-run": runDryRun,
-  inspect: runInspect,
-  review: runReview,
-  help: printHelp,
-  "--help": printHelp,
-  "-h": printHelp,
-};
-
 async function main(): Promise<void> {
-  const [command = "help", ...args] = process.argv.slice(2);
-  if (command === "run") {
-    await runLocal(args);
+  const program = createProgram();
+  if (process.argv.length <= 2) {
+    program.outputHelp();
     return;
   }
-  const handler = getCommandHandler(command);
-  if (!handler) {
-    throw new Error(`Unknown pipr command '${command}'`);
-  }
-  if (args.some(isHelpOption)) {
-    printHelp();
-    return;
-  }
-  await handler(parseOptions(args));
+  await program.parseAsync(process.argv);
+}
+
+function createProgram(): Command {
+  const program = new Command();
+  program.name("pipr").showHelpAfterError();
+
+  program
+    .command("init")
+    .description("Create editable TypeScript config")
+    .option("--config-dir <dir>", "Config directory", ".pipr")
+    .option("--force", "Overwrite existing pipr files")
+    .action(runInit);
+
+  program
+    .command("action")
+    .description("Run inside GitHub Docker Action")
+    .option("--config-dir <dir>", "Config directory", ".pipr")
+    .option("--provider-id <id>", "Trusted provider id")
+    .option("--provider <name>", "Trusted provider name")
+    .option("--model <model>", "Trusted provider model")
+    .option("--api-key-env <env>", "Trusted provider API key env var")
+    .action(runAction);
+
+  program
+    .command("check")
+    .description("Type-load config and validate the runtime plan")
+    .option("--config-dir <dir>", "Config directory", ".pipr")
+    .option("--require-env", "Require configured provider env vars")
+    .action(runCheck);
+
+  program
+    .command("dry-run")
+    .description("Load config and event without publishing")
+    .requiredOption("--event <path>", "GitHub event JSON path")
+    .option("--config-dir <dir>", "Config directory", ".pipr")
+    .action(runDryRun);
+
+  program
+    .command("inspect")
+    .description("Print models, agents, tasks, commands, locals, and tools")
+    .option("--config-dir <dir>", "Config directory", ".pipr")
+    .action(runInspect);
+
+  program
+    .command("review")
+    .description("Run local review entrypoint without publishing")
+    .option("--base <sha>", "Base commit SHA")
+    .option("--head <sha>", "Head commit SHA")
+    .option("--config-dir <dir>", "Config directory", ".pipr")
+    .option("--pi-executable <path>", "Pi executable path")
+    .action((options: CliOptions) => runLocalEntrypoint("review", options));
+
+  program
+    .command("run")
+    .description("Run a named local entrypoint without publishing")
+    .argument("<name>", "Local entrypoint name")
+    .option("--base <sha>", "Base commit SHA")
+    .option("--head <sha>", "Head commit SHA")
+    .option("--config-dir <dir>", "Config directory", ".pipr")
+    .option("--pi-executable <path>", "Pi executable path")
+    .action(runLocal);
+
+  return program;
 }
 
 async function runAction(options: CliOptions): Promise<void> {
-  const result = await runActionCommand({
-    rootDir: actionWorkspace(),
-    configDir: actionConfigDir(options),
+  writeActionResult(await runActionCommand(actionOptions(options)));
+}
+
+function actionOptions(options: CliOptions): ActionOptions {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath) {
+    throw new Error("GITHUB_EVENT_PATH is required for pipr action");
+  }
+  return {
+    rootDir: process.env.GITHUB_WORKSPACE ?? process.cwd(),
+    configDir: process.env["INPUT_CONFIG-DIR"] || options.configDir,
     env: process.env,
-    eventPath: actionEventPath(),
-    dryRun: isActionDryRun(),
-    trustedProvider: options.trustedProvider,
-  });
-  handleActionResult(result);
+    eventPath,
+    dryRun: process.env.PIPR_DRY_RUN === "1",
+    trustedProvider: {
+      providerId: options.providerId,
+      provider: options.provider,
+      model: options.model,
+      apiKeyEnv: options.apiKeyEnv,
+    },
+  };
 }
 
-function handleActionResult(result: ActionCommandResult): void {
+function writeActionResult(result: ActionCommandResult): void {
   if (result.kind === "ignored") {
-    handleIgnoredActionResult(result);
+    core.info(`pipr ignored event: ${result.reason}`);
     return;
   }
-  handleLoadedActionResult(result);
-}
 
-function handleLoadedActionResult(result: LoadedActionResult): void {
+  core.info(`pipr loaded PR #${result.event.pullRequestNumber} for ${result.event.repo}`);
+  core.info(`pipr config source: ${result.configSource}`);
+
   if (result.kind === "dry-run") {
-    handleDryRunActionResult(result);
+    core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
     return;
   }
-  handleCompletedActionResult(result);
-}
 
-function handleCompletedActionResult(
-  result: Exclude<LoadedActionResult, { kind: "dry-run" }>,
-): void {
   if (result.kind === "command-help") {
-    handleCommandHelpActionResult(result);
+    core.info(`pipr command help: ${result.reason}`);
+    core.setOutput("main-comment", result.body);
     return;
   }
-  handleReviewActionResult(result);
+
+  writeReviewActionResult(result);
 }
 
-function handleIgnoredActionResult(
-  result: Extract<ActionCommandResult, { kind: "ignored" }>,
-): void {
-  core.info(`pipr ignored event: ${result.reason}`);
-}
-
-function handleDryRunActionResult(result: Extract<ActionCommandResult, { kind: "dry-run" }>): void {
-  logActionContext(result);
-  core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
-}
-
-function handleCommandHelpActionResult(
-  result: Extract<ActionCommandResult, { kind: "command-help" }>,
-): void {
-  logActionContext(result);
-  core.info(`pipr command help: ${result.reason}`);
-  core.setOutput("main-comment", result.body);
-}
-
-function handleReviewActionResult(result: Extract<ActionCommandResult, { kind: "review" }>): void {
-  logActionContext(result);
+function writeReviewActionResult(result: Extract<ActionCommandResult, { kind: "review" }>): void {
   core.info(
     `pipr review produced ${result.review.validated.validFindings.length} valid inline finding(s), ` +
       `${result.review.validated.droppedFindings.length} dropped finding(s)`,
@@ -155,16 +167,11 @@ function handleReviewActionResult(result: Extract<ActionCommandResult, { kind: "
   core.setOutput("publication", JSON.stringify(result.publication));
 }
 
-function logActionContext(result: LoadedActionResult): void {
-  logActionEvent(result.event);
-  core.info(`pipr config source: ${result.configSource}`);
-}
-
 async function runInit(options: CliOptions): Promise<void> {
   const result = await runInitCommand({
     rootDir: process.cwd(),
     configDir: options.configDir,
-    force: options.force,
+    force: options.force === true,
   });
   console.log(
     `created ${result.created.length} file(s) in ${result.configDir}` +
@@ -177,7 +184,7 @@ async function runCheck(options: CliOptions): Promise<void> {
     rootDir: process.cwd(),
     configDir: options.configDir,
     env: process.env,
-    requireProviderEnv: options.requireEnv,
+    requireProviderEnv: options.requireEnv === true,
   });
   console.log(`valid: ${settings.source}`);
   for (const warning of settings.warnings) {
@@ -194,17 +201,8 @@ async function runInspect(options: CliOptions): Promise<void> {
   console.log(inspect(result, { depth: 8, colors: false }));
 }
 
-async function runReview(options: CliOptions): Promise<void> {
-  await runLocalEntrypoint("review", options);
-}
-
-async function runLocal(args: string[]): Promise<void> {
-  const [localName, ...options] = args;
-  if (!localName || isHelpOption(localName)) {
-    printHelp();
-    return;
-  }
-  await runLocalEntrypoint(localName, parseOptions(options));
+async function runLocal(localName: string, options: CliOptions): Promise<void> {
+  await runLocalEntrypoint(localName, options);
 }
 
 async function runLocalEntrypoint(localName: string, options: CliOptions): Promise<void> {
@@ -246,95 +244,6 @@ async function runDryRun(options: CliOptions): Promise<void> {
       { depth: 6, colors: false },
     ),
   );
-}
-
-function parseOptions(args: string[]): CliOptions {
-  const values = parseCliArgs(args);
-  return {
-    configDir: stringOption(values["config-dir"]) ?? ".pipr",
-    event: stringOption(values.event),
-    force: values.force === true,
-    trustedProvider: readTrustedProviderOptions(values),
-    requireEnv: values["require-env"] === true,
-    base: stringOption(values.base),
-    head: stringOption(values.head),
-    piExecutable: stringOption(values["pi-executable"]),
-  };
-}
-
-function parseCliArgs(args: string[]) {
-  return parseArgs({
-    args,
-    allowPositionals: false,
-    strict: true,
-    options: {
-      "config-dir": { type: "string" },
-      event: { type: "string" },
-      force: { type: "boolean" },
-      "provider-id": { type: "string" },
-      provider: { type: "string" },
-      model: { type: "string" },
-      "api-key-env": { type: "string" },
-      "require-env": { type: "boolean" },
-      base: { type: "string" },
-      head: { type: "string" },
-      "pi-executable": { type: "string" },
-    },
-  }).values;
-}
-
-function readTrustedProviderOptions(
-  values: ReturnType<typeof parseCliArgs>,
-): CliOptions["trustedProvider"] {
-  const trustedProvider = {
-    providerId: stringOption(values["provider-id"]),
-    provider: stringOption(values.provider),
-    model: stringOption(values.model),
-    apiKeyEnv: stringOption(values["api-key-env"]),
-  };
-  return Object.values(trustedProvider).some((value) => value !== undefined)
-    ? trustedProvider
-    : undefined;
-}
-
-function stringOption(value: string | boolean | string[] | undefined): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function getCommandHandler(command: string): CommandHandler | undefined {
-  return Object.hasOwn(commandHandlers, command) ? commandHandlers[command] : undefined;
-}
-
-function isHelpOption(arg: string): boolean {
-  return arg === "--help" || arg === "-h";
-}
-
-function actionWorkspace(): string {
-  return process.env.GITHUB_WORKSPACE ?? process.cwd();
-}
-
-function isActionDryRun(): boolean {
-  return process.env.PIPR_DRY_RUN === "1";
-}
-
-function actionConfigDir(options: CliOptions): string {
-  return process.env["INPUT_CONFIG-DIR"] || options.configDir;
-}
-
-function actionEventPath(): string {
-  const eventPath = process.env.GITHUB_EVENT_PATH;
-  if (!eventPath) {
-    throw new Error("GITHUB_EVENT_PATH is required for pipr action");
-  }
-  return eventPath;
-}
-
-function logActionEvent(event: { pullRequestNumber: number; repo: string }): void {
-  core.info(`pipr loaded PR #${event.pullRequestNumber} for ${event.repo}`);
-}
-
-function printHelp(): void {
-  console.log(help);
 }
 
 main().catch((error: unknown) => {

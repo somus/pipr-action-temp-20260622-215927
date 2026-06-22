@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 const configFactoryBrand = Symbol.for("pipr.config.factory");
 const builtinReadOnlyToolBrand = Symbol.for("pipr.builtin.readOnlyTool");
 
@@ -103,6 +105,7 @@ export type AgentTool<Input = unknown, Output = unknown> = {
   readonly output?: Schema<Output>;
 };
 
+/** Returns whether a tool is one of pipr's built-in read-only tools. */
 export function isBuiltinReadOnlyTool(tool: AgentTool): boolean {
   return Reflect.get(tool, builtinReadOnlyToolBrand) === true;
 }
@@ -356,6 +359,56 @@ export type TaskContext = {
   };
 };
 
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number().finite(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+const jsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), jsonValueSchema);
+const nonEmptyStringSchema = z.string().min(1);
+const positiveIntegerSchema = z.number().int().positive();
+
+const reviewSummarySchema = z.strictObject({
+  title: nonEmptyStringSchema.optional(),
+  body: nonEmptyStringSchema,
+});
+
+const reviewFindingShape = {
+  body: nonEmptyStringSchema,
+  path: nonEmptyStringSchema,
+  rangeId: nonEmptyStringSchema,
+  side: z.enum(["RIGHT", "LEFT"]),
+  startLine: positiveIntegerSchema,
+  endLine: positiveIntegerSchema,
+  suggestedFix: nonEmptyStringSchema.optional(),
+  data: jsonObjectSchema.optional(),
+};
+
+const reviewFindingSchema = z.strictObject(reviewFindingShape);
+
+const reviewResultSchema = z.strictObject({
+  summary: reviewSummarySchema,
+  inlineFindings: z.array(reviewFindingSchema),
+  metadata: jsonObjectSchema.optional(),
+});
+
+const reviewCandidatesSchema = z.strictObject({
+  summary: reviewSummarySchema.optional(),
+  candidates: z.array(
+    z.strictObject({
+      ...reviewFindingShape,
+      candidateId: nonEmptyStringSchema,
+    }),
+  ),
+});
+
+/** Defines a synchronous pipr configuration factory. */
 export function definePipr(configure: (pipr: PiprBuilder) => void): PiprConfigFactory {
   return {
     kind: "pipr.config-factory",
@@ -363,7 +416,11 @@ export function definePipr(configure: (pipr: PiprBuilder) => void): PiprConfigFa
     build() {
       const builder = createBuilder();
       const result = configure(builder.api);
-      if (isPromiseLike(result)) {
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        typeof Reflect.get(result, "then") === "function"
+      ) {
         throw new Error("definePipr configuration callback must be synchronous");
       }
       return builder.plan();
@@ -371,6 +428,7 @@ export function definePipr(configure: (pipr: PiprBuilder) => void): PiprConfigFa
   };
 }
 
+/** Checks that an unknown value is a pipr configuration factory. */
 export function isPiprConfigFactory(value: unknown): value is PiprConfigFactory {
   return (
     typeof value === "object" &&
@@ -380,10 +438,12 @@ export function isPiprConfigFactory(value: unknown): value is PiprConfigFactory 
   );
 }
 
+/** Builds a runtime plan from a pipr configuration factory. */
 export function buildPiprPlan(factory: PiprConfigFactory): RuntimePlan {
   return factory.build();
 }
 
+/** Defines a typed pipr plugin installer. */
 export function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle> {
   return { setup };
 }
@@ -410,7 +470,15 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
   let limits: RuntimeLimits | undefined;
 
   const api: PiprBuilder = {
-    tools: { readOnly: [createBuiltinReadOnlyTool()] },
+    tools: {
+      readOnly: [
+        {
+          kind: "pipr.tool",
+          name: "readOnly",
+          [builtinReadOnlyToolBrand]: true,
+        } as AgentTool,
+      ],
+    },
     schemas,
     on: {
       changeRequest(actions, task) {
@@ -455,7 +523,13 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       registerReviewRecipe(api, publication, options);
     },
     command(pattern, options, task) {
-      assertCommandPattern(pattern);
+      const tokens = pattern.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) {
+        throw new Error("Command pattern must not be empty");
+      }
+      if (tokens[0] !== "@pipr") {
+        throw new Error(`Command pattern '${pattern}' must start with @pipr`);
+      }
       commands.push({
         pattern,
         permission: options.permission ?? "write",
@@ -489,9 +563,16 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       return tool;
     },
     prompt(strings, ...values) {
+      let text = "";
+      for (let index = 0; index < strings.length; index += 1) {
+        text += strings[index] ?? "";
+        if (index < values.length) {
+          text += renderPromptValue(values[index]);
+        }
+      }
       return {
         kind: "pipr.prompt",
-        value: renderPromptTemplate(strings, values),
+        value: stripCommonIndent(text).trim(),
       };
     },
     section(title, value) {
@@ -546,32 +627,13 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
   };
 }
 
-function createBuiltinReadOnlyTool(): AgentTool {
-  return {
-    kind: "pipr.tool",
-    name: "readOnly",
-    [builtinReadOnlyToolBrand]: true,
-  } as AgentTool;
-}
-
 function registerReviewRecipe(
   api: PiprBuilder,
   publication: RuntimePlan["publication"],
   options: ReviewRecipeOptions,
 ): void {
   const name = options.name ?? "review";
-  const agent = createReviewRecipeAgent(api, name, options);
-  const task = createReviewRecipeTask(api, name, agent, options);
-  registerReviewRecipeTriggers(api, task, options);
-  updateReviewRecipePublication(publication, options);
-}
-
-function createReviewRecipeAgent(
-  api: PiprBuilder,
-  name: string,
-  options: ReviewRecipeOptions,
-): Agent<DefaultReviewInput, ReviewResult> {
-  return api.agent<DefaultReviewInput, ReviewResult>({
+  const agent = api.agent<DefaultReviewInput, ReviewResult>({
     name,
     model: options.model,
     fallbacks: options.fallbacks,
@@ -579,17 +641,19 @@ function createReviewRecipeAgent(
     tools: options.tools ?? api.tools.readOnly,
     output: api.schemas.review,
     timeout: options.timeout,
-    prompt: options.prompt ?? defaultReviewRecipePrompt(api),
+    prompt:
+      options.prompt ??
+      ((input) =>
+        api.prompt`
+          Review this change.
+
+          ${api.section("Changed files and valid comment locations", api.compactManifest(input.manifest))}
+        `),
   });
-}
 
-function defaultReviewRecipePrompt(api: PiprBuilder): (input: DefaultReviewInput) => PromptSource {
-  return (input) =>
-    api.prompt`
-      Review this change.
-
-      ${api.section("Changed files and valid comment locations", api.compactManifest(input.manifest))}
-    `;
+  const task = createReviewRecipeTask(api, name, agent, options);
+  registerReviewRecipeEntrypoints(api, task, options);
+  updateReviewRecipePublication(publication, options);
 }
 
 function createReviewRecipeTask(
@@ -610,7 +674,7 @@ function createReviewRecipeTask(
   });
 }
 
-function registerReviewRecipeTriggers(
+function registerReviewRecipeEntrypoints(
   api: PiprBuilder,
   task: Task,
   options: ReviewRecipeOptions,
@@ -636,67 +700,38 @@ function updateReviewRecipePublication(
   publication: RuntimePlan["publication"],
   options: ReviewRecipeOptions,
 ): void {
-  const next = reviewRecipePublication(options);
+  const maxInlineComments =
+    options.inlineComments === false ? 0 : (options.inlineComments?.max ?? 5);
   if (
     publication.maxInlineComments !== undefined &&
-    publication.maxInlineComments !== next.maxInlineComments
+    publication.maxInlineComments !== maxInlineComments
   ) {
     throw new Error("pipr.review inlineComments settings must match across review recipes");
   }
-  publication.maxInlineComments = next.maxInlineComments;
+  publication.maxInlineComments = maxInlineComments;
 }
 
-function reviewRecipePublication(options: ReviewRecipeOptions): RuntimePlan["publication"] {
-  return {
-    maxInlineComments: options.inlineComments === false ? 0 : (options.inlineComments?.max ?? 5),
-  };
-}
-
+/** Parses model output for pipr's main pull request review schema. */
 export function parseReviewResult(value: unknown): ReviewResult {
-  const record = requireRecord(value, "ReviewResult");
-  assertOnlyKeys(record, "ReviewResult", ["summary", "inlineFindings", "metadata"]);
-  const summary = parseReviewSummary(record.summary);
-  const inlineFindings = requireArray(record.inlineFindings, "ReviewResult.inlineFindings").map(
-    parseReviewFinding,
-  );
-  const metadata =
-    record.metadata === undefined ? undefined : requireJsonObject(record.metadata, "metadata");
-  return metadata === undefined
-    ? { summary, inlineFindings }
-    : { summary, inlineFindings, metadata };
+  return reviewResultSchema.parse(value) as ReviewResult;
 }
 
+/** Parses model output for pipr's candidate review schema. */
 export function parseReviewCandidates(value: unknown): ReviewCandidates {
-  const record = requireRecord(value, "ReviewCandidates");
-  assertOnlyKeys(record, "ReviewCandidates", ["summary", "candidates"]);
-  const summary = record.summary === undefined ? undefined : parseReviewSummary(record.summary);
-  const candidates = requireArray(record.candidates, "ReviewCandidates.candidates").map(
-    (candidate) => {
-      const candidateRecord = requireRecord(candidate, "candidate");
-      const parsed = parseReviewFindingRecord(candidateRecord, ["candidateId"]) as ReviewFinding & {
-        candidateId: string;
-      };
-      parsed.candidateId = requireString(candidateRecord.candidateId, "candidateId");
-      return parsed;
-    },
-  );
-  return summary === undefined ? { candidates } : { summary, candidates };
+  return reviewCandidatesSchema.parse(value) as ReviewCandidates;
 }
 
+/** Parses a review summary value. */
 export function parseReviewSummary(value: unknown): ReviewSummary {
-  const record = requireRecord(value, "ReviewSummary");
-  assertOnlyKeys(record, "ReviewSummary", ["title", "body"]);
-  const summary: ReviewSummary = { body: requireString(record.body, "summary.body") };
-  if (record.title !== undefined) {
-    summary.title = requireString(record.title, "summary.title");
-  }
-  return summary;
+  return reviewSummarySchema.parse(value);
 }
 
+/** Parses one inline review finding. */
 export function parseReviewFinding(value: unknown): ReviewFinding {
-  return parseReviewFindingRecord(requireRecord(value, "ReviewFinding"), []);
+  return reviewFindingSchema.parse(value) as ReviewFinding;
 }
 
+/** Returns a small valid example for the main pull request review schema. */
 export function reviewSchemaExample(): ReviewResult {
   return {
     summary: {
@@ -733,7 +768,11 @@ function createAgent<Input, Output>(
         instructions:
           patch.instructions === undefined
             ? definition.instructions
-            : joinPromptSources(definition.instructions, patch.instructions),
+            : {
+                kind: "pipr.prompt",
+                value:
+                  `${renderPromptValue(definition.instructions)}\n\n${renderPromptValue(patch.instructions)}`.trim(),
+              },
       });
     },
   };
@@ -759,157 +798,7 @@ function createSchema<T>(id: string, parseValue: (value: unknown) => T): Schema<
   };
 }
 
-function parseReviewFindingRecord(
-  record: Record<string, unknown>,
-  extraKeys: string[],
-): ReviewFinding {
-  assertOnlyKeys(record, "ReviewFinding", [
-    "body",
-    "path",
-    "rangeId",
-    "side",
-    "startLine",
-    "endLine",
-    "suggestedFix",
-    "data",
-    ...extraKeys,
-  ]);
-  const finding: ReviewFinding = {
-    body: requireString(record.body, "finding.body"),
-    path: requireString(record.path, "finding.path"),
-    rangeId: requireString(record.rangeId, "finding.rangeId"),
-    side: requireEnum(record.side, "finding.side", ["RIGHT", "LEFT"]),
-    startLine: requirePositiveInteger(record.startLine, "finding.startLine"),
-    endLine: requirePositiveInteger(record.endLine, "finding.endLine"),
-  };
-  if (record.suggestedFix !== undefined) {
-    finding.suggestedFix = requireString(record.suggestedFix, "finding.suggestedFix");
-  }
-  if (record.data !== undefined) {
-    finding.data = requireJsonObject(record.data, "finding.data");
-  }
-  return finding;
-}
-
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function requireArray(value: unknown, label: string): unknown[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} must be an array`);
-  }
-  return value;
-}
-
-function requireString(value: unknown, label: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${label} must be a non-empty string`);
-  }
-  return value;
-}
-
-function requirePositiveInteger(value: unknown, label: string): number {
-  if (!Number.isInteger(value) || typeof value !== "number" || value <= 0) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return value;
-}
-
-function requireEnum<const T extends readonly [string, ...string[]]>(
-  value: unknown,
-  label: string,
-  allowed: T,
-): T[number] {
-  if (typeof value !== "string" || !allowed.includes(value)) {
-    throw new Error(`${label} must be one of: ${allowed.join(", ")}`);
-  }
-  return value;
-}
-
-function assertOnlyKeys(record: Record<string, unknown>, label: string, allowed: string[]): void {
-  const allowedSet = new Set(allowed);
-  for (const key of Object.keys(record)) {
-    if (!allowedSet.has(key)) {
-      throw new Error(`${label}.${key} is not supported`);
-    }
-  }
-}
-
-function requireJsonObject(value: unknown, label: string): JsonObject {
-  if (!isJsonRecord(value)) {
-    throw new Error(`${label} must be a JSON object`);
-  }
-  return requireJsonObjectValue(value, label, new WeakSet<object>());
-}
-
-function requireJsonValueInner(value: unknown, label: string, seen: WeakSet<object>): JsonValue {
-  if (isJsonPrimitive(value)) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return requireJsonArray(value, label, seen);
-  }
-  if (isJsonRecord(value)) {
-    return requireJsonObjectValue(value, label, seen);
-  }
-  throw new Error(`${label} must be JSON`);
-}
-
-function isJsonPrimitive(value: unknown): value is JsonPrimitive {
-  return (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    (typeof value === "number" && Number.isFinite(value))
-  );
-}
-
-function isJsonRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function requireJsonArray(value: unknown[], label: string, seen: WeakSet<object>): JsonValue[] {
-  assertJsonTreeNotSeen(value, label, seen);
-  return value.map((item) => requireJsonValueInner(item, label, seen));
-}
-
-function requireJsonObjectValue(
-  value: Record<string, unknown>,
-  label: string,
-  seen: WeakSet<object>,
-): JsonObject {
-  assertJsonTreeNotSeen(value, label, seen);
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, requireJsonValueInner(item, label, seen)]),
-  );
-}
-
-function assertJsonTreeNotSeen(value: object, label: string, seen: WeakSet<object>): void {
-  if (seen.has(value)) {
-    throw new Error(`${label} must be JSON`);
-  }
-  seen.add(value);
-}
-
-function renderPromptTemplate(strings: TemplateStringsArray, values: PromptValue[]): string {
-  let text = "";
-  for (let index = 0; index < strings.length; index += 1) {
-    text += strings[index] ?? "";
-    if (index < values.length) {
-      text += renderPromptValue(values[index]);
-    }
-  }
-  return stripCommonIndent(text).trim();
-}
-
+/** Renders a prompt source/value into plain text for Pi prompts. */
 export function renderPromptValue(value: PromptValue): string {
   if (value === undefined || value === null) {
     return "";
@@ -920,23 +809,10 @@ export function renderPromptValue(value: PromptValue): string {
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
-  if (isPromptText(value)) {
-    return value.value;
+  if (typeof value === "object" && value !== null && Reflect.get(value, "kind") === "pipr.prompt") {
+    return (value as PromptText).value;
   }
   return JSON.stringify(value, null, 2);
-}
-
-function joinPromptSources(left: PromptSource, right: PromptSource): PromptText {
-  return {
-    kind: "pipr.prompt",
-    value: `${renderPromptValue(left)}\n\n${renderPromptValue(right)}`.trim(),
-  };
-}
-
-function isPromptText(value: unknown): value is PromptText {
-  return (
-    typeof value === "object" && value !== null && Reflect.get(value, "kind") === "pipr.prompt"
-  );
 }
 
 function stripCommonIndent(value: string): string {
@@ -971,20 +847,4 @@ function assertUnique(values: string[], label: string): void {
     }
     seen.add(value);
   }
-}
-
-function assertCommandPattern(pattern: string): void {
-  const tokens = pattern.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) {
-    throw new Error("Command pattern must not be empty");
-  }
-  if (tokens[0] !== "@pipr") {
-    throw new Error(`Command pattern '${pattern}' must start with @pipr`);
-  }
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    typeof value === "object" && value !== null && typeof Reflect.get(value, "then") === "function"
-  );
 }

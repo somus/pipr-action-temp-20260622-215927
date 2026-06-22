@@ -10,14 +10,18 @@ const cliPath = path.resolve("src/main.ts");
 
 describe("pipr CLI", () => {
   it("prints TS-first subcommands", async () => {
-    const result = await runCli(["action", "--help"]);
+    const result = await runCli(["--help"]);
+    const action = await runCli(["action", "--help"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("init [--config-dir .pipr] [--force]");
-    expect(result.stdout).toContain("check [--config-dir .pipr] [--require-env]");
-    expect(result.stdout).toContain("inspect [--config-dir .pipr]");
-    expect(result.stdout).toContain("review --base sha");
-    expect(result.stdout).toContain("run name --base sha");
+    expect(action.exitCode).toBe(0);
+    expect(result.stdout).toContain("init [options]");
+    expect(result.stdout).toContain("check [options]");
+    expect(result.stdout).toContain("inspect [options]");
+    expect(result.stdout).toContain("review [options]");
+    expect(result.stdout).toContain("run [options] <name>");
+    expect(action.stdout).toContain("--config-dir <dir>");
+    expect(action.stdout).toContain("--provider-id <id>");
     expect(result.stdout).not.toContain("graph");
     expect(result.stdout).not.toContain("explain-config");
     expect(result.stdout).not.toContain("list-blocks");
@@ -42,7 +46,7 @@ describe("pipr CLI", () => {
       const result = await runCli([command]);
 
       expect(result.exitCode).toBe(1);
-      expect(`${result.stdout}\n${result.stderr}`).toContain(`Unknown pipr command '${command}'`);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(`unknown command '${command}'`);
     }
   });
 
@@ -149,9 +153,9 @@ describe("pipr CLI", () => {
     const option = await runCli(["check", "toString"]);
 
     expect(command.exitCode).toBe(1);
-    expect(`${command.stdout}\n${command.stderr}`).toContain("Unknown pipr command 'toString'");
+    expect(`${command.stdout}\n${command.stderr}`).toContain("unknown command 'toString'");
     expect(option.exitCode).toBe(1);
-    expect(`${option.stdout}\n${option.stderr}`).toContain("Unexpected argument 'toString'");
+    expect(`${option.stdout}\n${option.stderr}`).toContain("too many arguments");
   });
 
   it("runs action dry-run without requiring provider env", async () => {

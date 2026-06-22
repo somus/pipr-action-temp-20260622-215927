@@ -95,6 +95,7 @@ type AgentTool<Input = unknown, Output = unknown> = {
   readonly input?: Schema<Input>;
   readonly output?: Schema<Output>;
 };
+/** Returns whether a tool is one of pipr's built-in read-only tools. */
 function isBuiltinReadOnlyTool(tool: AgentTool): boolean;
 type AgentPromptContext = {
   runId: string;
@@ -329,16 +330,26 @@ type TaskContext = {
     error(message: string): void;
   };
 };
+/** Defines a synchronous pipr configuration factory. */
 function definePipr(configure: (pipr: PiprBuilder) => void): PiprConfigFactory;
+/** Checks that an unknown value is a pipr configuration factory. */
 function isPiprConfigFactory(value: unknown): value is PiprConfigFactory;
+/** Builds a runtime plan from a pipr configuration factory. */
 function buildPiprPlan(factory: PiprConfigFactory): RuntimePlan;
+/** Defines a typed pipr plugin installer. */
 function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle>;
 const schemas: BuiltinSchemaCatalog;
+/** Parses model output for pipr's main pull request review schema. */
 function parseReviewResult(value: unknown): ReviewResult;
+/** Parses model output for pipr's candidate review schema. */
 function parseReviewCandidates(value: unknown): ReviewCandidates;
+/** Parses a review summary value. */
 function parseReviewSummary(value: unknown): ReviewSummary;
+/** Parses one inline review finding. */
 function parseReviewFinding(value: unknown): ReviewFinding;
+/** Returns a small valid example for the main pull request review schema. */
 function reviewSchemaExample(): ReviewResult;
+/** Renders a prompt source/value into plain text for Pi prompts. */
 function renderPromptValue(value: PromptValue): string;
 //#endregion
 export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommandOptions, ConsolidatedReview, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonValue, ModelOptions, ModelProfile, OutputCollector, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCandidates, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, SectionContributionOptions, SummaryContributionOptions, Task, TaskContext, TaskHandler, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, parseReviewCandidates, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schemas };
