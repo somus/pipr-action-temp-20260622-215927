@@ -207,6 +207,9 @@ describe("runActionCommand pull_request dispatch", () => {
       expect(process.env.GIT_CONFIG_COUNT).toBe("1");
       expect(process.env.GIT_CONFIG_KEY_0).toBe("safe.directory");
       expect(process.env.GIT_CONFIG_VALUE_0).toBe(workspace.rootDir);
+      expect(runGitCommand(["config", "--get-all", "safe.directory"], workspace.rootDir)).toContain(
+        workspace.rootDir,
+      );
       await expect(Bun.file(path.join(gitConfigDir, ".gitconfig")).text()).resolves.toContain(
         `directory = ${workspace.rootDir}`,
       );

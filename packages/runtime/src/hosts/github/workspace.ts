@@ -107,6 +107,7 @@ function hasGitCommit(rootDir: string, sha: string): boolean {
 function runGit(rootDir: string, args: string[]): string {
   const result = Bun.spawnSync(["git", ...args], {
     cwd: rootDir,
+    env: process.env,
     stderr: "pipe",
     stdout: "pipe",
   });

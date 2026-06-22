@@ -190,6 +190,7 @@ function readGitBlobSlice(options: {
 }): { available: boolean; content?: string; bytes?: number; truncated?: boolean } {
   const result = Bun.spawnSync(["git", "show", `${options.ref}:${options.filePath}`], {
     cwd: options.cwd,
+    env: process.env,
     maxBuffer: 16 * 1024 * 1024,
     stderr: "pipe",
     stdout: "pipe",

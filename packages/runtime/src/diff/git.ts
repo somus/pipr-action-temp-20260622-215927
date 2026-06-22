@@ -1,6 +1,7 @@
 export function runGit(args: string[], cwd: string, maxBuffer?: number): string {
   const result = Bun.spawnSync(["git", ...args], {
     cwd,
+    env: process.env,
     maxBuffer,
     stderr: "pipe",
     stdout: "pipe",
