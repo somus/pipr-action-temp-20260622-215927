@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 import { runGit } from "../../diff/git.js";
 import { loadRuntimeProjectFromGitCommit } from "../git-project.js";
 
@@ -10,11 +10,11 @@ describe("loadRuntimeProjectFromGitCommit", () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-git-project-"));
     await initGitRepo(rootDir);
     await mkdir(path.join(rootDir, ".pipr", "prompts"), { recursive: true });
-    await writeFile(
+    await Bun.write(
       path.join(rootDir, ".pipr", "prompts", "reviewer\tcopy.ts"),
       'export const reviewerInstructions = "Review copy."; \n',
     );
-    await writeFile(
+    await Bun.write(
       path.join(rootDir, ".pipr", "config.ts"),
       [
         'import { definePipr } from "@pipr/sdk";',
@@ -48,7 +48,7 @@ describe("loadRuntimeProjectFromGitCommit", () => {
   it("fails clearly when the base commit does not contain pipr config", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-git-project-"));
     await initGitRepo(rootDir);
-    await writeFile(path.join(rootDir, "README.md"), "# empty\n");
+    await Bun.write(path.join(rootDir, "README.md"), "# empty\n");
     runGit(["add", "."], rootDir);
     runGit(["commit", "--no-verify", "-m", "base"], rootDir);
     const baseSha = runGit(["rev-parse", "HEAD"], rootDir).trim();

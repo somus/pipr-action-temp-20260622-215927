@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createDiffRangeIndex } from "../../diff/ranges.js";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { ReviewFinding } from "../../types.js";

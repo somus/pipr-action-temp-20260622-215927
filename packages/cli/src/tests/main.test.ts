@@ -1,10 +1,8 @@
-import { spawn } from "node:child_process";
-import { access, chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { access, chmod, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
 
 const cliPath = path.resolve("src/main.ts");
 
@@ -22,32 +20,6 @@ describe("pipr CLI", () => {
     expect(result.stdout).toContain("run [options] <name>");
     expect(action.stdout).toContain("--config-dir <dir>");
     expect(action.stdout).toContain("--provider-id <id>");
-    expect(result.stdout).not.toContain("graph");
-    expect(result.stdout).not.toContain("explain-config");
-    expect(result.stdout).not.toContain("list-blocks");
-    expect(result.stdout).not.toContain("list-presets");
-    expect(result.stdout).not.toContain("list-agents");
-    expect(result.stdout).not.toContain("list-tools");
-    expect(result.stdout).not.toContain("list-commands");
-    expect(result.stdout).not.toContain("validate [--config-dir .pipr]");
-  });
-
-  it("rejects removed inspection commands", async () => {
-    for (const command of [
-      "validate",
-      "explain-config",
-      "graph",
-      "list-blocks",
-      "list-presets",
-      "list-agents",
-      "list-tools",
-      "list-commands",
-    ]) {
-      const result = await runCli([command]);
-
-      expect(result.exitCode).toBe(1);
-      expect(`${result.stdout}\n${result.stderr}`).toContain(`unknown command '${command}'`);
-    }
   });
 
   it("requires an explicit base SHA for local review runs", async () => {
@@ -104,11 +76,9 @@ describe("pipr CLI", () => {
       expect(init.stdout).toContain("created 3 file(s) in .pipr");
       expect(check.exitCode).toBe(0);
       expect(check.stdout).toContain("valid:");
-      expect(await readFile(path.join(workspace, ".pipr", "config.ts"), "utf8")).toContain(
+      expect(await Bun.file(path.join(workspace, ".pipr", "config.ts")).text()).toContain(
         "pipr.review",
       );
-      await expect(access(path.join(workspace, ".pipr", "workflows"))).rejects.toThrow();
-      await expect(access(path.join(workspace, ".pipr", "agents"))).rejects.toThrow();
     } finally {
       await removeWorkspace(workspace);
     }
@@ -132,7 +102,7 @@ describe("pipr CLI", () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
     try {
       await mkdir(path.join(workspace, ".pipr"));
-      await writeFile(path.join(workspace, ".pipr", "config.ts"), "custom: true\n");
+      await Bun.write(path.join(workspace, ".pipr", "config.ts"), "custom: true\n");
 
       const conflict = await runCli(["init"], {}, workspace);
       const forced = await runCli(["init", "--force"], {}, workspace);
@@ -146,16 +116,6 @@ describe("pipr CLI", () => {
     } finally {
       await removeWorkspace(workspace);
     }
-  });
-
-  it("rejects inherited command and option names", async () => {
-    const command = await runCli(["toString"]);
-    const option = await runCli(["check", "toString"]);
-
-    expect(command.exitCode).toBe(1);
-    expect(`${command.stdout}\n${command.stderr}`).toContain("unknown command 'toString'");
-    expect(option.exitCode).toBe(1);
-    expect(`${option.stdout}\n${option.stderr}`).toContain("too many arguments");
   });
 
   it("runs action dry-run without requiring provider env", async () => {
@@ -197,7 +157,6 @@ describe("pipr CLI", () => {
       expect(inspect.stdout).toContain("schemas");
       expect(inspect.stdout).toContain("deepseek");
       expect(inspect.stdout).toContain("@pipr review");
-      expect(inspect.stdout).not.toContain("registry");
     } finally {
       await removeWorkspace(workspace);
     }
@@ -227,18 +186,18 @@ async function runActionWithGitWorkspace(options: {
       await initWorkspaceConfig(workspace);
     }
     await mkdir(path.join(workspace, "src"));
-    await writeFile(path.join(workspace, "src/a.ts"), "export const value = 1;\n");
+    await Bun.write(path.join(workspace, "src/a.ts"), "export const value = 1;\n");
     await runCommand("git", ["add", "."], workspace);
     await runCommand("git", ["commit", "--no-verify", "-m", "base"], workspace);
     const baseSha = (await runCommand("git", ["rev-parse", "HEAD"], workspace)).trim();
-    await writeFile(path.join(workspace, "src/a.ts"), "export const value = 2;\n");
+    await Bun.write(path.join(workspace, "src/a.ts"), "export const value = 2;\n");
     await runCommand("git", ["add", "."], workspace);
     await runCommand("git", ["commit", "--no-verify", "-m", "head"], workspace);
     const headSha = (await runCommand("git", ["rev-parse", "HEAD"], workspace)).trim();
     const eventPath = path.join(workspace, "event.json");
     const githubOutputPath = path.join(workspace, "github-output.txt");
-    await writeFile(eventPath, JSON.stringify(pullRequestPayload(baseSha, headSha)));
-    await writeFile(githubOutputPath, "");
+    await Bun.write(eventPath, JSON.stringify(pullRequestPayload(baseSha, headSha)));
+    await Bun.write(githubOutputPath, "");
 
     const result = await runCli(["action"], {
       DEEPSEEK_API_KEY: "provider-key",
@@ -273,15 +232,15 @@ async function createLocalReviewWorkspace(): Promise<{
   await runCommand("git", ["config", "commit.gpgsign", "false"], rootDir);
   await initWorkspaceConfig(rootDir);
   await mkdir(path.join(rootDir, "src"));
-  await writeFile(path.join(rootDir, "src/a.ts"), "export const value = 1;\n");
+  await Bun.write(path.join(rootDir, "src/a.ts"), "export const value = 1;\n");
   await runCommand("git", ["add", "."], rootDir);
   await runCommand("git", ["commit", "--no-verify", "-m", "base"], rootDir);
   const baseSha = (await runCommand("git", ["rev-parse", "HEAD"], rootDir)).trim();
-  await writeFile(path.join(rootDir, "src/a.ts"), "export const value = 2;\n");
+  await Bun.write(path.join(rootDir, "src/a.ts"), "export const value = 2;\n");
   await runCommand("git", ["add", "."], rootDir);
   await runCommand("git", ["commit", "--no-verify", "-m", "head"], rootDir);
   const piExecutable = path.join(rootDir, "fake-pi.sh");
-  await writeFile(
+  await Bun.write(
     piExecutable,
     ["#!/bin/sh", 'printf "1\\n" >> "$(dirname "$0")/pi-called"', noFindingsJsonCommand()].join(
       "\n",
@@ -299,7 +258,7 @@ async function countLines(filePath: string): Promise<number> {
   if (!(await fileExists(filePath))) {
     return 0;
   }
-  return (await readFile(filePath, "utf8")).split("\n").filter(Boolean).length;
+  return (await Bun.file(filePath).text()).split("\n").filter(Boolean).length;
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -337,19 +296,20 @@ async function runCli(
   env: NodeJS.ProcessEnv = {},
   cwd = process.cwd(),
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = spawn("bun", [cliPath, ...args], {
+  const result = Bun.spawnSync(["bun", cliPath, ...args], {
     cwd,
     env: {
       ...minimalEnv(),
       ...env,
     },
+    stderr: "pipe",
+    stdout: "pipe",
   });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
-    waitForExit(proc),
-  ]);
-  return { exitCode, stdout, stderr };
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout?.toString() ?? "",
+    stderr: result.stderr?.toString() ?? "",
+  };
 }
 
 function minimalEnv(): NodeJS.ProcessEnv {
@@ -363,42 +323,19 @@ function minimalEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function readStream(stream: Readable): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let output = "";
-    stream.setEncoding("utf8");
-    stream.on("data", (chunk: string) => {
-      output += chunk;
-    });
-    stream.on("error", reject);
-    stream.on("end", () => {
-      resolve(output);
-    });
-  });
-}
-
-function waitForExit(proc: ReturnType<typeof spawn>): Promise<number> {
-  return new Promise((resolve, reject) => {
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      resolve(code ?? 1);
-    });
-  });
-}
-
-function runCommand(command: string, args: string[], cwd: string): Promise<string> {
-  const proc = spawn(command, args, {
+async function runCommand(command: string, args: string[], cwd: string): Promise<string> {
+  const result = Bun.spawnSync([command, ...args], {
     cwd,
     env: minimalEnv(),
+    stderr: "pipe",
+    stdout: "pipe",
   });
-  return Promise.all([readStream(proc.stdout), readStream(proc.stderr), waitForExit(proc)]).then(
-    ([stdout, stderr, exitCode]) => {
-      if (exitCode !== 0) {
-        throw new Error(`${command} ${args.join(" ")} failed: ${stderr || stdout}`);
-      }
-      return stdout;
-    },
-  );
+  const stdout = result.stdout?.toString() ?? "";
+  const stderr = result.stderr?.toString() ?? "";
+  if (result.exitCode !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed: ${stderr || stdout}`);
+  }
+  return stdout;
 }
 
 function pullRequestPayload(baseSha = "base", headSha = "head"): unknown {

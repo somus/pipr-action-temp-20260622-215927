@@ -15,7 +15,6 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Use `mise run install` for local dependency setup.
 - Use `mise run check` before opening or updating a pull request.
 - Use `mise run check-actions` after editing the GitHub Action, Docker Action packaging, workflow fixtures, Pi CLI mapping, or PR event handling.
-- Use `mise run act-pr` only when the local Action fixture is the narrowest useful check.
 - Use `bun run fallow` when working on maintainability, dependency hygiene, dead exports, duplication, or complexity.
 - Use package-level commands during development when narrower feedback is enough.
 
@@ -46,7 +45,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Organize package internals into domain folders such as `src/action`, `src/config`, `src/diff`, `src/pi`, `src/review`, and `src/shared`.
 - Name modules by current responsibility. Avoid `legacy`, `compat`, or old-system names for unreleased code.
 - Keep docs in `docs/`; keep ADRs in `docs/adr/`.
-- Keep local Action fixtures under `test/fixtures/`.
+- Keep local Action e2e harness under `packages/e2e`.
 - Test-only helpers should live in the nearest `tests/helpers.ts` or `tests/helpers/*`.
 
 ## Test Organization

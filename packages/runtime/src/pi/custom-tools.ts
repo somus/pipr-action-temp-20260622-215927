@@ -1,7 +1,4 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { piRuntimeToolsExtensionPath } from "./runtime-tools.js";
@@ -45,7 +42,7 @@ export async function preparePiCustomTools(options: {
   const toolRoot = path.join(options.root, "custom-tools");
   await mkdir(toolRoot, { recursive: true });
   const dataPath = path.join(toolRoot, "data.json");
-  await writeFile(
+  await Bun.write(
     dataPath,
     JSON.stringify({
       tools: options.request.tools.map((tool) => ({
@@ -53,7 +50,6 @@ export async function preparePiCustomTools(options: {
         description: tool.description,
       })),
     }),
-    "utf8",
   );
 
   const bridge = await startCustomToolBridge(options.request.tools, options.request.context);
@@ -71,89 +67,79 @@ async function startCustomToolBridge(
   tools: readonly PiCustomToolDefinition[],
   context: unknown,
 ): Promise<{ url: string; token: string; close(): Promise<void> }> {
-  const token = randomBytes(24).toString("hex");
+  const token = randomTokenHex(24);
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
-  const server = createServer((request, response) => {
-    void handleBridgeRequest(request, response, token, toolsByName, context);
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-
-  const address = server.address() as AddressInfo;
+  let server: ReturnType<typeof Bun.serve> | undefined;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const port = 49152 + (crypto.getRandomValues(new Uint16Array(1))[0] % 16384);
+    try {
+      server = Bun.serve({
+        hostname: "127.0.0.1",
+        port,
+        fetch: (request) => handleBridgeRequest(request, token, toolsByName, context),
+      });
+      break;
+    } catch (error) {
+      const code = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
+      if (code !== "EADDRINUSE") {
+        throw error;
+      }
+    }
+  }
+  if (!server) {
+    throw new Error("Unable to start custom tool bridge");
+  }
   return {
-    url: `http://127.0.0.1:${address.port}`,
+    url: `http://127.0.0.1:${server.port}`,
     token,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      }),
+    close: async () => {
+      server.stop(true);
+    },
   };
 }
 
 async function handleBridgeRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
+  request: Request,
   token: string,
   tools: Map<string, PiCustomToolDefinition>,
   context: unknown,
-): Promise<void> {
+): Promise<Response> {
   try {
-    if (request.method !== "POST" || request.url !== "/call") {
-      writeJson(response, 404, { ok: false, error: "Unknown custom tool bridge route" });
-      return;
+    if (request.method !== "POST" || new URL(request.url).pathname !== "/call") {
+      return jsonResponse(404, { ok: false, error: "Unknown custom tool bridge route" });
     }
-    if (request.headers.authorization !== `Bearer ${token}`) {
-      writeJson(response, 401, { ok: false, error: "Invalid custom tool bridge token" });
-      return;
+    if (request.headers.get("authorization") !== `Bearer ${token}`) {
+      return jsonResponse(401, { ok: false, error: "Invalid custom tool bridge token" });
     }
 
-    const payload = parseBridgePayload(await readRequestBody(request));
+    const body = await request.text();
+    if (body.length > 1024 * 1024) {
+      throw new Error("Custom tool bridge request is too large");
+    }
+    const payload = bridgePayloadSchema.parse(JSON.parse(body));
     const tool = tools.get(payload.tool);
     if (!tool) {
-      writeJson(response, 404, { ok: false, error: `Unknown custom tool '${payload.tool}'` });
-      return;
+      return jsonResponse(404, { ok: false, error: `Unknown custom tool '${payload.tool}'` });
     }
 
     const input = tool.input.parse(payload.params);
     const output = await tool.execute(context, input);
     const result = tool.output.parse(output);
-    writeJson(response, 200, { ok: true, result });
+    return jsonResponse(200, { ok: true, result });
   } catch (error) {
-    writeJson(response, 500, {
+    return jsonResponse(500, {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     });
   }
 }
 
-function parseBridgePayload(body: string): { tool: string; params: unknown } {
-  const payload = bridgePayloadSchema.parse(JSON.parse(body));
-  return { tool: payload.tool, params: payload.params };
+function jsonResponse(status: number, value: unknown): Response {
+  return Response.json(value, { status });
 }
 
-function readRequestBody(request: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    request.setEncoding("utf8");
-    request.on("data", (chunk: string) => {
-      body += chunk;
-      if (body.length > 1024 * 1024) {
-        request.destroy(new Error("Custom tool bridge request is too large"));
-      }
-    });
-    request.on("end", () => resolve(body));
-    request.on("error", reject);
-  });
-}
-
-function writeJson(response: ServerResponse, status: number, value: unknown): void {
-  response.statusCode = status;
-  response.setHeader("content-type", "application/json");
-  response.end(JSON.stringify(value));
+function randomTokenHex(bytes: number): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
 }

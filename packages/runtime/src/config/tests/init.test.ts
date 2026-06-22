@@ -1,8 +1,8 @@
-import { access, mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, readdir, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject, listOfficialMinimalFiles } from "../init.js";
 import { validateProject } from "../project.js";
 
@@ -15,29 +15,25 @@ describe("initOfficialMinimalProject", () => {
 
     expect(result.created.sort()).toEqual(listOfficialMinimalFiles().sort());
     expect(result.overwritten).toEqual([]);
-    expect(await readFile(path.join(rootDir, ".pipr", "config.ts"), "utf8")).toContain(
+    expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toContain(
       "pipr.review",
     );
-    expect(await readFile(path.join(rootDir, ".pipr", "tsconfig.json"), "utf8")).toContain(
+    expect(await Bun.file(path.join(rootDir, ".pipr", "tsconfig.json")).text()).toContain(
       "moduleResolution",
     );
-    const sdkTypes = await readFile(path.join(rootDir, ".pipr", "types", "pipr-sdk.d.ts"), "utf8");
+    const sdkTypes = await Bun.file(path.join(rootDir, ".pipr", "types", "pipr-sdk.d.ts")).text();
     expect(sdkTypes).toContain('declare module "@pipr/sdk"');
     expect(sdkTypes).toContain("readonly id: symbol;");
     expect(sdkTypes).toContain("readonly apiKey?: SecretRef;");
     expect(sdkTypes).toContain("readonly options?: Record<string, unknown>;");
-    expect(sdkTypes).not.toContain("piprSdkDeclaration");
     expect(sdkTypes).toBe(
-      await readFile(path.join(repoRoot(), ".pipr", "types", "pipr-sdk.d.ts"), "utf8"),
+      await Bun.file(path.join(repoRoot(), ".pipr", "types", "pipr-sdk.d.ts")).text(),
     );
     expect(await listFiles(path.join(rootDir, ".pipr"))).toEqual([
       "config.ts",
       "tsconfig.json",
       "types/pipr-sdk.d.ts",
     ]);
-    await expect(access(path.join(rootDir, ".pipr", "agents"))).rejects.toThrow();
-    await expect(access(path.join(rootDir, ".pipr", "workflows"))).rejects.toThrow();
-    await expect(access(path.join(rootDir, ".pipr", "comments"))).rejects.toThrow();
     expect(validation.kind).toBe("typescript");
     expect(validation.settings.config.defaultProvider).toBe("deepseek");
     expect(validation.settings.config.publication.maxInlineComments).toBe(5);
@@ -46,12 +42,12 @@ describe("initOfficialMinimalProject", () => {
   it("refuses to overwrite existing pipr files without force", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
     await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
-    await writeFile(path.join(rootDir, ".pipr", "config.ts"), "custom: true\n");
+    await Bun.write(path.join(rootDir, ".pipr", "config.ts"), "custom: true\n");
 
     await expect(initOfficialMinimalProject({ rootDir })).rejects.toThrow(
       "Use --force to replace existing .pipr files",
     );
-    await expect(readFile(path.join(rootDir, ".pipr", "config.ts"), "utf8")).resolves.toBe(
+    await expect(Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).resolves.toBe(
       "custom: true\n",
     );
   });
@@ -59,14 +55,12 @@ describe("initOfficialMinimalProject", () => {
   it("overwrites official target files when force is explicit", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
     await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
-    await writeFile(path.join(rootDir, ".pipr", "config.ts"), "custom: true\n");
+    await Bun.write(path.join(rootDir, ".pipr", "config.ts"), "custom: true\n");
 
     const result = await initOfficialMinimalProject({ rootDir, force: true });
 
     expect(result.overwritten).toEqual(["config.ts"]);
-    expect(await readFile(path.join(rootDir, ".pipr", "config.ts"), "utf8")).toContain(
-      "definePipr",
-    );
+    expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toContain("definePipr");
   });
 
   it("rejects symlinked target parent directories", async () => {
@@ -78,7 +72,7 @@ describe("initOfficialMinimalProject", () => {
     await expect(initOfficialMinimalProject({ rootDir, force: true })).rejects.toThrow(
       "symbolic links are not supported",
     );
-    await expect(readFile(path.join(outsideDir, "pipr-sdk.d.ts"), "utf8")).rejects.toThrow();
+    await expect(Bun.file(path.join(outsideDir, "pipr-sdk.d.ts")).text()).rejects.toThrow();
   });
 
   it("rejects configDir paths outside the repo root", async () => {

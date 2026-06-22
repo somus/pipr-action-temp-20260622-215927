@@ -1,7 +1,7 @@
-import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { access, mkdir, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject } from "../init.js";
 import {
   inspectRuntimePlan,
@@ -23,7 +23,7 @@ describe("loadRuntimeProject", () => {
   it("rejects invalid TypeScript config exports", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
     await mkdir(path.join(rootDir, ".pipr"));
-    await writeFile(path.join(rootDir, ".pipr", "config.ts"), "export default {};\n");
+    await Bun.write(path.join(rootDir, ".pipr", "config.ts"), "export default {};\n");
 
     await expect(loadRuntimeProject({ rootDir })).rejects.toThrow(
       "default export must be created by definePipr()",
@@ -229,5 +229,5 @@ async function newInitializedProject(): Promise<string> {
 }
 
 async function writePiprConfig(rootDir: string, contents: string): Promise<void> {
-  await writeFile(path.join(rootDir, ".pipr", "config.ts"), contents);
+  await Bun.write(path.join(rootDir, ".pipr", "config.ts"), contents);
 }

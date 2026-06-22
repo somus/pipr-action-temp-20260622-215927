@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   DiffManifestOptions,
   ReviewFinding,
@@ -186,7 +185,7 @@ function createTaskContext(
   },
 ): TaskContext {
   return {
-    run: { id: randomUUID() },
+    run: { id: crypto.randomUUID() },
     repository: { root: options.workspace, name: options.event.repo.split("/").at(-1) ?? "repo" },
     change: {
       number: options.event.pullRequestNumber,

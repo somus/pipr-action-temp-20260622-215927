@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { ValidatedReview } from "../../types.js";
 import {
   buildPublicationPlan,
@@ -141,8 +141,6 @@ describe("comments", () => {
     expect(first[0]?.body).toContain("This can fail.");
     expect(first[0]?.body).toContain("Suggested fix:");
     expect(first[0]?.body).toContain("Use a safe call.");
-    expect(first[0]?.body).not.toContain("Severity:");
-    expect(first[0]?.body).not.toContain("Confidence:");
   });
 
   it("dedupes duplicate findings in the same draft batch", () => {

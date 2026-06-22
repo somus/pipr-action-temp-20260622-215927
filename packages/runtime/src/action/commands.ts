@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { firstNonEmptyLine, isPiprCommandLine } from "../commands/grammar.js";
 import {
   type InitOfficialMinimalProjectResult,
@@ -540,5 +539,13 @@ function hasGitCommit(rootDir: string, sha: string): boolean {
 }
 
 function runGit(rootDir: string, args: string[]): string {
-  return execFileSync("git", args, { cwd: rootDir, encoding: "utf8", stdio: "pipe" });
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd: rootDir,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
+  }
+  return result.stdout.toString();
 }

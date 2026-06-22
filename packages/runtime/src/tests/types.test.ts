@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { PrReview, ReviewFinding } from "../types.js";
 import {
   parseDiffManifest,

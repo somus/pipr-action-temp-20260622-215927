@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
 import { buildDiffManifest, parseNameStatus, parseUnifiedDiff } from "../diff.js";
 
 describe("diff manifest parsing", () => {
@@ -150,17 +149,17 @@ describe("diff manifest parsing", () => {
 
   it("uses the merge base when the base branch has advanced", async () => {
     await withGitRepo(async (repo) => {
-      await writeFile(path.join(repo, "shared.txt"), "base\n");
+      await Bun.write(path.join(repo, "shared.txt"), "base\n");
       commitAll(repo, "base");
       const mergeBaseSha = git(repo, "rev-parse", "HEAD");
 
       git(repo, "checkout", "-b", "feature");
-      await writeFile(path.join(repo, "feature.txt"), "feature\n");
+      await Bun.write(path.join(repo, "feature.txt"), "feature\n");
       commitAll(repo, "feature");
       const headSha = git(repo, "rev-parse", "HEAD");
 
       git(repo, "checkout", "main");
-      await writeFile(path.join(repo, "base-only.txt"), "base only\n");
+      await Bun.write(path.join(repo, "base-only.txt"), "base only\n");
       commitAll(repo, "base advance");
       const baseSha = git(repo, "rev-parse", "HEAD");
 
@@ -222,15 +221,15 @@ describe("diff manifest parsing", () => {
     await withGitRepo(async (repo) => {
       await mkdir(path.join(repo, "src"), { recursive: true });
       await mkdir(path.join(repo, "dist"), { recursive: true });
-      await writeFile(path.join(repo, "src/deleted.ts"), "old\n");
-      await writeFile(path.join(repo, "bun.lock"), "lock-v1\n");
-      await writeFile(path.join(repo, "dist/out.js"), "generated-v1\n");
+      await Bun.write(path.join(repo, "src/deleted.ts"), "old\n");
+      await Bun.write(path.join(repo, "bun.lock"), "lock-v1\n");
+      await Bun.write(path.join(repo, "dist/out.js"), "generated-v1\n");
       commitAll(repo, "base");
       const baseSha = git(repo, "rev-parse", "HEAD");
 
       await rm(path.join(repo, "src/deleted.ts"));
-      await writeFile(path.join(repo, "bun.lock"), "lock-v2\n");
-      await writeFile(path.join(repo, "dist/out.js"), "generated-v2\n");
+      await Bun.write(path.join(repo, "bun.lock"), "lock-v2\n");
+      await Bun.write(path.join(repo, "dist/out.js"), "generated-v2\n");
       commitAll(repo, "head");
       const headSha = git(repo, "rev-parse", "HEAD");
 
@@ -259,8 +258,8 @@ describe("diff manifest parsing", () => {
     await withGitRepo(async (repo) => {
       const baseSha = await commitFile(repo, "seed.txt", "base\n", "base");
       const largeFile = makeNumberedLines("large", 1200);
-      await writeFile(path.join(repo, "*"), largeFile);
-      await writeFile(path.join(repo, "normal.ts"), "const ok = true;\n");
+      await Bun.write(path.join(repo, "*"), largeFile);
+      await Bun.write(path.join(repo, "normal.ts"), "const ok = true;\n");
       commitAll(repo, "head");
       const headSha = git(repo, "rev-parse", "HEAD");
 
@@ -430,7 +429,7 @@ async function commitFile(
 ): Promise<string> {
   const target = path.join(repo, filePath);
   await mkdir(path.dirname(target), { recursive: true });
-  await writeFile(target, contents);
+  await Bun.write(target, contents);
   commitAll(repo, message);
   return git(repo, "rev-parse", "HEAD");
 }
@@ -440,7 +439,15 @@ function changedFile(manifest: ReturnType<typeof buildDiffManifest>, filePath: s
 }
 
 function git(repo: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd: repo,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
+  }
+  return result.stdout.toString().trim();
 }
 
 function makeNumberedLines(prefix: string, count: number): string {
@@ -460,6 +467,6 @@ function makeSparseChangedLines(totalCount: number): string {
 }
 
 async function readJsonFixture(relativePath: string): Promise<unknown> {
-  const contents = await readFile(new URL(relativePath, import.meta.url), "utf8");
+  const contents = await Bun.file(new URL(relativePath, import.meta.url)).text();
   return JSON.parse(contents);
 }

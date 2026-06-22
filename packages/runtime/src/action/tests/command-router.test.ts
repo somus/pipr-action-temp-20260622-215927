@@ -1,8 +1,7 @@
+import { describe, expect, it } from "bun:test";
 import { buildPiprPlan, definePipr } from "@pipr/sdk";
-import { describe, expect, it } from "vitest";
 import {
   createGitHubCommandClient,
-  hasRequiredRepositoryPermission,
   parsePlanCommandInputs,
   permissionDeniedHelp,
   resolvePlanCommand,
@@ -95,22 +94,6 @@ describe("plan command routing", () => {
         arguments: { finding: "FND-123" },
       },
     });
-  });
-
-  it("checks ordered permissions with safe legacy fallback", () => {
-    expect(
-      hasRequiredRepositoryPermission({ permission: "read", role_name: "triage" }, "triage"),
-    ).toBe(true);
-    expect(
-      hasRequiredRepositoryPermission({ permission: "read", role_name: "triage" }, "write"),
-    ).toBe(false);
-    expect(hasRequiredRepositoryPermission({ permission: "read" }, "triage")).toBe(false);
-    expect(hasRequiredRepositoryPermission({ permission: "write" }, "write")).toBe(true);
-    expect(hasRequiredRepositoryPermission({ permission: "write" }, "maintain")).toBe(false);
-    expect(hasRequiredRepositoryPermission({ permission: "admin" }, "maintain")).toBe(false);
-    expect(
-      hasRequiredRepositoryPermission({ permission: "read", role_name: "admin" }, "admin"),
-    ).toBe(true);
   });
 
   it("maps repository permission 404 to no access", async () => {

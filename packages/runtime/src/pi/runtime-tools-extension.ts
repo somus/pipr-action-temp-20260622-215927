@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { compact } from "lodash-es";
 import { z } from "zod";
@@ -200,7 +199,7 @@ function customToolBridgeToken(): string {
 }
 
 async function loadData(dataPath: string): Promise<RuntimeToolData> {
-  return JSON.parse(await readFile(dataPath, "utf8")) as RuntimeToolData;
+  return (await Bun.file(dataPath).json()) as RuntimeToolData;
 }
 
 function loadCustomToolData(dataPath: string): CustomToolData {
@@ -282,7 +281,6 @@ async function readBaseSnapshot(
     return snapshot ?? unavailableReadAtRefResult(request);
   }
   const snapshotData = readable.data;
-  const content = await readFile(path.join(dataRoot, snapshotData.relativePath));
   return {
     path: params.path,
     ref: params.ref,
@@ -291,7 +289,7 @@ async function readBaseSnapshot(
     startLine: snapshotData.startLine,
     endLine: snapshotData.endLine,
     available: true,
-    content: content.toString("utf8"),
+    content: await Bun.file(path.join(dataRoot, snapshotData.relativePath)).text(),
     bytes: snapshotData.bytes,
     truncated: snapshotData.truncated,
   };
@@ -315,6 +313,6 @@ async function readHeadWorkspaceFile(
     rangeId: params.rangeId,
     startLine: request.window.startLine,
     endLine: request.window.endLine,
-    ...boundedLineSlice(await readFile(target, "utf8"), request.window, maxBytes),
+    ...boundedLineSlice(await Bun.file(target).text(), request.window, maxBytes),
   };
 }

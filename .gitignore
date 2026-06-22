@@ -5,6 +5,7 @@ coverage
 .fallow
 .github/act
 .DS_Store
+*.tsbuildinfo
 *.log
 .env
 .env.*

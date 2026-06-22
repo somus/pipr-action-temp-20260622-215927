@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { createDiffRangeIndex } from "../diff/ranges.js";
 import type { CommentableRange, DiffManifest, ValidatedReview } from "../types.js";
 import { parseValidatedReview } from "../types.js";
@@ -110,5 +109,5 @@ export function findingFingerprint(finding: ReviewFinding): string {
     `${finding.startLine}-${finding.endLine}`,
   ];
   const basis = [...location, finding.body].join("\n");
-  return crypto.createHash("sha256").update(basis).digest("hex").slice(0, 16);
+  return new Bun.CryptoHasher("sha256").update(basis).digest("hex").slice(0, 16);
 }

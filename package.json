@@ -13,14 +13,8 @@
     "format": "biome check --write .",
     "format:check": "biome check .",
     "fallow": "fallow --fail-on-issues --format compact",
-    "check": "turbo run check //#format:check //#fallow",
-    "check:actions": "bash scripts/check-actions.sh",
-    "check:pi-contract": "bun scripts/check-pi-contract.ts --image pipr-action:act",
-    "test:act-fixture": "bun scripts/test-act-action-metadata.ts && bun scripts/test-act-full-fixture-assertions.ts",
-    "act:pr": "scripts/act-pr-fixture.sh",
-    "act:pr-full": "scripts/act-pr-full-fixture.sh",
-    "act:pr-condensed": "scripts/act-pr-condensed-fixture.sh",
-    "act:pr-orchestrator": "scripts/act-pr-orchestrator-fixture.sh"
+    "check": "turbo run lint typecheck test build //#format:check //#fallow",
+    "check:actions": "bun run --cwd packages/e2e check:actions"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",

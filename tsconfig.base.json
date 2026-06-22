@@ -4,6 +4,16 @@
     "lib": ["ES2023"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@pipr/sdk": ["packages/sdk/src/index.ts"],
+      "@pipr/runtime": ["packages/runtime/src/index.ts"],
+      "@pipr/runtime/e2e/action-fixture": ["packages/runtime/src/e2e/action-fixture.ts"],
+      "@pipr/runtime/e2e/pi-contract": ["packages/runtime/src/e2e/pi-contract.ts"],
+      "@pipr/runtime/runtime-tools-extension": [
+        "packages/runtime/src/pi/runtime-tools-extension.ts"
+      ]
+    },
     "strict": true,
     "ignoreDeprecations": "6.0",
     "declaration": true,

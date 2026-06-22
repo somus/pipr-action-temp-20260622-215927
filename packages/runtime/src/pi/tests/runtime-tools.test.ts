@@ -1,10 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { access, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest } from "../../types.js";
 import { preparePiCustomTools } from "../custom-tools.js";
@@ -102,7 +101,7 @@ describe("pipr runtime Pi read tools", () => {
   it("rejects unsafe paths, bad refs, and symlinks", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-runtime-tools-"));
     try {
-      await writeFile(path.join(workspace, "target.ts"), "target\n");
+      await Bun.write(path.join(workspace, "target.ts"), "target\n");
       await symlink(path.join(workspace, "target.ts"), path.join(workspace, "link.ts"));
       const manifest = manifestForPath("link.ts");
 
@@ -229,7 +228,7 @@ describe("pipr runtime Pi read tools", () => {
         path.basename(prepared.extensionPath),
       );
       expect(path.dirname(prepared.extensionPath)).not.toBe(path.join(toolRoot, "runtime-tools"));
-      await expect(access(prepared.dataPath)).resolves.toBeUndefined();
+      await access(prepared.dataPath);
       await expect(
         access(path.join(toolRoot, "runtime-tools", "pipr-runtime-tools.mjs")),
       ).rejects.toThrow();
@@ -473,12 +472,12 @@ async function createGitRepo(
   options: { baseContent?: string; headContent?: string } = {},
 ): Promise<{ root: string; baseSha: string; headSha: string }> {
   const root = await initTestGitRepo("pipr-runtime-tools-git-");
-  await writeFile(path.join(root, "src", "old.ts"), options.baseContent ?? "base content\n");
+  await Bun.write(path.join(root, "src", "old.ts"), options.baseContent ?? "base content\n");
   runGit(root, ["add", "."]);
   runGit(root, ["commit", "-m", "base"]);
   const baseSha = runGit(root, ["rev-parse", "HEAD"]).trim();
   runGit(root, ["mv", "src/old.ts", "src/new.ts"]);
-  await writeFile(path.join(root, "src", "new.ts"), options.headContent ?? "head content\n");
+  await Bun.write(path.join(root, "src", "new.ts"), options.headContent ?? "head content\n");
   runGit(root, ["add", "."]);
   runGit(root, ["commit", "-m", "head"]);
   const headSha = runGit(root, ["rev-parse", "HEAD"]).trim();
@@ -570,7 +569,15 @@ function manifestWithPreviousPath(filePath: string, previousPath: string): DiffM
 }
 
 function runGit(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" });
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
+  }
+  return result.stdout.toString();
 }
 
 async function removeTree(root: string): Promise<void> {
@@ -604,16 +611,16 @@ async function createAdvancedBaseRepo(): Promise<{
   headSha: string;
 }> {
   const root = await initTestGitRepo("pipr-runtime-tools-advanced-base-");
-  await writeFile(path.join(root, "src", "a.ts"), "merge-base content\n");
+  await Bun.write(path.join(root, "src", "a.ts"), "merge-base content\n");
   runGit(root, ["add", "."]);
   runGit(root, ["commit", "-m", "merge base"]);
   const mergeBaseSha = runGit(root, ["rev-parse", "HEAD"]).trim();
-  await writeFile(path.join(root, "src", "a.ts"), "advanced base content\n");
+  await Bun.write(path.join(root, "src", "a.ts"), "advanced base content\n");
   runGit(root, ["add", "."]);
   runGit(root, ["commit", "-m", "advanced base"]);
   const baseSha = runGit(root, ["rev-parse", "HEAD"]).trim();
   runGit(root, ["checkout", "-b", "feature", mergeBaseSha]);
-  await writeFile(path.join(root, "src", "a.ts"), "head content\n");
+  await Bun.write(path.join(root, "src", "a.ts"), "head content\n");
   runGit(root, ["add", "."]);
   runGit(root, ["commit", "-m", "head"]);
   const headSha = runGit(root, ["rev-parse", "HEAD"]).trim();

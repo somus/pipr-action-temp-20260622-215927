@@ -1,7 +1,7 @@
-import { chmod, lstat, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { chmod, lstat, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 import type { DiffManifest } from "../../types.js";
 import {
   parsePiProviderInvocation,
@@ -222,7 +222,7 @@ describe("buildPiArgs", () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
     let copy: string | undefined;
     try {
-      await writeFile(path.join(workspace, "target.txt"), "ok\n");
+      await Bun.write(path.join(workspace, "target.txt"), "ok\n");
       await symlink(path.join(workspace, "target.txt"), path.join(workspace, "link.txt"));
 
       copy = await createReadOnlyWorkspace(workspace);
@@ -244,7 +244,7 @@ describe("buildPiArgs", () => {
     const previousProviderKey = process.env.DEEPSEEK_API_KEY;
     const previousSecret = process.env.SECRET_SHOULD_NOT_LEAK;
     try {
-      await writeFile(piExecutable, "#!/bin/sh\nprintenv\n");
+      await Bun.write(piExecutable, "#!/bin/sh\nprintenv\n");
       await chmod(piExecutable, 0o755);
       process.env.DEEPSEEK_API_KEY = "provider-key";
       process.env.SECRET_SHOULD_NOT_LEAK = "hidden";
@@ -331,7 +331,7 @@ describe("buildPiArgs", () => {
     const piExecutable = path.join(workspace, "fake-pi.sh");
     const previousProviderKey = process.env.DEEPSEEK_API_KEY;
     try {
-      await writeFile(piExecutable, "#!/bin/sh\nprintenv\n");
+      await Bun.write(piExecutable, "#!/bin/sh\nprintenv\n");
       await chmod(piExecutable, 0o755);
       delete process.env.DEEPSEEK_API_KEY;
 
@@ -364,7 +364,7 @@ describe("buildPiArgs", () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
     const piExecutable = path.join(workspace, "slow-pi.sh");
     try {
-      await writeFile(piExecutable, "#!/bin/sh\nsleep 2\nprintf '{}\\n'\n");
+      await Bun.write(piExecutable, "#!/bin/sh\nsleep 2\nprintf '{}\\n'\n");
       await chmod(piExecutable, 0o755);
 
       const result = await runPi({
@@ -413,7 +413,7 @@ async function runFakePiWithToolOptions(
   const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
   const piExecutable = path.join(workspace, "fake-pi.sh");
   try {
-    await writeFile(piExecutable, "#!/bin/sh\nprintenv\nprintf 'ARGS=%s\\n' \"$*\"\n");
+    await Bun.write(piExecutable, "#!/bin/sh\nprintenv\nprintf 'ARGS=%s\\n' \"$*\"\n");
     await chmod(piExecutable, 0o755);
     return await runPi({
       workspace,

@@ -1,5 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { CommentableRange, ReviewFinding } from "../../types.js";
 import {
   githubReviewCommentLocationSchema,
@@ -133,7 +132,9 @@ describe("GitHub review comment mapping", () => {
   });
 
   it("matches the golden GitHub inline payload locations", async () => {
-    const expected = await readJsonFixture("fixtures/github-inline-payloads.golden.json");
+    const expected = (await readJsonFixture(
+      "fixtures/github-inline-payloads.golden.json",
+    )) as Array<ReturnType<typeof mapFindingToGithubReviewCommentLocation>>;
 
     expect([
       mapFindingToGithubReviewCommentLocation({
@@ -151,6 +152,6 @@ describe("GitHub review comment mapping", () => {
 });
 
 async function readJsonFixture(relativePath: string): Promise<unknown> {
-  const contents = await readFile(new URL(relativePath, import.meta.url), "utf8");
+  const contents = await Bun.file(new URL(relativePath, import.meta.url)).text();
   return JSON.parse(contents);
 }

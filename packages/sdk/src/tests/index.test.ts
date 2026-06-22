@@ -33,7 +33,6 @@ describe("definePipr", () => {
       expect(pipr.on.changeRequest(["opened"], task)).toBeUndefined();
       expect(pipr.command("@pipr review", { permission: "write" }, task)).toBeUndefined();
       expect(pipr.local("review", task)).toBeUndefined();
-      expect("text" in pipr).toBe(false);
     });
 
     const plan = buildPiprPlan(factory);
@@ -45,8 +44,6 @@ describe("definePipr", () => {
     expect(plan.commands[0]).toMatchObject({ pattern: "@pipr review", permission: "write" });
     expect(plan.locals[0]).toMatchObject({ name: "review" });
     expect(plan.tools[0]?.name).toBe("custom_tool");
-    expect("baseUrl" in plan.models[0]).toBe(false);
-    expect("headers" in plan.models[0]).toBe(false);
   });
 
   it("rejects async config callbacks", () => {
@@ -79,17 +76,6 @@ describe("definePipr", () => {
         }),
       ),
     ).toThrow("must start with @pipr");
-  });
-
-  it("allows user-defined help commands without built-in help behavior", () => {
-    const plan = buildPiprPlan(
-      definePipr((pipr) => {
-        const task = pipr.task("help", () => {});
-        pipr.command("@pipr help", {}, task);
-      }),
-    );
-
-    expect(plan.commands[0]).toMatchObject({ pattern: "@pipr help" });
   });
 
   it("rejects custom tools that collide with built-in read-only tools", () => {

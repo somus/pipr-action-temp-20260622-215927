@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test";
 import { buildPiprPlan, definePipr } from "@pipr/sdk";
-import { describe, expect, it } from "vitest";
 import {
   parsePlanCommandInput,
   selectChangeRequestTasks,

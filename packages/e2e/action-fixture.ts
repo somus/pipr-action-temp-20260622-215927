@@ -1,19 +1,22 @@
 #!/usr/bin/env bun
-import { randomUUID } from "node:crypto";
-import { appendFileSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
 import {
   type ActionCommandResult,
   type GitHubPublicationClient,
   PublicationError,
   runActionCommandWithDependencies,
-} from "../packages/runtime/dist/action/fixture-dependencies.mjs";
+} from "@pipr/runtime/e2e/action-fixture";
+import { type ActAssertionMode, assertActFixture } from "./assertions.ts";
 
 type LoadedActionResult = Exclude<ActionCommandResult, { kind: "ignored" }>;
 type ActionResultHandlers = {
   [Kind in ActionCommandResult["kind"]]: (
     result: Extract<ActionCommandResult, { kind: Kind }>,
-  ) => void;
+  ) => Promise<void> | void;
+};
+type ActionFixtureOptions = Parameters<typeof runActionCommandWithDependencies>[0];
+type ActionFixtureContext = {
+  fixturePath: string;
+  options: ActionFixtureOptions;
 };
 
 const actionResultHandlers: ActionResultHandlers = {
@@ -24,33 +27,32 @@ const actionResultHandlers: ActionResultHandlers = {
 };
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const command = args[0] ?? "action";
+  assertActionCommand(process.argv[2] ?? "action");
+  const context = actionFixtureContext();
+  await handleActionResult(await runActionCommandWithDependencies(context.options));
+  await assertConfiguredFixture(context.fixturePath);
+}
+
+function assertActionCommand(command: string): void {
   if (command !== "action") {
     throw new Error(`act fixture wrapper only supports 'action', got '${command}'`);
   }
-  const result = await runActionCommandWithDependencies({
-    rootDir: actionWorkspace(),
-    configDir: actionConfigDir(),
-    env: process.env,
-    eventPath: actionEventPath(),
-    dryRun: envValue("PIPR_DRY_RUN") === "1",
-    piExecutable: requiredEnv("PIPR_ACT_PI_EXECUTABLE"),
-    githubPublicationClient: fixturePublicationClient(requiredEnv("PIPR_ACT_GITHUB_FIXTURE_PATH")),
-  });
-  handleActionResult(result);
 }
 
-function actionWorkspace(): string {
-  return envValue("GITHUB_WORKSPACE") ?? process.cwd();
-}
-
-function actionConfigDir(): string {
-  return envValue("INPUT_CONFIG-DIR") || ".pipr";
-}
-
-function actionEventPath(): string {
-  return requiredEnv("GITHUB_EVENT_PATH");
+function actionFixtureContext(): ActionFixtureContext {
+  const fixturePath = requiredEnv("PIPR_ACT_GITHUB_FIXTURE_PATH");
+  return {
+    fixturePath,
+    options: {
+      rootDir: envValue("GITHUB_WORKSPACE") ?? process.cwd(),
+      configDir: envValue("INPUT_CONFIG-DIR") || ".pipr",
+      env: Bun.env,
+      eventPath: requiredEnv("GITHUB_EVENT_PATH"),
+      dryRun: envValue("PIPR_DRY_RUN") === "1",
+      piExecutable: requiredEnv("PIPR_ACT_PI_EXECUTABLE"),
+      githubPublicationClient: fixturePublicationClient(fixturePath),
+    },
+  };
 }
 
 function requiredEnv(name: string): string {
@@ -62,11 +64,23 @@ function requiredEnv(name: string): string {
 }
 
 function envValue(name: string): string | undefined {
-  return process.env[name];
+  return Bun.env[name];
 }
 
-function handleActionResult(result: ActionCommandResult): void {
-  actionResultHandlers[result.kind](result as never);
+async function handleActionResult(result: ActionCommandResult): Promise<void> {
+  await actionResultHandlers[result.kind](result as never);
+}
+
+async function assertConfiguredFixture(fixturePath: string): Promise<void> {
+  const mode = envValue("PIPR_ACT_ASSERTION") as ActAssertionMode | undefined;
+  if (!mode) {
+    return;
+  }
+  await assertActFixture({
+    fixturePath,
+    mode,
+    telemetryPath: envValue("PIPR_ACT_TELEMETRY_PATH"),
+  });
 }
 
 function handleIgnoredActionResult(
@@ -80,15 +94,17 @@ function handleDryRunActionResult(result: Extract<ActionCommandResult, { kind: "
   info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
 }
 
-function handleCommandHelpActionResult(
+async function handleCommandHelpActionResult(
   result: Extract<ActionCommandResult, { kind: "command-help" }>,
-): void {
+): Promise<void> {
   logActionContext(result);
   info(`pipr command help: ${result.reason}`);
-  setOutput("main-comment", result.body);
+  await setOutput("main-comment", result.body);
 }
 
-function handleReviewActionResult(result: Extract<ActionCommandResult, { kind: "review" }>): void {
+async function handleReviewActionResult(
+  result: Extract<ActionCommandResult, { kind: "review" }>,
+): Promise<void> {
   logActionContext(result);
   info(
     `pipr review produced ${result.review.validated.validFindings.length} valid inline finding(s), ` +
@@ -102,10 +118,10 @@ function handleReviewActionResult(result: Extract<ActionCommandResult, { kind: "
   if (result.review.repairAttempted) {
     info("pipr repaired reviewer JSON once before validation");
   }
-  setOutput("main-comment", result.review.mainComment);
-  setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
-  setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
-  setOutput("publication", JSON.stringify(result.publication));
+  await setOutput("main-comment", result.review.mainComment);
+  await setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
+  await setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
+  await setOutput("publication", JSON.stringify(result.publication));
 }
 
 function logActionContext(result: LoadedActionResult): void {
@@ -176,20 +192,19 @@ type GitHubPublicationFixture = {
 };
 
 async function readFixture(fixturePath: string): Promise<GitHubPublicationFixture> {
-  return JSON.parse(await readFile(fixturePath, "utf8")) as GitHubPublicationFixture;
+  return (await Bun.file(fixturePath).json()) as GitHubPublicationFixture;
 }
 
 async function writeFixture(fixturePath: string, fixture: GitHubPublicationFixture): Promise<void> {
-  await writeFile(fixturePath, JSON.stringify(fixture));
+  await Bun.write(fixturePath, JSON.stringify(fixture));
 }
 
-main().catch((error: unknown) => {
+main().catch(async (error: unknown) => {
   if (error instanceof PublicationError && error.result) {
-    setOutput("publication", JSON.stringify(error.result));
+    await setOutput("publication", JSON.stringify(error.result));
     logError(`pipr publication metadata: ${JSON.stringify(error.result)}`);
   }
-  const message = error instanceof Error ? error.message : String(error);
-  setFailed(message);
+  setFailed(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
 
@@ -205,11 +220,13 @@ function setFailed(message: string): void {
   logError(message);
 }
 
-function setOutput(name: string, value: string): void {
+async function setOutput(name: string, value: string): Promise<void> {
   const outputPath = envValue("GITHUB_OUTPUT");
   if (!outputPath) {
     return;
   }
-  const delimiter = `pipr_${randomUUID()}`;
-  appendFileSync(outputPath, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
+  const delimiter = `pipr_${crypto.randomUUID()}`;
+  const output = Bun.file(outputPath);
+  const existing = (await output.exists()) ? await output.text() : "";
+  await Bun.write(outputPath, `${existing}${name}<<${delimiter}\n${value}\n${delimiter}\n`);
 }

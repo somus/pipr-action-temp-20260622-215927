@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import type { PullRequestEventContext } from "../types.js";
 import { parsePullRequestEventContext } from "../types.js";
@@ -105,9 +104,7 @@ export async function loadPullRequestEventContext(
   eventPath: string,
   env: NodeJS.ProcessEnv,
 ): Promise<PullRequestEventContext> {
-  const payload = githubPullRequestPayloadSchema.parse(
-    JSON.parse(await readFile(eventPath, "utf8")),
-  );
+  const payload = githubPullRequestPayloadSchema.parse(await Bun.file(eventPath).json());
   const pullRequest = payload.pull_request;
 
   return parsePullRequestEventContext(
@@ -133,9 +130,7 @@ export async function loadIssueCommentEventContext(
   eventPath: string,
   env: NodeJS.ProcessEnv,
 ): Promise<IssueCommentEventContext> {
-  const payload = githubIssueCommentPayloadSchema.parse(
-    JSON.parse(await readFile(eventPath, "utf8")),
-  );
+  const payload = githubIssueCommentPayloadSchema.parse(await Bun.file(eventPath).json());
   return issueCommentEventContextSchema.parse({
     eventName: "issue_comment",
     action: payload.action,

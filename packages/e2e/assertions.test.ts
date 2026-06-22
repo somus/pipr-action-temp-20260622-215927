@@ -1,45 +1,41 @@
 #!/usr/bin/env bun
-import { strict as assert } from "node:assert";
-import { assertActCondensedFixture } from "./assert-act-condensed-fixture.mjs";
-import { assertActFullFixture } from "./assert-act-full-fixture.mjs";
-import { assertActOrchestratorFixture } from "./assert-act-orchestrator-fixture.mjs";
+import { expect } from "bun:test";
+import { renderActActionMetadata } from "./action-metadata.ts";
+import {
+  assertActCondensedFixture,
+  assertActFullFixture,
+  assertActOrchestratorFixture,
+} from "./assertions.ts";
 
 const headSha = "head-sha";
 
-assert.doesNotThrow(() => assertActFullFixture(validFullFixture(), headSha));
-assert.doesNotThrow(() => assertActCondensedFixture(validCondensedFixture()));
-assert.doesNotThrow(() => assertActOrchestratorFixture(validOrchestratorFixture()));
+await assertActionMetadataRendering();
 
-expectFailure("main comment marker missing", {
+await assertActFullFixture(validFullFixture(), headSha);
+expect(() => assertActCondensedFixture(validCondensedFixture())).not.toThrow();
+expect(() => assertActOrchestratorFixture(validOrchestratorFixture())).not.toThrow();
+
+await expectFailure("main comment marker missing", {
   ...validFullFixture(),
   issueComments: [{ body: "manual comment" }],
 });
-
-expectFailure("expected 1 inline payload, got 0", {
+await expectFailure("expected 1 inline payload, got 0", {
   ...validFullFixture(),
   reviewCommentPayloads: [],
 });
-
-expectFailure("unexpected inline commit_id", {
+await expectFailure("unexpected inline commit_id", {
   ...validFullFixture(),
   reviewCommentPayloads: [{ ...validInlinePayload(), commit_id: "stale-head" }],
 });
-
-expectFailure("inline marker missing", {
+await expectFailure("inline marker missing", {
   ...validFullFixture(),
   reviewCommentPayloads: [{ ...validInlinePayload(), body: "missing marker" }],
 });
-
-expectFailure("secondary section missing", {
+await expectFailure("secondary section missing", {
   ...validFullFixture(),
-  issueComments: [
-    {
-      body: fullMainCommentBody().replace("Full fixture secondary section\n", ""),
-    },
-  ],
+  issueComments: [{ body: fullMainCommentBody().replace("Full fixture secondary section\n", "") }],
 });
-
-expectFailure("unexpected selected tasks", {
+await expectFailure("unexpected selected tasks", {
   ...validFullFixture(),
   issueComments: [
     {
@@ -50,35 +46,22 @@ expectFailure("unexpected selected tasks", {
     },
   ],
 });
-
-expectFailure("path-missed task was selected", {
+await expectFailure("path-missed task was selected", {
   ...validFullFixture(),
-  issueComments: [
-    {
-      body: `${fullMainCommentBody()}\npipr/docs-only`,
-    },
-  ],
+  issueComments: [{ body: `${fullMainCommentBody()}\npipr/docs-only` }],
 });
-
-expectFailure("duplicate findings were not deduped in main comment", {
+await expectFailure("duplicate findings were not deduped in main comment", {
   ...validFullFixture(),
-  issueComments: [
-    {
-      body: `${fullMainCommentBody()}\nFull-flow act reached inline publication.`,
-    },
-  ],
+  issueComments: [{ body: `${fullMainCommentBody()}\nFull-flow act reached inline publication.` }],
 });
-
 expectCondensedFailure("condensed summary missing", {
   ...validCondensedFixture(),
   issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->" }],
 });
-
 expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
   ...validCondensedFixture(),
   reviewCommentPayloads: [validInlinePayload()],
 });
-
 expectOrchestratorFailure("orchestrated summary missing", {
   ...validOrchestratorFixture(),
   issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->" }],
@@ -86,16 +69,43 @@ expectOrchestratorFailure("orchestrated summary missing", {
 
 console.log("act fixture assertion tests ok");
 
-function expectFailure(message: string, fixture: PublicationFixture): void {
-  assert.throws(() => assertActFullFixture(fixture, headSha), { message });
+async function assertActionMetadataRendering(): Promise<void> {
+  const source = await Bun.file(new URL("../../action.yml", import.meta.url)).text();
+  const image = "pipr-action:test";
+  const rendered = renderActActionMetadata(source, image);
+  const expected = source.replace(/^(\s*)image:\s*Dockerfile\s*$/m, `$1image: docker://${image}`);
+  const fixtureRendered = renderActActionMetadata(source, image, {
+    entrypointScript: "/opt/pipr/packages/e2e/action-fixture.ts",
+  });
+
+  expect(rendered).toBe(expected);
+  expect(rendered).toContain("image: docker://pipr-action:test");
+  expect(rendered).not.toContain("image: Dockerfile");
+  expect(rendered).toContain("inputs:");
+  expect(rendered).toContain("outputs:");
+  expect(rendered).toContain("args:");
+  expect(fixtureRendered).toContain("entrypoint: /usr/local/bin/bun");
+  expect(fixtureRendered).toContain("    - /opt/pipr/packages/e2e/action-fixture.ts");
+  expect(fixtureRendered).toContain("    - action");
+}
+
+async function expectFailure(message: string, fixture: PublicationFixture): Promise<void> {
+  try {
+    await assertActFullFixture(fixture, headSha);
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(message);
+    return;
+  }
+  throw new Error(`expected failure '${message}'`);
 }
 
 function expectCondensedFailure(message: string, fixture: PublicationFixture): void {
-  assert.throws(() => assertActCondensedFixture(fixture), { message });
+  expect(() => assertActCondensedFixture(fixture)).toThrow(message);
 }
 
 function expectOrchestratorFailure(message: string, fixture: PublicationFixture): void {
-  assert.throws(() => assertActOrchestratorFixture(fixture), { message });
+  expect(() => assertActOrchestratorFixture(fixture)).toThrow(message);
 }
 
 type ReviewCommentPayload = {
@@ -158,7 +168,7 @@ function validOrchestratorFixture(): PublicationFixture {
 
 function validInlinePayload(): NonNullable<PublicationFixture["reviewCommentPayloads"]>[number] {
   return {
-    path: "test/fixtures/act/project/sample.ts",
+    path: "packages/e2e/fixtures/act/project/sample.ts",
     commit_id: headSha,
     line: 2,
     side: "RIGHT",

@@ -1,10 +1,7 @@
 #!/usr/bin/env bun
 
-import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { assert, assertEqual } from "../../../scripts/assert-act-fixture-helpers.mjs";
 
 const prompt = process.argv.at(-1) ?? "";
 const args = process.argv.slice(2, -1);
@@ -13,81 +10,81 @@ if (!prompt.includes("Diff Manifest:")) {
   throw new Error("fake-pi could not find Diff Manifest in prompt");
 }
 
-const piTelemetry = beginPiTelemetry();
-if (piTelemetry) {
-  await delay(400);
+const piTelemetry = await beginPiTelemetry();
+try {
+  if (piTelemetry) {
+    await delay(400);
+  }
+  console.log(JSON.stringify(await buildReview()));
+} finally {
+  await piTelemetry?.end();
 }
 
-if (prompt.includes("Specialist reviews:")) {
-  writeOrchestratorReview();
+async function buildReview() {
+  if (prompt.includes("Specialist reviews:")) {
+    return orchestratorReview();
+  }
+  if (prompt.includes("Focus: correctness")) {
+    return review("Orchestrator fixture review", "Correctness specialist review");
+  }
+  if (prompt.includes("Focus: security")) {
+    return review("Orchestrator fixture review", "Security specialist review");
+  }
+  if (prompt.includes("Focus: tests")) {
+    return review("Orchestrator fixture review", "Tests specialist review");
+  }
+  if (prompt.includes('"mode": "condensed"')) {
+    await assertCondensedRuntimeTools();
+    return review("Condensed fixture review", "Condensed act fixture reached Pi after runtime tools passed.");
+  }
+  return fullFixtureReview();
 }
 
-if (prompt.includes("Focus: correctness")) {
-  writeReview("Orchestrator fixture review", "Correctness specialist review");
-}
-
-if (prompt.includes("Focus: security")) {
-  writeReview("Orchestrator fixture review", "Security specialist review");
-}
-
-if (prompt.includes("Focus: tests")) {
-  writeReview("Orchestrator fixture review", "Tests specialist review");
-}
-
-if (prompt.includes('"mode": "condensed"')) {
-  await assertCondensedRuntimeTools();
-  writeReview("Condensed fixture review", "Condensed act fixture reached Pi after runtime tools passed.");
-}
-
-await writeFullFixtureReview();
-
-async function writeFullFixtureReview() {
+async function fullFixtureReview() {
   const manifest = parsePromptJson("Diff Manifest:");
   const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
   const range =
     ranges.find(
       (item) =>
-        item.path === "test/fixtures/act/project/sample.ts" &&
+        item.path === "packages/e2e/fixtures/act/project/sample.ts" &&
         item.side === "RIGHT" &&
         item.preview?.includes("normalized"),
     ) ??
     ranges.find(
-      (item) => item.path === "test/fixtures/act/project/sample.ts" && item.kind === "added",
+      (item) => item.path === "packages/e2e/fixtures/act/project/sample.ts" && item.kind === "added",
     ) ??
     ranges.find(
-      (item) => item.path === "test/fixtures/act/project/sample.ts" && item.side === "RIGHT",
+      (item) => item.path === "packages/e2e/fixtures/act/project/sample.ts" && item.side === "RIGHT",
     );
 
   if (!range) {
-    writeReview("Fixture review", "Fake Pi found no commentable ranges.");
+    return review("Fixture review", "Fake Pi found no commentable ranges.");
   }
 
-  console.log(
-    JSON.stringify({
-      summary: {
-        title: "Fixture review",
-        body: "Fake Pi reviewed the act full-flow fixture.",
+  return {
+    summary: {
+      title: "Fixture review",
+      body: "Fake Pi reviewed the act full-flow fixture.",
+    },
+    inlineFindings: [
+      {
+        body: "Full-flow act reached inline publication.",
+        path: range.path,
+        rangeId: range.id,
+        side: range.side,
+        startLine: range.startLine,
+        endLine: range.startLine,
+        data: { category: "maintainability" },
       },
-      inlineFindings: [
-        {
-          body: "Full-flow act reached inline publication.",
-          path: range.path,
-          rangeId: range.id,
-          side: range.side,
-          startLine: range.startLine,
-          endLine: range.startLine,
-          data: { category: "maintainability" },
-        },
-      ],
-    }),
-  );
+    ],
+  };
 }
 
-function writeOrchestratorReview() {
+function orchestratorReview() {
   assertPromptContains("Correctness specialist review");
   assertPromptContains("Security specialist review");
   assertPromptContains("Tests specialist review");
-  writeReview(
+  return review(
     "Orchestrator fixture review",
     "Orchestrated review combined correctness, security, and tests specialist outputs.",
   );
@@ -96,7 +93,7 @@ function writeOrchestratorReview() {
 async function assertCondensedRuntimeTools() {
   const toolNames = readFlagValue("--tools");
   const extensionPath = readFlagValue("--extension");
-  const dataPath = process.env.PIPR_RUNTIME_TOOLS_DATA;
+  const dataPath = Bun.env.PIPR_RUNTIME_TOOLS_DATA;
 
   assertEqual(
     toolNames,
@@ -106,10 +103,10 @@ async function assertCondensedRuntimeTools() {
   for (const forbidden of ["bash", "edit", "write"]) {
     assert(!toolNames.split(",").includes(forbidden), `forbidden tool '${forbidden}' was enabled`);
   }
-  assert(existsSync(extensionPath), "runtime tool extension path missing");
+  assert(await Bun.file(extensionPath).exists(), "runtime tool extension path missing");
   assertEqual(path.basename(extensionPath), "runtime-tools-extension.mjs", "runtime tool extension was not static");
   assert(dataPath, "runtime tool data env missing");
-  assert(existsSync(dataPath), "runtime tool data path missing");
+  assert(await Bun.file(dataPath).exists(), "runtime tool data path missing");
   assertEqual(path.basename(dataPath), "data.json", "runtime tool data file name mismatch");
 
   const payload = parsePromptJson("Diff Manifest Payload:", "Diff Manifest:");
@@ -121,7 +118,7 @@ async function assertCondensedRuntimeTools() {
   );
 
   const manifest = parsePromptJson("Diff Manifest:");
-  const file = manifest.files.find((item) => item.path === "test/fixtures/act/project/sample.ts");
+  const file = manifest.files.find((item) => item.path === "packages/e2e/fixtures/act/project/sample.ts");
   assert(file, "condensed manifest missing sample file");
   assert(file.commentableRanges.length > 0, "condensed manifest missing commentable ranges");
   assert(!("preview" in file.commentableRanges[0]), "condensed range kept preview");
@@ -191,7 +188,7 @@ async function assertCondensedRuntimeTools() {
   assertEqual(oppositeSideBase.available, false, "pipr_read_at_ref widened opposite-side base read");
 
   await assertRejects(
-    () => executeTool(diffTool, { path: "test/fixtures/act/project/missing.ts" }),
+    () => executeTool(diffTool, { path: "packages/e2e/fixtures/act/project/missing.ts" }),
     "not in the Diff Manifest",
   );
   await assertRejects(() => executeTool(diffTool, { rangeId: "rng_missing" }), "Unknown Diff Manifest range");
@@ -209,14 +206,11 @@ async function assertCondensedRuntimeTools() {
   );
 }
 
-function writeReview(title, body) {
-  console.log(
-    JSON.stringify({
-      summary: { title, body },
-      inlineFindings: [],
-    }),
-  );
-  process.exit(0);
+function review(title, body) {
+  return {
+    summary: { title, body },
+    inlineFindings: [],
+  };
 }
 
 function readFlagValue(flag) {
@@ -285,34 +279,54 @@ function assertPromptContains(value) {
   }
 }
 
-function beginPiTelemetry() {
-  const directory = process.env.PIPR_ACT_PI_CALL_DIR ?? telemetryDirectoryFromProviderEnv();
+function assertEqual(actual, expected, message) {
+  assert(actual === expected, `${message}: expected ${expected}, got ${actual}`);
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+async function beginPiTelemetry() {
+  const directory = Bun.env.PIPR_ACT_PI_CALL_DIR ?? telemetryDirectoryFromProviderEnv();
   if (!directory) {
     return undefined;
   }
-  mkdirSync(directory, { recursive: true });
-  const id = `${Date.now()}-${process.pid}-${randomUUID()}`;
+  run("mkdir", ["-p", directory]);
+  const id = `${Date.now()}-${process.pid}-${crypto.randomUUID()}`;
   const file = `${directory}/${id}.jsonl`;
-  appendFileSync(
-    file,
-    `${JSON.stringify({ id, phase: "start", time: Date.now(), promptKind: promptKind() })}\n`,
-  );
-  process.on("exit", () => {
-    appendFileSync(
-      file,
-      `${JSON.stringify({ id, phase: "end", time: Date.now(), promptKind: promptKind() })}\n`,
-    );
+  await appendTelemetry(file, { id, phase: "start", time: Date.now(), promptKind: promptKind() });
+  return {
+    end: () =>
+      appendTelemetry(file, { id, phase: "end", time: Date.now(), promptKind: promptKind() }),
+  };
+}
+
+async function appendTelemetry(file, event) {
+  const telemetry = Bun.file(file);
+  const existing = (await telemetry.exists()) ? await telemetry.text() : "";
+  await Bun.write(file, `${existing}${JSON.stringify(event)}\n`);
+}
+
+function run(command, args) {
+  const result = Bun.spawnSync([command, ...args], {
+    stderr: "inherit",
+    stdout: "inherit",
   });
-  return { file, id };
+  if (result.exitCode !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed with exit ${result.exitCode}`);
+  }
 }
 
 function telemetryDirectoryFromProviderEnv() {
-  const providerEnvName = process.env.PIPR_PROVIDER_API_KEY_ENV;
+  const providerEnvName = Bun.env.PIPR_PROVIDER_API_KEY_ENV;
   if (!providerEnvName) {
     return undefined;
   }
-  const value = process.env[providerEnvName];
-  return value?.includes("/test/fixtures/act/pi-calls-") ? value : undefined;
+  const value = Bun.env[providerEnvName];
+  return value?.includes("/packages/e2e/fixtures/act/pi-calls-") ? value : undefined;
 }
 
 function promptKind() {

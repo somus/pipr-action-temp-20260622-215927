@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import path from "node:path";
 import type {
   CommentableRange,
@@ -257,7 +256,7 @@ function makeRangeId(
 }
 
 function hashPart(value: string, length: number): string {
-  return crypto.createHash("sha1").update(value).digest("hex").slice(0, length);
+  return new Bun.CryptoHasher("sha1").update(value).digest("hex").slice(0, length);
 }
 
 type PendingRange = {

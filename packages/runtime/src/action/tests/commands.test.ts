@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "bun:test";
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
 import type { GitHubPublicationClient } from "../../review/publish.js";
 import type { GitHubCommandClient } from "../command-router.js";
 import { runActionCommandWithDependencies } from "../commands.js";
@@ -13,7 +12,7 @@ describe("runActionCommand issue_comment dispatch", () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-action-command-"));
     try {
       const eventPath = path.join(rootDir, "event.json");
-      await writeFile(
+      await Bun.write(
         eventPath,
         JSON.stringify({
           action: "created",
@@ -214,7 +213,7 @@ describe("runActionCommand pull_request dispatch", () => {
       });
 
       expect(result).toMatchObject({ kind: "dry-run" });
-      await expect(readFile(path.join(homeDir, ".gitconfig"), "utf8")).resolves.toContain(
+      await expect(Bun.file(path.join(homeDir, ".gitconfig")).text()).resolves.toContain(
         `directory = ${workspace.rootDir}`,
       );
     } finally {
@@ -246,7 +245,7 @@ describe("runActionCommand pull_request dispatch", () => {
       });
 
       expect(result).toMatchObject({ kind: "dry-run" });
-      await expect(readFile(sideEffectPath, "utf8")).rejects.toThrow();
+      await expect(Bun.file(sideEffectPath).text()).rejects.toThrow();
       await expectPiNotCalled(workspace);
     } finally {
       if (previous === undefined) {
@@ -329,25 +328,25 @@ async function createCommandWorkspace(
   runGit(rootDir, ["config", "core.hooksPath", "/dev/null"]);
   runGit(rootDir, ["config", "commit.gpgsign", "false"]);
   await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
-  await writeFile(
+  await Bun.write(
     path.join(rootDir, ".pipr", "config.ts"),
     options.baseConfigTs ?? reviewConfigTs(),
   );
   await mkdir(path.join(rootDir, "src"));
-  await writeFile(path.join(rootDir, "src", "a.ts"), "export const value = 1;\n");
+  await Bun.write(path.join(rootDir, "src", "a.ts"), "export const value = 1;\n");
   runGit(rootDir, ["add", "."]);
   runGit(rootDir, ["commit", "--no-verify", "-m", "base"]);
   const baseSha = runGit(rootDir, ["rev-parse", "HEAD"]).trim();
-  await writeFile(
+  await Bun.write(
     path.join(rootDir, ".pipr", "config.ts"),
     options.headConfigTs ?? headOnlyConfigTs(),
   );
-  await writeFile(path.join(rootDir, "src", "a.ts"), "export const value = 2;\n");
+  await Bun.write(path.join(rootDir, "src", "a.ts"), "export const value = 2;\n");
   runGit(rootDir, ["add", "."]);
   runGit(rootDir, ["commit", "--no-verify", "-m", "head"]);
   const headSha = runGit(rootDir, ["rev-parse", "HEAD"]).trim();
   const piExecutable = path.join(rootDir, "fake-pi.sh");
-  await writeFile(
+  await Bun.write(
     piExecutable,
     [
       "#!/bin/sh",
@@ -382,11 +381,11 @@ async function runIssueCommentCommand(
 }
 
 async function expectPiNotCalled(workspace: CommandWorkspace): Promise<void> {
-  await expect(readFile(path.join(workspace.rootDir, "pi-called"), "utf8")).rejects.toThrow();
+  await expect(Bun.file(path.join(workspace.rootDir, "pi-called")).text()).rejects.toThrow();
 }
 
 async function expectPiCalled(workspace: CommandWorkspace): Promise<void> {
-  await expect(readFile(path.join(workspace.rootDir, "pi-called"), "utf8")).resolves.toBe("");
+  await expect(Bun.file(path.join(workspace.rootDir, "pi-called")).text()).resolves.toBe("");
 }
 
 async function expectReviewRanAtHead(
@@ -483,7 +482,7 @@ async function writeIssueCommentEvent(
   body: string,
   action = "created",
 ): Promise<void> {
-  await writeFile(
+  await Bun.write(
     eventPath,
     JSON.stringify({
       action,
@@ -498,7 +497,7 @@ async function writePullRequestEvent(
   eventPath: string,
   workspace: CommandWorkspace,
 ): Promise<void> {
-  await writeFile(
+  await Bun.write(
     eventPath,
     JSON.stringify({
       action: "opened",
@@ -634,7 +633,15 @@ async function removeWorkspace(rootDir: string): Promise<void> {
 }
 
 function runGit(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" });
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
+  }
+  return result.stdout.toString();
 }
 
 function currentGitHead(cwd: string): string {

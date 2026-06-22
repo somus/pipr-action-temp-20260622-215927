@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { PrReview } from "../../types.js";
 import {

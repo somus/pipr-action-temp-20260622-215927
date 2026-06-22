@@ -1,13 +1,9 @@
-import { execFile } from "node:child_process";
-import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 import { buildPiprPlan, isPiprConfigFactory, type RuntimePlan } from "@pipr/sdk";
 import { resolveContainedConfigDir } from "./paths.js";
-
-const execFileAsync = promisify(execFile);
 
 export type LoadTypescriptConfigOptions = {
   rootDir: string;
@@ -64,16 +60,11 @@ async function installSdkStub(configDir: string): Promise<void> {
   const sdkRoot = path.join(configDir, "node_modules", "@pipr", "sdk");
   await mkdir(sdkRoot, { recursive: true });
   const sdkUrl = pathToFileURL(await sdkSourcePath()).href;
-  await writeFile(
+  await Bun.write(
     path.join(sdkRoot, "package.json"),
     JSON.stringify({ type: "module", exports: { ".": "./index.mjs" } }),
-    "utf8",
   );
-  await writeFile(
-    path.join(sdkRoot, "index.mjs"),
-    `export * from ${JSON.stringify(sdkUrl)};\n`,
-    "utf8",
-  );
+  await Bun.write(path.join(sdkRoot, "index.mjs"), `export * from ${JSON.stringify(sdkUrl)};\n`);
 }
 
 async function typecheckTypescriptConfig(configDir: string): Promise<void> {
@@ -82,17 +73,17 @@ async function typecheckTypescriptConfig(configDir: string): Promise<void> {
     throw new Error(`${configDir}/tsconfig.json is required for pipr check. Run pipr init.`);
   }
   const tscPath = await typescriptCliPath();
-  try {
-    await execFileAsync(
-      process.execPath,
-      [tscPath, "--noEmit", "--pretty", "false", "-p", tsconfigPath],
-      {
-        cwd: configDir,
-        maxBuffer: 1024 * 1024 * 4,
-      },
-    );
-  } catch (error) {
-    const output = commandOutput(error);
+  const result = Bun.spawnSync(
+    [process.execPath, tscPath, "--noEmit", "--pretty", "false", "-p", tsconfigPath],
+    {
+      cwd: configDir,
+      maxBuffer: 1024 * 1024 * 4,
+      stderr: "pipe",
+      stdout: "pipe",
+    },
+  );
+  if (result.exitCode !== 0) {
+    const output = commandOutput(result);
     throw new Error(
       `TypeScript config check failed for ${path.join(configDir, "config.ts")}` +
         (output ? `:\n${output}` : ""),
@@ -114,16 +105,10 @@ async function typescriptCliPath(): Promise<string> {
   throw new Error("Unable to locate TypeScript compiler for pipr check");
 }
 
-function commandOutput(error: unknown): string {
-  const stdout = stringProperty(error, "stdout").trim();
-  const stderr = stringProperty(error, "stderr").trim();
+function commandOutput(result: ReturnType<typeof Bun.spawnSync>): string {
+  const stdout = result.stdout?.toString().trim();
+  const stderr = result.stderr?.toString().trim();
   return [stdout, stderr].filter(Boolean).join("\n");
-}
-
-function stringProperty(value: unknown, key: string): string {
-  const candidate =
-    typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
-  return typeof candidate === "string" ? candidate : "";
 }
 
 async function sdkSourcePath(): Promise<string> {

@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPathContained, resolveContainedConfigDir } from "./paths.js";
@@ -47,7 +47,7 @@ export async function initOfficialMinimalProject(
   for (const target of targets) {
     await mkdir(path.dirname(target.absolutePath), { recursive: true });
     const existed = existing.includes(target.relativePath);
-    await writeFile(target.absolutePath, target.contents);
+    await Bun.write(target.absolutePath, target.contents);
     if (existed) {
       overwritten.push(target.relativePath);
     } else {
@@ -134,7 +134,7 @@ async function maybeLstat(
 }
 
 async function sdkDeclaration(): Promise<string> {
-  const declaration = await readFile(await sdkDeclarationPath(), "utf8");
+  const declaration = await Bun.file(await sdkDeclarationPath()).text();
   return [
     "// biome-ignore-all format: generated from @pipr/sdk declarations",
     "// biome-ignore-all assist/source/organizeImports: generated from @pipr/sdk declarations",

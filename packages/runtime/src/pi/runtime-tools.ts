@@ -1,5 +1,4 @@
-import { spawnSync } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DiffManifest } from "../types.js";
@@ -51,7 +50,7 @@ export async function preparePiRuntimeReadTools(options: {
     baseRanges,
   };
   const dataPath = path.join(toolRoot, "data.json");
-  await writeFile(dataPath, JSON.stringify(data), "utf8");
+  await Bun.write(dataPath, JSON.stringify(data));
   return {
     extensionPath: await piRuntimeToolsExtensionPath(),
     dataPath,
@@ -162,7 +161,7 @@ async function materializeBaseRangeSnapshots(options: {
         continue;
       }
       const snapshotName = `${index}-${rangeIndex}.txt`;
-      await writeFile(path.join(options.baseRoot, snapshotName), blob.content, "utf8");
+      await Bun.write(path.join(options.baseRoot, snapshotName), blob.content);
       ranges[range.id] = {
         path: file.path,
         ref: "base",
@@ -188,25 +187,19 @@ function readGitBlobSlice(options: {
   maxBytes: number;
   allowMissing?: boolean;
 }): { available: boolean; content?: string; bytes?: number; truncated?: boolean } {
-  const result = spawnSync("git", ["show", `${options.ref}:${options.filePath}`], {
+  const result = Bun.spawnSync(["git", "show", `${options.ref}:${options.filePath}`], {
     cwd: options.cwd,
-    encoding: "buffer",
     maxBuffer: 16 * 1024 * 1024,
+    stderr: "pipe",
+    stdout: "pipe",
   });
-  if (
-    typeof result.error === "object" &&
-    result.error !== null &&
-    Reflect.get(result.error, "code") === "ENOBUFS"
-  ) {
-    return { available: false };
-  }
-  if (result.status !== 0) {
+  if (result.exitCode !== 0) {
     if (options.allowMissing) {
       return { available: false };
     }
     throw new Error(`Unable to read '${options.filePath}' at ${options.ref}`);
   }
-  return boundedLineSlice(result.stdout.toString("utf8"), options.window, options.maxBytes);
+  return boundedLineSlice(result.stdout.toString(), options.window, options.maxBytes);
 }
 
 async function readWorkspaceFileSlice(options: {
@@ -217,6 +210,6 @@ async function readWorkspaceFileSlice(options: {
 }): Promise<{ available: boolean; content?: string; bytes?: number; truncated?: boolean }> {
   const resolved = resolveAllowedPath(options.workspace, options.filePath);
   await assertNoSymlinkPath(options.workspace, options.filePath);
-  const content = await readFile(resolved, "utf8");
+  const content = await Bun.file(resolved).text();
   return boundedLineSlice(content, options.window, options.maxBytes);
 }

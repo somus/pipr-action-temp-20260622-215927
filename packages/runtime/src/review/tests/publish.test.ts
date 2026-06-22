@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "bun:test";
 import type { DiffManifest, ValidatedReview } from "../../types.js";
 import {
   buildPublicationPlan,
@@ -95,8 +95,10 @@ const validated: ValidatedReview = {
   droppedFindings: [],
 };
 
+const originalFetch = globalThis.fetch;
+
 afterEach(() => {
-  vi.unstubAllGlobals();
+  globalThis.fetch = originalFetch;
 });
 
 describe("publishPublicationPlan", () => {
@@ -224,7 +226,7 @@ describe("publishPublicationPlan", () => {
 describe("createGitHubPublicationClient", () => {
   it("lists all issue and review comment pages before marker checks", async () => {
     const requestedUrls: string[] = [];
-    vi.stubGlobal("fetch", async (input: unknown) => {
+    globalThis.fetch = (async (input: string | URL | Request) => {
       const url =
         typeof input === "string"
           ? input
@@ -243,7 +245,7 @@ describe("createGitHubPublicationClient", () => {
           : { "Content-Type": "application/json" };
       const comments = [{ id: Number(page), body: `page ${page}` }];
       return new Response(JSON.stringify(comments), { status: 200, headers });
-    });
+    }) as typeof fetch;
 
     const client = createGitHubPublicationClient({
       GITHUB_API_URL: "https://api.github.test",

@@ -1,6 +1,5 @@
 [tools]
 bun = "1.3.14"
-node = "26.3.0"
 act = "0.2.89"
 hk = "1.48.0"
 
@@ -15,19 +14,3 @@ run = "bun run check"
 [tasks.check-actions]
 description = "Build local Docker Action image, verify Pi contract, and run act fixtures"
 run = "bun run check:actions"
-
-[tasks.check-pi-contract]
-description = "Verify the Docker Action Pi CLI contract"
-run = "bun run check:pi-contract"
-
-[tasks.act-pr]
-description = "Run the local pull_request action fixture through act"
-run = "bun run act:pr"
-
-[tasks.act-pr-full]
-description = "Run the local pull_request full-flow action fixture through act"
-run = "bun run act:pr-full"
-
-[tasks.act-pr-condensed]
-description = "Run the local pull_request condensed manifest action fixture through act"
-run = "bun run act:pr-condensed"

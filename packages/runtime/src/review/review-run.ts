@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Agent, AgentTool, DurationInput, RuntimePlan, TaskContext } from "@pipr/sdk";
 import { isBuiltinReadOnlyTool, renderPromptValue } from "@pipr/sdk";
 import { compact, uniqBy } from "lodash-es";
@@ -125,7 +124,7 @@ export function resolveProvider(config: PiprConfig, providerId: string): Provide
 }
 
 function createAgentRunContext(runtime: RunReviewAgentOptions["runtime"]): AgentRunContext {
-  const runId = randomUUID();
+  const runId = crypto.randomUUID();
   const repository = {
     root: runtime.workspace,
     name: runtime.event.repo.split("/").at(-1) ?? "repo",

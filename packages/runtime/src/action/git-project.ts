@@ -1,5 +1,4 @@
-import crypto from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveContainedConfigDir } from "../config/paths.js";
@@ -27,7 +26,7 @@ export async function loadRuntimeProjectFromGitCommit(options: {
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-base-config-"));
   try {
-    const hash = crypto.createHash("sha256");
+    const hash = new Bun.CryptoHasher("sha256");
     for (const file of files) {
       assertRegularFile(file, options.commitSha);
       const relativePath = relativeGitPath(configDir.gitPath, file.path);
@@ -42,7 +41,7 @@ export async function loadRuntimeProjectFromGitCommit(options: {
       hash.update(contents);
       hash.update("\0");
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, contents);
+      await Bun.write(targetPath, contents);
     }
     return {
       ...(await loadRuntimeProject({
