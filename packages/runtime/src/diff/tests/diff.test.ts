@@ -32,7 +32,7 @@ describe("diff manifest parsing", () => {
     const ranges = file?.commentableRanges;
 
     expect(ranges).toHaveLength(2);
-    expect(ranges?.[0]).toMatchObject({ side: "RIGHT", startLine: 1, endLine: 3, kind: "mixed" });
+    expect(ranges?.[0]).toMatchObject({ side: "RIGHT", startLine: 2, endLine: 3, kind: "added" });
     expect(ranges?.[1]).toMatchObject({ side: "LEFT", startLine: 2, endLine: 2 });
   });
 
@@ -65,13 +65,13 @@ describe("diff manifest parsing", () => {
     expect(file?.commentableRanges[0]).toMatchObject({
       path: "src/a.ts",
       side: "RIGHT",
-      startLine: 1,
+      startLine: 2,
       endLine: 2,
-      kind: "mixed",
+      kind: "added",
       hunkIndex: 1,
       hunkContentHash: file?.hunks[0]?.contentHash,
     });
-    expect(file?.commentableRanges[0]?.id).toMatch(/^rng_[a-f0-9]{8}_h1_RIGHT_1_2_[a-f0-9]{12}$/);
+    expect(file?.commentableRanges[0]?.id).toMatch(/^rng_[a-f0-9]{8}_h1_RIGHT_2_2_[a-f0-9]{12}$/);
   });
 
   it("changes range ids when hunk content changes", () => {
@@ -288,7 +288,7 @@ describe("diff manifest parsing", () => {
     });
   });
 
-  it("excludes sparse diffs whose expanded context would overload the manifest", async () => {
+  it("keeps large sparse diffs when changed lines stay below the manifest cap", async () => {
     await withGitRepo(async (repo) => {
       const baseSha = await commitFile(
         repo,
@@ -308,11 +308,9 @@ describe("diff manifest parsing", () => {
         "huge-sparse.ts",
       );
 
-      expect(file).toMatchObject({
-        excludedReason: "oversized diff",
-        hunks: [],
-        commentableRanges: [],
-      });
+      expect(file?.excludedReason).toBeUndefined();
+      expect(file?.hunks.length).toBeGreaterThan(0);
+      expect(file?.commentableRanges.length).toBeGreaterThan(0);
     });
   });
 

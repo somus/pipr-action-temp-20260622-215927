@@ -384,7 +384,7 @@ function applyHunkLine(state: DiffParserState, line: string): void {
 
   if (line.startsWith(" ")) {
     hunk.bodyLines.push(line);
-    applyCommentableLine(state, "RIGHT", hunk.newLine, line.slice(1), "context");
+    flushPendingRange(state);
     hunk.oldLine += 1;
     hunk.newLine += 1;
     return;
