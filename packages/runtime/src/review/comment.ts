@@ -2,8 +2,8 @@ import { compact } from "lodash-es";
 import { z } from "zod";
 import { createDiffRangeIndex } from "../diff/ranges.js";
 import type {
+  ChangeRequestEventContext,
   DiffManifest,
-  PullRequestEventContext,
   ReviewFinding,
   ValidatedReview,
 } from "../types.js";
@@ -107,7 +107,7 @@ export type PublicationMetadata = z.infer<typeof publicationMetadataSchema>;
 const publicationPlanSchema = z.strictObject({
   mainComment: z.string().min(1),
   mainMarker: z.string().min(1),
-  pullRequestNumber: z.number().int().positive(),
+  changeNumber: z.number().int().positive(),
   inlineItems: inlinePublicationItemsSchema,
   metadata: publicationMetadataSchema,
 });
@@ -127,7 +127,7 @@ export type MainCommentLayout = {
 };
 
 export type BuildPublicationPlanOptions = {
-  event: Pick<PullRequestEventContext, "pullRequestNumber" | "headSha">;
+  event: Pick<ChangeRequestEventContext, "change">;
   layout?: MainCommentLayout;
   mainContributions: MainSectionContribution[];
   inlineItems: InlinePublicationItem[];
@@ -156,7 +156,7 @@ export function buildPublicationPlan(options: BuildPublicationPlanOptions): Publ
       reducedSections,
     }),
     mainMarker: layout.marker,
-    pullRequestNumber: options.event.pullRequestNumber,
+    changeNumber: options.event.change.number,
     inlineItems: cappedInlineItems,
     metadata,
   });
@@ -283,12 +283,12 @@ function defaultMainCommentLayout(): MainCommentLayout {
 }
 
 function renderMainCommentFromSections(options: {
-  event: Pick<PullRequestEventContext, "pullRequestNumber">;
+  event: Pick<ChangeRequestEventContext, "change">;
   layout: MainCommentLayout;
   reducedSections: Map<string, string>;
 }): string {
   return [
-    `<!-- ${options.layout.marker} pr=${options.event.pullRequestNumber} -->`,
+    `<!-- ${options.layout.marker} change=${options.event.change.number} -->`,
     "",
     `# ${options.layout.heading}`,
     "",

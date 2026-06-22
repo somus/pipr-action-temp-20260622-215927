@@ -10,11 +10,11 @@ import { uniq } from "lodash-es";
 import { selectRuntimeTasks } from "../config/task-selection.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "../diff/diff.js";
 import type {
+  ChangeRequestEventContext,
   DiffManifest,
   PiprConfig,
   ProviderConfig,
   PrReview,
-  PullRequestEventContext,
   ValidatedReview,
 } from "../types.js";
 import { parseDiffManifest, parsePiprConfig, parseProviderConfig } from "../types.js";
@@ -36,7 +36,7 @@ export type DiffManifestBuilder = (options: BuildDiffManifestOptions) => DiffMan
 export type RunTaskRuntimeOptions = {
   workspace: string;
   config: PiprConfig;
-  event: PullRequestEventContext;
+  event: ChangeRequestEventContext;
   plan: RuntimePlan;
   env?: NodeJS.ProcessEnv;
   providerOverride?: ProviderConfig;
@@ -85,8 +85,8 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   const diffManifest = parseDiffManifest(
     (options.diffManifestBuilder ?? buildDiffManifest)({
       cwd: options.workspace,
-      baseSha: options.event.baseSha,
-      headSha: options.event.headSha,
+      baseSha: options.event.change.base.sha,
+      headSha: options.event.change.head.sha,
     }),
   );
   const tasks = selectRuntimeTasks({
@@ -130,7 +130,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
 
   const review = collectedReview(output);
   const validated = validatePrReview(review, diffManifest, {
-    expectedHeadSha: options.event.headSha,
+    expectedHeadSha: options.event.change.head.sha,
   });
   const publishing = buildCommentPublishingPlan({
     event: options.event,
@@ -144,7 +144,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       runtimeVersion,
       trustedConfigSha: options.trustedConfigSha,
       trustedConfigHash: options.trustedConfigHash,
-      reviewedHeadSha: options.event.headSha,
+      reviewedHeadSha: options.event.change.head.sha,
       providerModels:
         output.providerModels.length > 0 ? uniq(output.providerModels) : [provider.model],
       taskMetadata: taskMetadata(output),
@@ -186,13 +186,19 @@ function createTaskContext(
 ): TaskContext {
   return {
     run: { id: crypto.randomUUID() },
-    repository: { root: options.workspace, name: options.event.repo.split("/").at(-1) ?? "repo" },
+    repository: {
+      root: options.workspace,
+      name: options.event.repository.slug.split("/").at(-1) ?? "repo",
+    },
     change: {
-      number: options.event.pullRequestNumber,
-      title: options.event.title,
-      description: options.event.description,
-      base: { sha: options.event.baseSha },
-      head: { sha: options.event.headSha },
+      number: options.event.change.number,
+      title: options.event.change.title,
+      description: options.event.change.description,
+      url: options.event.change.url,
+      author: options.event.change.author,
+      base: options.event.change.base,
+      head: options.event.change.head,
+      isFork: options.event.change.isFork,
       async diffManifest(manifestOptions?: DiffManifestOptions) {
         const key = JSON.stringify(manifestOptions ?? {});
         const cached = options.manifestCache.get(key);
@@ -211,10 +217,10 @@ function createTaskContext(
         }));
       },
       async currentHeadSha() {
-        return options.event.headSha;
+        return options.event.change.head.sha;
       },
     },
-    platform: { id: "github" },
+    platform: { id: options.event.platform.id },
     pi: {
       async run(agent, input, runOptions) {
         const result = await runReviewAgent({
@@ -409,7 +415,7 @@ function collectedReview(output: OutputState): PrReview {
 function skippedTaskRuntimeResult(options: {
   config: PiprConfig;
   diffManifest: DiffManifest;
-  event: PullRequestEventContext;
+  event: ChangeRequestEventContext;
   provider: ProviderConfig;
   reason: string;
   trustedConfigSha?: string;
@@ -429,7 +435,7 @@ function skippedTaskRuntimeResult(options: {
       runtimeVersion,
       trustedConfigSha: options.trustedConfigSha,
       trustedConfigHash: options.trustedConfigHash,
-      reviewedHeadSha: options.event.headSha,
+      reviewedHeadSha: options.event.change.head.sha,
       providerModels: [options.provider.model],
       selectedTasks: [],
       failedTasks: [],

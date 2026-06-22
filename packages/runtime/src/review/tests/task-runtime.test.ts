@@ -58,7 +58,7 @@ describe("runTaskRuntime", () => {
     });
   });
 
-  it("maps GitHub pull request actions to change request actions", async () => {
+  it("selects tasks from normalized change request actions", async () => {
     const seen: string[] = [];
     const plan = testPlan((pipr) => {
       const updated = pipr.task("updated", () => {
@@ -73,7 +73,7 @@ describe("runTaskRuntime", () => {
 
     await runRuntime({
       plan,
-      event: eventContext({ action: "synchronize" }),
+      event: eventContext({ action: "updated" }),
     });
     await runRuntime({
       plan,
@@ -81,7 +81,7 @@ describe("runTaskRuntime", () => {
     });
     await runRuntime({
       plan,
-      event: eventContext({ action: "ready_for_review" }),
+      event: eventContext({ action: "ready" }),
     });
 
     expect(seen).toEqual(["updated", "ready"]);
@@ -470,12 +470,15 @@ function eventContext(options: { action?: string; title?: string; description?: 
   return {
     eventName: "pull_request",
     action: options.action ?? "opened",
-    repo: "local/pipr",
-    pullRequestNumber: 1,
-    title: options.title ?? "PR title",
-    description: options.description ?? "PR body",
-    baseSha: "base",
-    headSha: "head",
+    platform: { id: "github" },
+    repository: { slug: "local/pipr" },
+    change: {
+      number: 1,
+      title: options.title ?? "PR title",
+      description: options.description ?? "PR body",
+      base: { sha: "base" },
+      head: { sha: "head" },
+    },
     workspace: process.cwd(),
   };
 }

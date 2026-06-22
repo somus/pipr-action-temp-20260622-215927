@@ -1,6 +1,6 @@
 # Quickstart
 
-This guide gets pipr running in a repository that already uses GitHub pull requests.
+This guide gets pipr running in a repository that already uses GitHub pull requests. For the full docs map, start with [pipr Docs](index.md).
 
 ## 1. Create the config
 
@@ -32,6 +32,17 @@ pipr check
 - `.pipr/types/pipr-sdk.d.ts`
 
 Existing pipr files are not overwritten unless `pipr init --force` is used.
+
+The resulting project layout is:
+
+```text
+repo/
+├── .pipr/
+│   ├── config.ts
+│   ├── tsconfig.json
+│   └── types/pipr-sdk.d.ts
+└── .github/workflows/pipr.yml
+```
 
 ## 2. Add the provider secret
 
@@ -105,3 +116,10 @@ pipr review --base origin/main
 ```
 
 `pipr review` runs the local `review` entrypoint and prints the rendered main comment instead of publishing to GitHub.
+
+## Next steps
+
+- Read [Configuration](configuration.md) for common config patterns.
+- Read [PIPR SDK Reference](sdk-reference.md) for the public builder API.
+- Read [Runtime Guide](runtime.md) for Diff Manifest, Pi execution, validation, and publication behavior.
+- Read [GitHub Action](github-action.md) for Action inputs, outputs, dry runs, and permissions.

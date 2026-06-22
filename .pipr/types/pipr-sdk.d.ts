@@ -94,6 +94,8 @@ type AgentTool<Input = unknown, Output = unknown> = {
   readonly description?: string;
   readonly input?: Schema<Input>;
   readonly output?: Schema<Output>;
+  run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
+  toModelOutput?(output: Output): PromptValue;
 };
 /** Returns whether a tool is one of pipr's built-in read-only tools. */
 function isBuiltinReadOnlyTool(tool: AgentTool): boolean;
@@ -137,13 +139,28 @@ type CommandOptions<Input> = {
   description?: string;
   parse?: (arguments_: Record<string, string>) => Input;
 };
-type ReviewRecipeOptions = {
+type ReviewerOptions = {
   name?: string;
   model: ModelProfile;
   fallbacks?: ModelProfile[];
   instructions: PromptSource;
   prompt?: (input: DefaultReviewInput, context: AgentPromptContext) => PromptSource | Promise<PromptSource>;
   tools?: readonly AgentTool[];
+  timeout?: DurationInput;
+};
+type Reviewer = Agent<DefaultReviewInput, ReviewResult>;
+type ReviewEntrypoints = {
+  changeRequest?: ChangeRequestAction[] | false;
+  command?: string | false | {
+    pattern?: string;
+    permission?: RepositoryPermission;
+    description?: string;
+  };
+  local?: string | false;
+};
+type ReviewRecipeEntrypointOptions = {
+  name?: string;
+  entrypoints?: ReviewEntrypoints;
   on?: ChangeRequestAction[] | false;
   command?: string | false;
   commandPermission?: RepositoryPermission;
@@ -154,6 +171,11 @@ type ReviewRecipeOptions = {
   summary?: boolean;
   timeout?: DurationInput;
 };
+type ReviewRecipeOptions = (ReviewRecipeEntrypointOptions & {
+  reviewer: Reviewer;
+}) | (ReviewRecipeEntrypointOptions & ReviewerOptions & {
+  reviewer?: undefined;
+});
 type DefaultReviewInput = {
   manifest: DiffManifest;
   change: ChangeRequestInfo;
@@ -166,7 +188,14 @@ type PluginToolDefinition<Input, Output> = {
   description: string;
   input: Schema<Input>;
   output: Schema<Output>;
-  execute(context: unknown, input: Input): Promise<Output>;
+  execute?(context: unknown, input: Input): Promise<Output>;
+  run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
+  toModelOutput?(output: Output): PromptValue;
+};
+type ToolRunOptions<Input> = {
+  input: Input;
+  ctx: unknown;
+  signal?: AbortSignal;
 };
 type PiprBuilder = {
   readonly tools: BuiltinToolCatalog;
@@ -178,6 +207,7 @@ type PiprBuilder = {
   model(specification: string, options?: ModelOptions): ModelProfile;
   agent<Input, Output>(definition: AgentDefinition<Input, Output>): Agent<Input, Output>;
   task<Input = void>(name: string, handler: TaskHandler<Input>): Task<Input>;
+  reviewer(options: ReviewerOptions): Reviewer;
   review(options: ReviewRecipeOptions): void;
   command<Input = void>(pattern: string, options: CommandOptions<Input>, task: Task<Input>): void;
   local<Input = void>(name: string, task: Task<Input>): void;
@@ -352,5 +382,11 @@ function reviewSchemaExample(): ReviewResult;
 /** Renders a prompt source/value into plain text for Pi prompts. */
 function renderPromptValue(value: PromptValue): string;
 //#endregion
-export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommandOptions, ConsolidatedReview, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonValue, ModelOptions, ModelProfile, OutputCollector, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCandidates, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, SectionContributionOptions, SummaryContributionOptions, Task, TaskContext, TaskHandler, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, parseReviewCandidates, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schemas };
+export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommandOptions, ConsolidatedReview, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonValue, ModelOptions, ModelProfile, OutputCollector, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCandidates, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, SectionContributionOptions, SummaryContributionOptions, Task, TaskContext, TaskHandler, ToolRunOptions, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, parseReviewCandidates, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schemas };
+}
+declare module "@pipr/sdk/review" {
+export { type AgentPromptContext, type ChangeRequestAction, type DefaultReviewInput, type ReviewCandidates, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, parseReviewCandidates, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewSchemaExample, schemas } from "@pipr/sdk";
+}
+declare module "@pipr/sdk/tools" {
+export { type AgentTool, type BuiltinSchemaCatalog, type BuiltinToolCatalog, type JsonObject, type JsonValue, type PluginToolDefinition, type PromptSource, type PromptText, type PromptValue, type Schema, type SchemaParseResult, type ToolRunOptions, isBuiltinReadOnlyTool, renderPromptValue, schemas } from "@pipr/sdk";
 }

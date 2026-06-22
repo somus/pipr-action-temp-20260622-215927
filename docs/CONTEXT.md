@@ -5,7 +5,7 @@ Use these terms consistently in product docs, code comments, issues, and pull re
 ## Terms
 
 **pipr**:
-The GitHub pull request automation product that reviews pull requests through Pi-powered agents.
+The code review automation product that reviews code host change requests through Pi-powered agents.
 _Avoid_: legacy product names
 
 **pipr Configuration**:
@@ -16,6 +16,15 @@ _Avoid_: legacy configuration roots, `.pi/`
 GitHub Action inputs controlled by workflow YAML, used for trusted provider selection.
 _Avoid_: PR-authored provider settings
 
+**Code Host Adapter**:
+The internal provider boundary for native events, permissions, checkout, comment publication, and inline location mapping.
+GitHub is first. GitLab, Bitbucket, and Azure DevOps support is coming soon.
+_Avoid_: GitHub runtime, provider-specific user config
+
+**Change Request**:
+The provider-neutral review target. GitHub maps this to a pull request; future providers can map it to their native merge request or change request object.
+_Avoid_: GitHub-only pull request when describing core runtime
+
 **TypeScript Config**:
 The single supported user authoring surface. `pipr init` creates `.pipr/config.ts`, `.pipr/tsconfig.json`, and `.pipr/types/pipr-sdk.d.ts`.
 _Avoid_: hidden runtime defaults
@@ -25,7 +34,7 @@ The public builder API imported from `@pipr/sdk`.
 _Avoid_: YAML component registry
 
 **@pipr**:
-The GitHub pull request command mention for task-owned commands such as `@pipr review`.
+The code host command mention for task-owned commands such as `@pipr review`.
 _Avoid_: bot aliases
 
 **Pi Agent Runner**:
@@ -61,13 +70,13 @@ An actionable issue found in a pull request and anchored to a validated diff ran
 _Avoid_: nit, alert
 
 **Main Review Comment**:
-The single pull request comment that summarizes pipr's review and metadata.
+The single change request comment that summarizes pipr's review and metadata.
 _Avoid_: summary post
 
 **Inline Review Comment**:
-A pull request review comment anchored to one validated diff range.
+A change request review comment anchored to one validated diff range.
 _Avoid_: annotation
 
 **Comment Publishing**:
-The pipr-owned reducer and GitHub writer for Main Review Comments and Inline Review Comments.
-_Avoid_: task-authored GitHub comment writes
+The pipr-owned reducer and code host adapter writer for Main Review Comments and Inline Review Comments.
+_Avoid_: task-authored code host comment writes

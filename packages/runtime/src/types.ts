@@ -65,15 +65,42 @@ const runtimeSettingsSchema = z.strictObject({
   warnings: z.array(z.string()),
 });
 
-const pullRequestEventContextSchema = z.strictObject({
-  eventName: nonEmptyStringSchema,
-  action: nonEmptyStringSchema.optional(),
-  repo: nonEmptyStringSchema,
-  pullRequestNumber: z.number().int().positive(),
+const platformInfoSchema = z.strictObject({
+  id: nonEmptyStringSchema,
+  host: nonEmptyStringSchema.optional(),
+});
+
+const repositoryRefSchema = z.strictObject({
+  slug: nonEmptyStringSchema,
+  url: nonEmptyStringSchema.optional(),
+});
+
+const changeEndpointSchema = z.strictObject({
+  sha: nonEmptyStringSchema,
+  ref: nonEmptyStringSchema.optional(),
+  url: nonEmptyStringSchema.optional(),
+  author: z.strictObject({ login: nonEmptyStringSchema }).optional(),
+  fork: z.boolean().optional(),
+});
+
+const changeRequestRefSchema = z.strictObject({
+  number: z.number().int().positive(),
   title: z.string().default(""),
   description: z.string().default(""),
-  baseSha: nonEmptyStringSchema,
-  headSha: nonEmptyStringSchema,
+  url: nonEmptyStringSchema.optional(),
+  author: z.strictObject({ login: nonEmptyStringSchema }).optional(),
+  base: changeEndpointSchema,
+  head: changeEndpointSchema,
+  isFork: z.boolean().optional(),
+});
+
+const changeRequestEventContextSchema = z.strictObject({
+  eventName: nonEmptyStringSchema,
+  action: nonEmptyStringSchema.optional(),
+  rawAction: nonEmptyStringSchema.optional(),
+  platform: platformInfoSchema,
+  repository: repositoryRefSchema,
+  change: changeRequestRefSchema,
   workspace: nonEmptyStringSchema,
 });
 
@@ -149,7 +176,10 @@ export type PathFilter = z.infer<typeof pathFilterSchema>;
 export type DiffManifestLimitsConfig = z.infer<typeof diffManifestLimitsConfigSchema>;
 export type PiprConfig = z.infer<typeof piprConfigSchema>;
 export type RuntimeSettings = z.infer<typeof runtimeSettingsSchema>;
-export type PullRequestEventContext = z.infer<typeof pullRequestEventContextSchema>;
+export type PlatformInfo = z.infer<typeof platformInfoSchema>;
+export type RepositoryRef = z.infer<typeof repositoryRefSchema>;
+export type ChangeRequestRef = z.infer<typeof changeRequestRefSchema>;
+export type ChangeRequestEventContext = z.infer<typeof changeRequestEventContextSchema>;
 export type FileStatus = z.infer<typeof fileStatusSchema>;
 export type ReviewSide = z.infer<typeof reviewSideSchema>;
 export type RangeKind = z.infer<typeof rangeKindSchema>;
@@ -173,8 +203,8 @@ export function parseRuntimeSettings(value: unknown): RuntimeSettings {
   return runtimeSettingsSchema.parse(value);
 }
 
-export function parsePullRequestEventContext(value: unknown): PullRequestEventContext {
-  return pullRequestEventContextSchema.parse(value);
+export function parseChangeRequestEventContext(value: unknown): ChangeRequestEventContext {
+  return changeRequestEventContextSchema.parse(value);
 }
 
 export function parseDiffManifest(value: unknown): DiffManifest {

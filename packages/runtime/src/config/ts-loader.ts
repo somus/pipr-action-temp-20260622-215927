@@ -62,9 +62,18 @@ async function installSdkStub(configDir: string): Promise<void> {
   await mkdir(sdkRoot, { recursive: true });
   await Bun.write(
     path.join(sdkRoot, "package.json"),
-    JSON.stringify({ type: "module", exports: { ".": "./index.mjs" } }),
+    JSON.stringify({
+      type: "module",
+      exports: {
+        ".": "./index.mjs",
+        "./review": "./review.mjs",
+        "./tools": "./tools.mjs",
+      },
+    }),
   );
   await Bun.write(path.join(sdkRoot, "index.mjs"), await sdkStubSource());
+  await Bun.write(path.join(sdkRoot, "review.mjs"), 'export * from "./index.mjs";\n');
+  await Bun.write(path.join(sdkRoot, "tools.mjs"), 'export * from "./index.mjs";\n');
 }
 
 async function typecheckTypescriptConfig(configDir: string): Promise<void> {

@@ -6,10 +6,10 @@ import { piReadOnlyToolNames } from "../pi/contract.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../pi/runner.js";
 import { piRuntimeReadToolNames } from "../pi/runtime-tools.js";
 import type {
+  ChangeRequestEventContext,
   DiffManifest,
   PiprConfig,
   ProviderConfig,
-  PullRequestEventContext,
 } from "../types.js";
 import { parseDiffManifest } from "../types.js";
 import { type PreparedDiffManifestPrompt, prepareDiffManifestPrompt } from "./manifest-payload.js";
@@ -24,7 +24,7 @@ export type RunReviewAgentOptions = {
   runtime: {
     workspace: string;
     config: PiprConfig;
-    event: PullRequestEventContext;
+    event: ChangeRequestEventContext;
     provider: ProviderConfig;
     providerOverride?: ProviderConfig;
     plan: RuntimePlan;
@@ -58,7 +58,7 @@ type PluginToolExecutionContext = {
     base: { sha: string };
     head: { sha: string };
   };
-  platform: { id: "github" };
+  platform: { id: string };
 };
 
 type AgentRunContext = {
@@ -127,16 +127,16 @@ function createAgentRunContext(runtime: RunReviewAgentOptions["runtime"]): Agent
   const runId = crypto.randomUUID();
   const repository = {
     root: runtime.workspace,
-    name: runtime.event.repo.split("/").at(-1) ?? "repo",
+    name: runtime.event.repository.slug.split("/").at(-1) ?? "repo",
   };
   const change = {
-    number: runtime.event.pullRequestNumber,
-    title: runtime.event.title,
-    description: runtime.event.description,
-    base: { sha: runtime.event.baseSha },
-    head: { sha: runtime.event.headSha },
+    number: runtime.event.change.number,
+    title: runtime.event.change.title,
+    description: runtime.event.change.description,
+    base: runtime.event.change.base,
+    head: runtime.event.change.head,
   };
-  const platform = { id: "github" as const };
+  const platform = { id: runtime.event.platform.id };
   return {
     prompt: { runId, repository, change, platform },
     tools: { run: { id: runId }, repository, change, platform },

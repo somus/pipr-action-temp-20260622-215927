@@ -124,7 +124,7 @@ describe("pipr CLI", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("pipr loaded PR #1 for local/pipr");
+    expect(result.stdout).toContain("pipr loaded change #1 for local/pipr");
     expect(result.stdout).toContain("PIPR_DRY_RUN=1");
     expect(result.piCalled).toBe(false);
   });

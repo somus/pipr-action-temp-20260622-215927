@@ -53,7 +53,10 @@ export async function assertActFullFixture(
 
 export function assertActCondensedFixture(fixture: PublicationFixture): void {
   const mainComment = readOnlyMainComment(fixture);
-  assert(mainComment.includes("<!-- pipr:main-comment pr=1 -->"), "main comment marker missing");
+  assert(
+    mainComment.includes("<!-- pipr:main-comment change=1 -->"),
+    "main comment marker missing",
+  );
   assert(
     mainComment.includes("Condensed act fixture reached Pi after runtime tools passed."),
     "condensed summary missing",
@@ -64,7 +67,10 @@ export function assertActCondensedFixture(fixture: PublicationFixture): void {
 
 export function assertActOrchestratorFixture(fixture: PublicationFixture): void {
   const mainComment = readOnlyMainComment(fixture);
-  assert(mainComment.includes("<!-- pipr:main-comment pr=1 -->"), "main comment marker missing");
+  assert(
+    mainComment.includes("<!-- pipr:main-comment change=1 -->"),
+    "main comment marker missing",
+  );
   assert(
     mainComment.includes(
       "Orchestrated review combined correctness, security, and tests specialist outputs.",
@@ -83,7 +89,7 @@ function readOnlyMainComment(fixture: PublicationFixture): string {
 }
 
 function assertFullMainComment(body: string): void {
-  assert(body.includes("<!-- pipr:main-comment pr=1 -->"), "main comment marker missing");
+  assert(body.includes("<!-- pipr:main-comment change=1 -->"), "main comment marker missing");
   assert(body.includes("Full fixture secondary section"), "secondary section missing");
   assert(
     body.includes(

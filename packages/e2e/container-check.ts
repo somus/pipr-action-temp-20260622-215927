@@ -85,7 +85,7 @@ function runDryRunContainer(prepared: PreparedScenario): void {
     sourceRoot,
   );
   const combined = `${output.stdout}\n${output.stderr}`;
-  assertContains(combined, "pipr loaded PR #1 for local/pipr");
+  assertContains(combined, "pipr loaded change #1 for local/pipr");
   assertContains(combined, "pipr config source:");
   assertContains(
     combined,

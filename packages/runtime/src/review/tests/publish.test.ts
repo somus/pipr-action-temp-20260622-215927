@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import type { DiffManifest, ValidatedReview } from "../../types.js";
+import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from "../../types.js";
 import {
   buildPublicationPlan,
   prepareInlinePublicationItems,
@@ -12,10 +12,19 @@ import {
   publishPublicationPlan,
 } from "../publish.js";
 
-const event = {
-  repo: "local/pipr",
-  pullRequestNumber: 1,
-  headSha: "head",
+const event: ChangeRequestEventContext = {
+  eventName: "pull_request",
+  action: "opened",
+  platform: { id: "github" },
+  repository: { slug: "local/pipr" },
+  change: {
+    number: 1,
+    title: "Review",
+    description: "",
+    base: { sha: "base" },
+    head: { sha: "head" },
+  },
+  workspace: process.cwd(),
 };
 
 const manifest: DiffManifest = {
@@ -104,8 +113,8 @@ afterEach(() => {
 describe("publishPublicationPlan", () => {
   it("upserts the main comment and publishes inline comments", async () => {
     const client = new FakePublicationClient("head");
-    const first = await publishPublicationPlan({ client, event, plan: plan() });
-    const second = await publishPublicationPlan({ client, event, plan: plan() });
+    const first = await publishPublicationPlan({ client, change: event, plan: plan() });
+    const second = await publishPublicationPlan({ client, change: event, plan: plan() });
 
     expect(first.mainComment.action).toBe("created");
     expect(second.mainComment.action).toBe("updated");
@@ -131,10 +140,10 @@ describe("publishPublicationPlan", () => {
     await expect(
       publishPublicationPlan({
         client: new FakePublicationClient("new-head"),
-        event,
+        change: event,
         plan: plan(),
       }),
-    ).rejects.toThrow("PR head changed");
+    ).rejects.toThrow("Change request head changed");
   });
 
   it("dedupes existing inline markers before posting", async () => {
@@ -146,7 +155,7 @@ describe("publishPublicationPlan", () => {
       authorLogin: client.ownerLogin,
     });
 
-    const result = await publishPublicationPlan({ client, event, plan: publicationPlan });
+    const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
 
     expect(result.inlineComments).toEqual({ posted: 0, skipped: 1, failed: 0 });
     expect(client.reviewCommentPayloads).toHaveLength(0);
@@ -160,7 +169,7 @@ describe("publishPublicationPlan", () => {
       authorLogin: "attacker",
     });
 
-    const result = await publishPublicationPlan({ client, event, plan: plan() });
+    const result = await publishPublicationPlan({ client, change: event, plan: plan() });
 
     expect(result.mainComment.action).toBe("created");
     expect(client.issueComments).toHaveLength(2);
@@ -175,7 +184,7 @@ describe("publishPublicationPlan", () => {
       authorLogin: "attacker",
     });
 
-    const result = await publishPublicationPlan({ client, event, plan: publicationPlan });
+    const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
 
     expect(result.inlineComments).toEqual({ posted: 1, skipped: 0, failed: 0 });
     expect(client.reviewCommentPayloads).toHaveLength(1);
@@ -191,7 +200,7 @@ describe("publishPublicationPlan", () => {
     client.failInline = true;
 
     await expect(
-      publishPublicationPlan({ client, event, plan: plan({ maxInlineComments: 1 }) }),
+      publishPublicationPlan({ client, change: event, plan: plan({ maxInlineComments: 1 }) }),
     ).rejects.toMatchObject({
       result: {
         inlineComments: { posted: 0, skipped: 0, failed: 1 },
@@ -216,9 +225,9 @@ describe("publishPublicationPlan", () => {
       },
     ];
 
-    await expect(publishPublicationPlan({ client, event, plan: publicationPlan })).rejects.toThrow(
-      "GitHub inline comment publication failed",
-    );
+    await expect(
+      publishPublicationPlan({ client, change: event, plan: publicationPlan }),
+    ).rejects.toThrow("GitHub inline comment publication failed");
     expect(client.reviewCommentPayloads).toHaveLength(0);
   });
 });

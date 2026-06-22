@@ -213,6 +213,38 @@ export default definePipr((pipr) => {
     ]);
   });
 
+  it("loads SDK subpath imports from the runtime stub", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(
+      rootDir,
+      `import { definePipr } from "@pipr/sdk";
+import { schemas } from "@pipr/sdk/review";
+import { renderPromptValue } from "@pipr/sdk/tools";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  });
+  const reviewer = pipr.agent({
+    name: "reviewer",
+    model,
+    instructions: renderPromptValue("Review."),
+    output: schemas.review,
+    prompt: () => "Review.",
+  });
+  const task = pipr.task("review", async () => {});
+  pipr.on.changeRequest(["opened"], task);
+  void reviewer;
+});
+`,
+    );
+
+    const loaded = await validateProject({ rootDir });
+
+    expect(loaded.plan.agents.map((agent) => agent.name)).toEqual(["reviewer"]);
+  });
+
   it("removes the temporary config copy after loading", async () => {
     const rootDir = await newInitializedProject();
 

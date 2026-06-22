@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { PrReview, ReviewFinding } from "../types.js";
 import {
+  parseChangeRequestEventContext,
   parseDiffManifest,
   parsePiprConfig,
-  parsePullRequestEventContext,
   parseRuntimeSettings,
   parseValidatedReview,
 } from "../types.js";
@@ -62,14 +62,17 @@ describe("runtime boundary schemas", () => {
     ).toThrow();
   });
 
-  it("rejects invalid pull request event context", () => {
+  it("rejects invalid change request event context", () => {
     expect(() =>
-      parsePullRequestEventContext({
+      parseChangeRequestEventContext({
         eventName: "pull_request",
-        repo: "owner/repo",
-        pullRequestNumber: 0,
-        baseSha: "base",
-        headSha: "head",
+        platform: { id: "github" },
+        repository: { slug: "owner/repo" },
+        change: {
+          number: 0,
+          base: { sha: "base" },
+          head: { sha: "head" },
+        },
         workspace: "/tmp/repo",
       }),
     ).toThrow();

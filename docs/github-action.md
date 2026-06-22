@@ -1,6 +1,6 @@
 # GitHub Action
 
-The GitHub Action runs `pipr action` inside the Docker Action image.
+The GitHub Action runs `pipr action` inside the Docker Action image. GitHub is the first code host adapter; `.pipr/config.ts` remains provider-neutral.
 
 ## Workflow
 
@@ -85,3 +85,9 @@ read < triage < write < maintain < admin
 ```
 
 Command permission defaults to `write`.
+
+## Related docs
+
+- [Runtime Guide](runtime.md)
+- [Code Host Adapters](code-host-adapters.md)
+- [Configuration](configuration.md)

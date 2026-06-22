@@ -56,7 +56,7 @@ await expectFailure("duplicate findings were not deduped in main comment", {
 });
 expectCondensedFailure("condensed summary missing", {
   ...validCondensedFixture(),
-  issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->" }],
+  issueComments: [{ body: "<!-- pipr:main-comment change=1 -->" }],
 });
 expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
   ...validCondensedFixture(),
@@ -64,7 +64,7 @@ expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
 });
 expectOrchestratorFailure("orchestrated summary missing", {
   ...validOrchestratorFixture(),
-  issueComments: [{ body: "<!-- pipr:main-comment pr=1 -->" }],
+  issueComments: [{ body: "<!-- pipr:main-comment change=1 -->" }],
 });
 
 console.log("act fixture assertion tests ok");
@@ -131,7 +131,7 @@ function validFullFixture(): PublicationFixture {
 
 function fullMainCommentBody(): string {
   return [
-    "<!-- pipr:main-comment pr=1 -->",
+    "<!-- pipr:main-comment change=1 -->",
     "",
     "# pipr Review",
     "",
@@ -147,7 +147,7 @@ function validCondensedFixture(): PublicationFixture {
   return {
     issueComments: [
       {
-        body: "<!-- pipr:main-comment pr=1 -->\n\nCondensed act fixture reached Pi after runtime tools passed.",
+        body: "<!-- pipr:main-comment change=1 -->\n\nCondensed act fixture reached Pi after runtime tools passed.",
       },
     ],
     reviewCommentPayloads: [],
@@ -159,7 +159,7 @@ function validOrchestratorFixture(): PublicationFixture {
   return {
     issueComments: [
       {
-        body: "<!-- pipr:main-comment pr=1 -->\n\nOrchestrated review combined correctness, security, and tests specialist outputs.",
+        body: "<!-- pipr:main-comment change=1 -->\n\nOrchestrated review combined correctness, security, and tests specialist outputs.",
       },
     ],
     reviewCommentPayloads: [],

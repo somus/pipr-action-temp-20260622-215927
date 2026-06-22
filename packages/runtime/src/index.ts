@@ -20,9 +20,12 @@ export {
 export type { PublicationResult } from "./review/publish.js";
 export { PublicationError } from "./review/publish.js";
 export type {
+  ChangeRequestEventContext,
+  ChangeRequestRef,
   DiffManifest,
   PiprConfig,
+  PlatformInfo,
   ProviderConfig,
-  PullRequestEventContext,
+  RepositoryRef,
   RuntimeSettings,
 } from "./types.js";

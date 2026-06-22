@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { buildPiprPlan, definePipr } from "@pipr/sdk";
 import {
-  createGitHubCommandClient,
   parsePlanCommandInputs,
   permissionDeniedHelp,
   resolvePlanCommand,
@@ -94,23 +93,5 @@ describe("plan command routing", () => {
         arguments: { finding: "FND-123" },
       },
     });
-  });
-
-  it("maps repository permission 404 to no access", async () => {
-    const originalFetch = globalThis.fetch;
-    try {
-      globalThis.fetch = (async () =>
-        new Response("{}", { status: 404 })) as unknown as typeof fetch;
-      const client = createGitHubCommandClient({
-        GITHUB_API_URL: "https://api.github.test",
-        GITHUB_TOKEN: "token",
-      });
-
-      await expect(
-        client.getRepositoryPermission({ repo: "local/pipr", username: "outsider" }),
-      ).resolves.toEqual({ permission: "none" });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
   });
 });

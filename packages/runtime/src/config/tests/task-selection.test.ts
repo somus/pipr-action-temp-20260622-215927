@@ -9,14 +9,15 @@ import {
 } from "../task-selection.js";
 
 describe("Task Selection", () => {
-  it("selects change-request tasks in plan order with GitHub action mapping", () => {
+  it("selects change-request tasks in plan order from normalized actions", () => {
     const plan = testPlan();
 
+    expect(selectChangeRequestTasks(plan, { action: "updated" }).map((task) => task.name)).toEqual([
+      "review",
+      "audit",
+    ]);
     expect(
-      selectChangeRequestTasks(plan, { action: "synchronize" }).map((task) => task.name),
-    ).toEqual(["review", "audit"]);
-    expect(
-      selectRuntimeTasks({ plan, event: { action: "ready_for_review" } }).map((task) => task.name),
+      selectRuntimeTasks({ plan, event: { action: "ready" } }).map((task) => task.name),
     ).toEqual(["ready"]);
   });
 

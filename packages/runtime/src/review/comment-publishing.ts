@@ -1,4 +1,4 @@
-import type { DiffManifest, PullRequestEventContext, ValidatedReview } from "../types.js";
+import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from "../types.js";
 import {
   buildPublicationPlan,
   type InlineCommentDraft,
@@ -16,7 +16,7 @@ export type CommentSectionTemplate = {
 };
 
 export type BuildCommentPublishingPlanOptions = {
-  event: Pick<PullRequestEventContext, "pullRequestNumber" | "headSha">;
+  event: Pick<ChangeRequestEventContext, "change">;
   sectionTemplates: Map<string, CommentSectionTemplate>;
   summaries: MainSectionContribution[];
   sections: MainSectionContribution[];
@@ -37,7 +37,7 @@ export function buildCommentPublishingPlan(
   const inlineCommentDrafts = prepareInlinePublicationItems({
     validated: options.validated,
     manifest: options.manifest,
-    reviewedHeadSha: options.event.headSha,
+    reviewedHeadSha: options.event.change.head.sha,
   });
   const publicationPlan = buildPublicationPlan({
     event: options.event,

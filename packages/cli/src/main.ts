@@ -131,7 +131,9 @@ function writeActionResult(result: ActionCommandResult): void {
     return;
   }
 
-  core.info(`pipr loaded PR #${result.event.pullRequestNumber} for ${result.event.repo}`);
+  core.info(
+    `pipr loaded change #${result.event.change.number} for ${result.event.repository.slug}`,
+  );
   core.info(`pipr config source: ${result.configSource}`);
 
   if (result.kind === "dry-run") {

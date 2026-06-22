@@ -2,7 +2,9 @@
 
 Status: Accepted
 
-pipr owns GitHub event handling, TypeScript config planning, task orchestration, diff manifests, output validation, and comment publishing. Pi is the only agent runner and is called through a narrow pipr bridge because GitHub PR semantics, validation, and publishing policy must stay deterministic and product-owned while Pi remains focused on agent execution.
+pipr owns code host event handling, TypeScript config planning, task orchestration, diff manifests, output validation, and comment publishing. Pi is the only agent runner and is called through a narrow pipr bridge because change request semantics, validation, and publishing policy must stay deterministic and product-owned while Pi remains focused on agent execution.
+
+GitHub is implemented as the first internal code host adapter. Core runtime owns review orchestration, Diff Manifest construction, Pi calls, validation, comment reduction, and publication plans. Host adapters own native events, permissions, checkout, publication, and inline location mapping.
 
 Pi runs with an explicit read-only built-in tool allowlist: `read`, `grep`, `find`, and `ls`. pipr does not model those Pi built-in tools as `.pipr/` agent tools.
 

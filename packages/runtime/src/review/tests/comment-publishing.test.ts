@@ -3,7 +3,15 @@ import type { DiffManifest, ValidatedReview } from "../../types.js";
 import { mainSectionContributionSchema, runtimeVersion } from "../comment.js";
 import { buildCommentPublishingPlan } from "../comment-publishing.js";
 
-const event = { pullRequestNumber: 1, headSha: "head" };
+const event = {
+  change: {
+    number: 1,
+    title: "",
+    description: "",
+    base: { sha: "base" },
+    head: { sha: "head" },
+  },
+};
 
 const manifest: DiffManifest = {
   baseSha: "base",
@@ -112,7 +120,7 @@ describe("buildCommentPublishingPlan", () => {
       maxInlineComments: 1,
       metadata: {
         runtimeVersion,
-        reviewedHeadSha: event.headSha,
+        reviewedHeadSha: event.change.head.sha,
         providerModels: ["deepseek-v4-pro"],
         selectedTasks: ["review"],
         failedTasks: [],

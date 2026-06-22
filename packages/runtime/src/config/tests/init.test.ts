@@ -23,6 +23,8 @@ describe("initOfficialMinimalProject", () => {
     );
     const sdkTypes = await Bun.file(path.join(rootDir, ".pipr", "types", "pipr-sdk.d.ts")).text();
     expect(sdkTypes).toContain('declare module "@pipr/sdk"');
+    expect(sdkTypes).toContain('declare module "@pipr/sdk/review"');
+    expect(sdkTypes).toContain('declare module "@pipr/sdk/tools"');
     expect(sdkTypes).toContain("readonly id: symbol;");
     expect(sdkTypes).toContain("readonly apiKey?: SecretRef;");
     expect(sdkTypes).toContain("readonly options?: Record<string, unknown>;");

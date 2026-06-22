@@ -65,10 +65,20 @@ const manifest = {
   ],
 };
 
+const changeEvent = (headSha: string) => ({
+  change: {
+    number: 1,
+    title: "",
+    description: "",
+    base: { sha: "base" },
+    head: { sha: headSha },
+  },
+});
+
 describe("comments", () => {
   it("renders one main comment marker", () => {
     const body = buildPublicationPlan({
-      event: { pullRequestNumber: 1, headSha: "abc123" },
+      event: changeEvent("abc123"),
       mainContributions: reviewToMainSectionContributions({
         sourceId: "pipr/review",
         validated,
@@ -85,13 +95,13 @@ describe("comments", () => {
       },
     }).mainComment;
 
-    expect(body).toContain("<!-- pipr:main-comment pr=1 -->");
+    expect(body).toContain("<!-- pipr:main-comment change=1 -->");
     expect(body).toContain("# pipr Review");
   });
 
   it("renders the Main Review Comment from a MainCommentLayout", () => {
     const body = buildPublicationPlan({
-      event: { pullRequestNumber: 1, headSha: "abc123" },
+      event: changeEvent("abc123"),
       mainContributions: reviewToMainSectionContributions({
         sourceId: "pipr/review",
         validated: { ...validated, validFindings: [] },
@@ -117,7 +127,7 @@ describe("comments", () => {
       },
     }).mainComment;
 
-    expect(body).toContain("<!-- pipr:custom-main pr=1 -->");
+    expect(body).toContain("<!-- pipr:custom-main change=1 -->");
     expect(body).toContain("# Custom Review");
     expect(body.indexOf("## Digest")).toBeLessThan(body.indexOf("## Issues"));
     expect(body).toContain("Nothing actionable.");
@@ -163,7 +173,7 @@ describe("comments", () => {
   it("rejects malformed inline comment drafts", () => {
     expect(() =>
       buildPublicationPlan({
-        event: { pullRequestNumber: 1, headSha: "head" },
+        event: changeEvent("head"),
         mainContributions: [],
         inlineItems: [
           {
@@ -286,7 +296,7 @@ describe("comments", () => {
 
   it("renders a publication plan with configured empty sections", () => {
     const plan = buildPublicationPlan({
-      event: { pullRequestNumber: 1, headSha: "head" },
+      event: changeEvent("head"),
       mainContributions: reviewToMainSectionContributions({
         sourceId: "pipr/review",
         validated: { ...validated, validFindings: [] },

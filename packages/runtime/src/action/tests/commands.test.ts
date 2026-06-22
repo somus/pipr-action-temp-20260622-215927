@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { runGit as runGitCommand } from "../../diff/git.js";
+import type { GitHubCommandClient } from "../../hosts/github/command.js";
+import type { RepositoryPermission } from "../../hosts/types.js";
 import type { GitHubPublicationClient } from "../../review/publish.js";
-import type { GitHubCommandClient } from "../command-router.js";
 import { runActionCommandWithDependencies } from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {
@@ -44,10 +45,7 @@ describe("runActionCommand issue_comment dispatch", () => {
   it("returns command help for invalid arguments without running Pi", async () => {
     const workspace = await createCommandWorkspace();
     try {
-      const result = await runIssueCommentCommand(workspace, "@pipr review --scope all", {
-        permission: "write",
-        role_name: "write",
-      });
+      const result = await runIssueCommentCommand(workspace, "@pipr review --scope all", "write");
 
       expect(result).toMatchObject({
         kind: "command-help",
@@ -115,10 +113,7 @@ describe("runActionCommand issue_comment dispatch", () => {
   it("denies commands when commenter permission is below the task command requirement", async () => {
     const workspace = await createCommandWorkspace();
     try {
-      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", {
-        permission: "read",
-        role_name: "read",
-      });
+      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", "read");
 
       expect(result).toMatchObject({
         kind: "command-help",
@@ -137,10 +132,7 @@ describe("runActionCommand issue_comment dispatch", () => {
     });
     try {
       Reflect.set(globalThis, "__piprParseCalled", false);
-      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", {
-        permission: "read",
-        role_name: "read",
-      });
+      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", "read");
 
       expect(result).toMatchObject({ kind: "command-help" });
       expect(Reflect.get(globalThis, "__piprParseCalled")).toBe(false);
@@ -157,10 +149,7 @@ describe("runActionCommand issue_comment dispatch", () => {
       checkoutBaseBeforeRun: true,
     });
     try {
-      const result = await runIssueCommentCommand(workspace, "@pipr review", {
-        permission: "write",
-        role_name: "write",
-      });
+      const result = await runIssueCommentCommand(workspace, "@pipr review", "write");
 
       expect(result).toMatchObject({ kind: "command-help" });
       expect(result.kind === "command-help" ? result.reason : "").toContain("unknown pipr command");
@@ -174,10 +163,7 @@ describe("runActionCommand issue_comment dispatch", () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     try {
       expect(currentGitHead(workspace.rootDir)).toBe(workspace.baseSha);
-      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", {
-        permission: "write",
-        role_name: "write",
-      });
+      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", "write");
 
       expect(result).toMatchObject({
         kind: "review",
@@ -365,7 +351,7 @@ async function createCommandWorkspace(
 async function runIssueCommentCommand(
   workspace: CommandWorkspace,
   body: string,
-  permission: { permission: string; role_name?: string },
+  permission: RepositoryPermission,
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
   await writeIssueCommentEvent(eventPath, body);
@@ -520,16 +506,19 @@ async function writePullRequestEvent(
 
 function fakeGitHubClient(
   workspace: CommandWorkspace,
-  permission: { permission: string; role_name?: string },
+  permission: RepositoryPermission,
 ): GitHubCommandClient {
   return {
     async getPullRequest() {
       return {
-        repo: "local/pipr",
-        baseSha: workspace.baseSha,
-        headSha: workspace.headSha,
-        title: "Test PR",
-        description: "Test body",
+        repository: { slug: "local/pipr" },
+        change: {
+          number: 1,
+          title: "Test PR",
+          description: "Test body",
+          base: { sha: workspace.baseSha },
+          head: { sha: workspace.headSha },
+        },
       };
     },
     async getRepositoryPermission() {

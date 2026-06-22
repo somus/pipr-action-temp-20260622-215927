@@ -1,61 +1,14 @@
-import { Octokit } from "@octokit/rest";
 import type { RuntimePlan } from "@pipr/sdk";
-import { z } from "zod";
 import { isPiprCommandLine } from "../commands/grammar.js";
 import {
   parsePlanCommandInput as parseSelectedPlanCommandInput,
   selectCommandForInvocation,
   selectPlanCommand,
 } from "../config/task-selection.js";
-import { githubApiVersion, parseRepoSlug } from "../shared/github.js";
+import type { RepositoryPermission } from "../hosts/types.js";
 import type { CommandPermissionLevel } from "../types.js";
 
 const permissionOrder: CommandPermissionLevel[] = ["read", "triage", "write", "maintain", "admin"];
-
-const knownPermissions = new Set<CommandPermissionLevel>(permissionOrder);
-const noRepositoryPermission: RepositoryPermissionResponse = { permission: "none" };
-
-const pullRequestDetailsSchema = z.looseObject({
-  title: z.string().optional(),
-  body: z.string().nullable().optional(),
-  base: z.looseObject({
-    sha: z.string().min(1),
-    repo: z
-      .looseObject({
-        full_name: z.string().min(1).optional(),
-      })
-      .optional(),
-  }),
-  head: z.looseObject({
-    sha: z.string().min(1),
-  }),
-});
-
-const repositoryPermissionResponseSchema = z.looseObject({
-  permission: z.string().min(1),
-  role_name: z.string().min(1).optional(),
-});
-
-export type GitHubPullRequestDetails = {
-  repo: string;
-  baseSha: string;
-  headSha: string;
-  title: string;
-  description: string;
-};
-
-export type RepositoryPermissionResponse = z.infer<typeof repositoryPermissionResponseSchema>;
-
-export type GitHubCommandClient = {
-  getPullRequest(options: {
-    repo: string;
-    pullRequestNumber: number;
-  }): Promise<GitHubPullRequestDetails>;
-  getRepositoryPermission(options: {
-    repo: string;
-    username: string;
-  }): Promise<RepositoryPermissionResponse>;
-};
 
 export type PlanCommandResolution =
   | { kind: "ignored"; reason: string }
@@ -83,52 +36,6 @@ export type PlanCommandResolution =
         inputs?: unknown;
       };
     };
-
-export function createGitHubCommandClient(
-  env: NodeJS.ProcessEnv = process.env,
-): GitHubCommandClient {
-  const octokit = new Octokit({
-    auth: env.GITHUB_TOKEN,
-    baseUrl: env.GITHUB_API_URL ?? "https://api.github.com",
-    request: {
-      headers: {
-        "X-GitHub-Api-Version": githubApiVersion,
-      },
-    },
-  });
-  return {
-    async getPullRequest(options) {
-      const repo = parseRepoSlug(options.repo);
-      const { data } = await octokit.rest.pulls.get({
-        ...repo,
-        pull_number: options.pullRequestNumber,
-      });
-      const json = pullRequestDetailsSchema.parse(data);
-      return {
-        repo: json.base.repo?.full_name ?? options.repo,
-        baseSha: json.base.sha,
-        headSha: json.head.sha,
-        title: json.title ?? "",
-        description: json.body ?? "",
-      };
-    },
-    async getRepositoryPermission(options) {
-      try {
-        const repo = parseRepoSlug(options.repo);
-        const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
-          ...repo,
-          username: options.username,
-        });
-        return repositoryPermissionResponseSchema.parse(data);
-      } catch (error) {
-        if (typeof error === "object" && error !== null && Reflect.get(error, "status") === 404) {
-          return noRepositoryPermission;
-        }
-        throw error;
-      }
-    },
-  };
-}
 
 export function resolvePlanCommand(
   plan: RuntimePlan,
@@ -214,39 +121,15 @@ export function parsePlanCommandInputs(
 }
 
 export function hasRequiredRepositoryPermission(
-  actual: RepositoryPermissionResponse,
+  actual: RepositoryPermission,
   required: CommandPermissionLevel,
 ): boolean {
-  const effective = effectiveRepositoryPermission(actual, required);
-  if (!effective) {
+  if (actual === "none") {
     return false;
   }
-  return permissionOrder.indexOf(effective) >= permissionOrder.indexOf(required);
+  return permissionOrder.indexOf(actual) >= permissionOrder.indexOf(required);
 }
 
 export function permissionDeniedHelp(plan: RuntimePlan, required: CommandPermissionLevel): string {
   return renderPlanCommandHelp(plan, `Permission denied: requires ${required}.`);
-}
-
-function effectiveRepositoryPermission(
-  actual: RepositoryPermissionResponse,
-  required: CommandPermissionLevel,
-): CommandPermissionLevel | undefined {
-  if (
-    actual.role_name !== undefined &&
-    knownPermissions.has(actual.role_name as CommandPermissionLevel)
-  ) {
-    return actual.role_name as CommandPermissionLevel;
-  }
-  if (required === "triage" || required === "maintain") {
-    return undefined;
-  }
-  if (
-    actual.permission === "admin" ||
-    actual.permission === "write" ||
-    actual.permission === "read"
-  ) {
-    return actual.permission;
-  }
-  return undefined;
 }

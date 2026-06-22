@@ -91,12 +91,6 @@ export function parsePlanCommandInput(
 }
 
 function changeRequestActionForEvent(action: string | undefined): ChangeRequestAction | undefined {
-  if (action === "synchronize") {
-    return "updated";
-  }
-  if (action === "ready_for_review") {
-    return "ready";
-  }
   if (
     action === "opened" ||
     action === "reopened" ||

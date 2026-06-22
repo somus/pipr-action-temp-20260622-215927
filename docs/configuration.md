@@ -2,6 +2,8 @@
 
 pipr uses `.pipr/config.ts` as the repository-local authoring surface. The config is TypeScript and must export `definePipr(...)`.
 
+This page shows common recipes. For the full public API, see [PIPR SDK Reference](sdk-reference.md).
+
 `pipr init` writes generated SDK declarations under `.pipr/types`. If you prefer package-managed types, install the SDK:
 
 ```bash
@@ -20,20 +22,40 @@ export default definePipr((pipr) => {
     options: { thinking: "high" },
   });
 
-  pipr.review({
+  const reviewer = pipr.reviewer({
+    name: "reviewer",
     model,
     instructions: `
       Review the pull request diff for correctness, security,
       maintainability, and test coverage.
       Return only actionable findings that target valid diff ranges.
     `,
+  });
+
+  pipr.review({
+    reviewer,
+    entrypoints: {
+      changeRequest: ["opened", "updated", "reopened", "ready"],
+      command: { pattern: "@pipr review", permission: "write" },
+      local: "review",
+    },
     inlineComments: { max: 5 },
     timeout: "5m",
   });
 });
 ```
 
-`pipr.review` registers a pull request review task, the `@pipr review` command, and the local `review` entrypoint unless those entrypoints are disabled.
+`pipr.review` registers a change request review task, the `@pipr review` command, and the local `review` entrypoint unless `entrypoints` disables or renames them.
+
+The `entrypoints` object is the preferred public API:
+
+```ts
+entrypoints: {
+  changeRequest: ["opened", "updated", "reopened", "ready"],
+  command: { pattern: "@pipr review", permission: "write" },
+  local: "review",
+}
+```
 
 ## Models
 
@@ -101,6 +123,14 @@ Commands run from pull request issue comments:
 ```ts
 pipr.command("@pipr security", { permission: "write" }, task);
 ```
+
+Permission levels are provider-neutral:
+
+```text
+read < triage < write < maintain < admin
+```
+
+The active code host adapter maps native roles into these levels.
 
 Local entrypoints run the same task logic without GitHub publishing:
 

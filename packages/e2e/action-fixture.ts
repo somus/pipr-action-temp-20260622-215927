@@ -125,7 +125,7 @@ async function handleReviewActionResult(
 }
 
 function logActionContext(result: LoadedActionResult): void {
-  info(`pipr loaded PR #${result.event.pullRequestNumber} for ${result.event.repo}`);
+  info(`pipr loaded change #${result.event.change.number} for ${result.event.repository.slug}`);
   info(`pipr config source: ${result.configSource}`);
 }
 

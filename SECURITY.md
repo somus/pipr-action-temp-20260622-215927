@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-pipr is early and does not yet publish versioned packages. Security fixes target the default branch until the project starts maintaining release branches.
+pipr is early. CLI binaries ship through GitHub Releases, the config SDK ships as `@pipr/sdk` on npm, and the Docker Action image ships through GHCR. Security fixes target the default branch and current release line until the project starts maintaining separate release branches.
 
 ## Reporting a vulnerability
 

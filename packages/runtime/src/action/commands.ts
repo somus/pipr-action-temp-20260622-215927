@@ -10,36 +10,29 @@ import {
   validateProject,
 } from "../config/project.js";
 import { selectLocalTask } from "../config/task-selection.js";
-import {
-  createGitHubPublicationClient,
-  type GitHubPublicationClient,
-  type PublicationResult,
-  publishPublicationPlan,
-} from "../review/publish.js";
+import { runGit as runGitCommand } from "../diff/git.js";
+import { createGitHubHostAdapter } from "../hosts/github/adapter.js";
+import type { GitHubCommandClient } from "../hosts/github/command.js";
+import type { GitHubPublicationClient } from "../hosts/github/publication.js";
+import { createLocalChangeRequestEvent, createLocalHostAdapter } from "../hosts/local/adapter.js";
+import type { CodeHostAdapter, CommandCommentEvent } from "../hosts/types.js";
+import type { PublicationResult } from "../review/publication-result.js";
 import { type ReviewRuntimeResult, runTaskRuntime } from "../review/task-runtime.js";
 import type {
+  ChangeRequestEventContext,
   PiprConfig,
   ProviderConfig,
-  PullRequestEventContext,
   RuntimeSettings,
 } from "../types.js";
-import { parsePiprConfig, parseProviderConfig, parsePullRequestEventContext } from "../types.js";
+import { parseChangeRequestEventContext, parsePiprConfig, parseProviderConfig } from "../types.js";
 import {
-  createGitHubCommandClient,
-  type GitHubCommandClient,
   hasRequiredRepositoryPermission,
   type PlanCommandResolution,
   parsePlanCommandInputs,
   permissionDeniedHelp,
   resolvePlanCommand,
 } from "./command-router.js";
-import {
-  type IssueCommentEventContext,
-  loadIssueCommentEventContext,
-  loadPullRequestEventContext,
-} from "./event.js";
 import { loadRuntimeProjectFromGitCommit } from "./git-project.js";
-import { ensureGitHubWorkspaceSafeDirectory } from "./git-safe-directory.js";
 
 const defaultActionProvider: ProviderConfig = {
   id: "deepseek",
@@ -77,6 +70,7 @@ export type ActionCommandOptions = RuntimeCommandOptions & {
 
 export type ActionCommandDependencyOptions = ActionCommandOptions & {
   piExecutable?: string;
+  hostAdapter?: CodeHostAdapter;
   githubClient?: GitHubCommandClient;
   githubPublicationClient?: GitHubPublicationClient;
 };
@@ -90,7 +84,7 @@ export type LocalTaskCommandOptions = RuntimeCommandOptions & {
 
 export type DryRunCommandResult = {
   configSource: string;
-  event: PullRequestEventContext;
+  event: ChangeRequestEventContext;
 };
 
 export type InspectCommandResult = import("../config/project.js").InspectRuntimePlan;
@@ -104,19 +98,19 @@ export type ActionCommandResult =
     }
   | {
       kind: "dry-run";
-      event: PullRequestEventContext;
+      event: ChangeRequestEventContext;
       configSource: string;
     }
   | {
       kind: "command-help";
-      event: PullRequestEventContext;
+      event: ChangeRequestEventContext;
       configSource: string;
       body: string;
       reason: string;
     }
   | {
       kind: "review";
-      event: PullRequestEventContext;
+      event: ChangeRequestEventContext;
       configSource: string;
       command?: string;
       review: ReviewRuntimeResult;
@@ -162,10 +156,15 @@ export async function runDryRunCommand(
   options: DryRunCommandOptions,
 ): Promise<DryRunCommandResult> {
   const runtime = await loadRuntimeProject({ ...options, requireProviderEnv: false });
-  const event = await loadPullRequestEventContext(options.eventPath, {
-    ...options.env,
-    GITHUB_WORKSPACE: options.rootDir,
-    GITHUB_EVENT_NAME: "pull_request",
+  const adapter = createActionHostAdapter(options);
+  const event = await adapter.parseEvent({
+    eventPath: options.eventPath,
+    env: {
+      ...options.env,
+      GITHUB_WORKSPACE: options.rootDir,
+      GITHUB_EVENT_NAME: "pull_request",
+    },
+    workspace: options.rootDir,
   });
   return {
     configSource: runtime.settings.source,
@@ -185,19 +184,20 @@ export async function runLocalTaskCommand(
   if (!local) {
     throw new Error(`Local entry '${options.localName}' was not registered`);
   }
-  const headSha = options.headSha ?? runGit(options.rootDir, ["rev-parse", "HEAD"]).trim();
+  const headSha = options.headSha ?? runGitCommand(["rev-parse", "HEAD"], options.rootDir).trim();
+  const localAdapter = createLocalHostAdapter();
+  const event = parseChangeRequestEventContext({
+    ...createLocalChangeRequestEvent({
+      rootDir: options.rootDir,
+      baseSha: options.baseSha,
+      headSha,
+    }),
+  });
+  localAdapter.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
   return await runTaskRuntime({
     workspace: options.rootDir,
     config: runtime.settings.config,
-    event: parsePullRequestEventContext({
-      eventName: "local",
-      action: "updated",
-      repo: "local/repository",
-      pullRequestNumber: 1,
-      baseSha: options.baseSha,
-      headSha,
-      workspace: options.rootDir,
-    }),
+    event,
     env: options.env,
     plan: runtime.plan,
     taskName: local.task.name,
@@ -215,16 +215,21 @@ export async function runActionCommand(
 export async function runActionCommandWithDependencies(
   options: ActionCommandDependencyOptions,
 ): Promise<ActionCommandResult> {
-  ensureGitHubWorkspaceSafeDirectory({ rootDir: options.rootDir, env: options.env });
+  const adapter = createActionHostAdapter(options);
+  adapter.ensureWorkspaceSafeDirectory?.({ rootDir: options.rootDir, env: options.env });
   if ((actionEnv(options).GITHUB_EVENT_NAME ?? "pull_request") === "issue_comment") {
-    return await runIssueCommentActionCommand(options);
+    return await runIssueCommentActionCommand(options, adapter);
   }
-  const event = await loadPullRequestEventContext(options.eventPath, options.env ?? process.env);
+  const event = await adapter.parseEvent({
+    eventPath: options.eventPath,
+    env: options.env ?? process.env,
+    workspace: options.rootDir,
+  });
   if (options.dryRun) {
     const trustedRuntime = await loadRuntimeProjectFromGitCommit({
       rootDir: options.rootDir,
       configDir: options.configDir,
-      commitSha: event.baseSha,
+      commitSha: event.change.base.sha,
       env: options.env,
     });
     return {
@@ -236,12 +241,18 @@ export async function runActionCommandWithDependencies(
   const trustedRuntime = await loadRuntimeProjectFromGitCommit({
     rootDir: options.rootDir,
     configDir: options.configDir,
-    commitSha: event.baseSha,
+    commitSha: event.change.base.sha,
     env: options.env,
   });
   const provider = trustedActionProvider(options, trustedRuntime.settings.config);
-  ensurePullRequestHeadCheckout(options.rootDir, event);
-  const completed = await runTrustedReviewAndPublish({ options, trustedRuntime, provider, event });
+  adapter.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
+  const completed = await runTrustedReviewAndPublish({
+    options,
+    adapter,
+    trustedRuntime,
+    provider,
+    event,
+  });
   if (completed.kind === "skipped") {
     return { kind: "ignored", reason: completed.reason };
   }
@@ -257,83 +268,100 @@ export async function runActionCommandWithDependencies(
 
 async function runIssueCommentActionCommand(
   options: ActionCommandDependencyOptions,
+  adapter: CodeHostAdapter,
 ): Promise<ActionCommandResult> {
-  const prepared = await prepareIssueCommentCommand(options);
+  const prepared = await prepareIssueCommentCommand(options, adapter);
   if (prepared.kind === "ignored") {
     return prepared;
   }
-  return await dispatchIssueCommentCommand(options, prepared);
+  return await dispatchIssueCommentCommand(options, adapter, prepared);
 }
 
 type PreparedIssueCommentCommand =
   | { kind: "ignored"; reason: string }
   | {
       kind: "prepared";
-      comment: IssueCommentEventContext;
+      comment: CommandCommentEvent;
       line: string;
-      github: GitHubCommandClient;
-      event: PullRequestEventContext;
+      event: ChangeRequestEventContext;
       trustedRuntime: TrustedRuntimeProject;
       resolution: Exclude<PlanCommandResolution, { kind: "ignored" }>;
     };
 
 async function prepareIssueCommentCommand(
   options: ActionCommandDependencyOptions,
+  adapter: CodeHostAdapter,
 ): Promise<PreparedIssueCommentCommand> {
-  const comment = await loadIssueCommentEventContext(options.eventPath, actionEnv(options));
-  if (!comment.isPullRequest) {
+  const comment = await adapter.resolveCommandComment({
+    eventPath: options.eventPath,
+    env: actionEnv(options),
+    workspace: options.rootDir,
+  });
+  const runnable = runnableIssueCommentCommand(comment, options.dryRun);
+  if (runnable.kind === "ignored") {
+    return runnable;
+  }
+  const loaded = await adapter.loadChangeRequest({
+    repository: comment.repository,
+    changeNumber: comment.changeNumber,
+    workspace: comment.workspace,
+    eventName: comment.eventName,
+    action: comment.action,
+    rawAction: comment.rawAction,
+  });
+  const event = parseChangeRequestEventContext({
+    eventName: loaded.eventName ?? comment.eventName,
+    action: loaded.action ?? comment.action,
+    rawAction: loaded.rawAction ?? comment.rawAction,
+    platform: { id: adapter.id },
+    repository: loaded.repository,
+    change: loaded.change,
+    workspace: loaded.workspace ?? comment.workspace,
+  });
+  const trustedRuntime = await loadRuntimeProjectFromGitCommit({
+    rootDir: options.rootDir,
+    configDir: options.configDir,
+    commitSha: event.change.base.sha,
+    env: options.env,
+  });
+  const resolution = resolvePlanCommand(trustedRuntime.plan, runnable.line);
+  if (resolution.kind === "ignored") {
+    return { kind: "ignored", reason: resolution.reason };
+  }
+  return { kind: "prepared", comment, line: runnable.line, event, trustedRuntime, resolution };
+}
+
+function runnableIssueCommentCommand(
+  comment: CommandCommentEvent,
+  dryRun: boolean,
+): { kind: "runnable"; line: string } | { kind: "ignored"; reason: string } {
+  if (!comment.isChangeRequest) {
     return { kind: "ignored", reason: "issue_comment did not target a pull request" };
   }
   if (comment.action !== "created") {
     return { kind: "ignored", reason: `issue_comment action '${comment.action}' is not supported` };
   }
-  const line = firstNonEmptyLine(comment.commentBody);
+  const line = firstNonEmptyLine(comment.body);
   if (!line || !isPiprCommandLine(line)) {
     return { kind: "ignored", reason: "issue_comment did not target pipr" };
   }
-  if (options.dryRun) {
-    return { kind: "ignored", reason: "PIPR_DRY_RUN=1; command dispatch skipped" };
-  }
-  const github = options.githubClient ?? createGitHubCommandClient(actionEnv(options));
-  const pullRequest = await github.getPullRequest({
-    repo: comment.repo,
-    pullRequestNumber: comment.issueNumber,
-  });
-  const event = parsePullRequestEventContext({
-    eventName: comment.eventName,
-    action: comment.action,
-    repo: pullRequest.repo,
-    pullRequestNumber: comment.issueNumber,
-    title: pullRequest.title,
-    description: pullRequest.description,
-    baseSha: pullRequest.baseSha,
-    headSha: pullRequest.headSha,
-    workspace: comment.workspace,
-  });
-  const trustedRuntime = await loadRuntimeProjectFromGitCommit({
-    rootDir: options.rootDir,
-    configDir: options.configDir,
-    commitSha: event.baseSha,
-    env: options.env,
-  });
-  const resolution = resolvePlanCommand(trustedRuntime.plan, line);
-  if (resolution.kind === "ignored") {
-    return { kind: "ignored", reason: resolution.reason };
-  }
-  return { kind: "prepared", comment, line, github, event, trustedRuntime, resolution };
+  return dryRun
+    ? { kind: "ignored", reason: "PIPR_DRY_RUN=1; command dispatch skipped" }
+    : { kind: "runnable", line };
 }
 
 async function dispatchIssueCommentCommand(
   options: ActionCommandDependencyOptions,
+  adapter: CodeHostAdapter,
   prepared: Extract<PreparedIssueCommentCommand, { kind: "prepared" }>,
 ): Promise<ActionCommandResult> {
   const requiredPermission =
     prepared.resolution.kind === "matched"
       ? prepared.resolution.invocation.requiredPermission
       : prepared.resolution.requiredPermission;
-  const permission = await prepared.github.getRepositoryPermission({
-    repo: prepared.comment.repo,
-    username: prepared.comment.commenter,
+  const permission = await adapter.getRepositoryPermission({
+    repository: prepared.comment.repository,
+    actor: prepared.comment.actor,
   });
   if (!hasRequiredRepositoryPermission(permission, requiredPermission)) {
     return {
@@ -372,9 +400,10 @@ async function dispatchIssueCommentCommand(
   }
 
   const provider = trustedActionProvider(options, prepared.trustedRuntime.settings.config);
-  ensurePullRequestHeadCheckout(options.rootDir, prepared.event);
+  adapter.ensureHeadCheckout({ rootDir: options.rootDir, change: prepared.event });
   const completed = await runTrustedReviewAndPublish({
     options,
+    adapter,
     trustedRuntime: prepared.trustedRuntime,
     provider,
     event: prepared.event,
@@ -396,9 +425,10 @@ async function dispatchIssueCommentCommand(
 
 async function runTrustedReviewAndPublish(options: {
   options: ActionCommandDependencyOptions;
+  adapter: CodeHostAdapter;
   trustedRuntime: TrustedRuntimeProject;
   provider: ProviderConfig;
-  event: PullRequestEventContext;
+  event: ChangeRequestEventContext;
   taskName?: string;
   taskInput?: unknown;
 }): Promise<
@@ -425,12 +455,8 @@ async function runTrustedReviewAndPublish(options: {
   if (review.kind === "skipped") {
     return { kind: "skipped", reason: review.skipReason ?? "review skipped" };
   }
-  const client =
-    options.options.githubPublicationClient ??
-    createGitHubPublicationClient(actionEnv(options.options));
-  const publication = await publishPublicationPlan({
-    client,
-    event: options.event,
+  const publication = await options.adapter.publish({
+    change: options.event,
     plan: review.publicationPlan,
   });
   return { kind: "completed", review, publication };
@@ -500,6 +526,22 @@ function actionEnv(options: ActionCommandDependencyOptions): NodeJS.ProcessEnv {
   return options.env ?? process.env;
 }
 
+function createActionHostAdapter(options: {
+  env?: NodeJS.ProcessEnv;
+  hostAdapter?: CodeHostAdapter;
+  githubClient?: GitHubCommandClient;
+  githubPublicationClient?: GitHubPublicationClient;
+}): CodeHostAdapter {
+  return (
+    options.hostAdapter ??
+    createGitHubHostAdapter({
+      env: options.env,
+      commandClient: options.githubClient,
+      publicationClient: options.githubPublicationClient,
+    })
+  );
+}
+
 function readActionInput(env: NodeJS.ProcessEnv, name: string): string | undefined {
   for (const key of [
     `INPUT_${name}`,
@@ -512,40 +554,4 @@ function readActionInput(env: NodeJS.ProcessEnv, name: string): string | undefin
     }
   }
   return undefined;
-}
-
-function ensurePullRequestHeadCheckout(rootDir: string, event: PullRequestEventContext): void {
-  if (!hasGitCommit(rootDir, event.headSha)) {
-    runGit(rootDir, [
-      "fetch",
-      "--no-tags",
-      "--depth=1",
-      "origin",
-      `refs/pull/${event.pullRequestNumber}/head`,
-    ]);
-  }
-  if (runGit(rootDir, ["rev-parse", "HEAD"]).trim() !== event.headSha) {
-    runGit(rootDir, ["checkout", "--detach", event.headSha]);
-  }
-}
-
-function hasGitCommit(rootDir: string, sha: string): boolean {
-  try {
-    runGit(rootDir, ["cat-file", "-e", `${sha}^{commit}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function runGit(rootDir: string, args: string[]): string {
-  const result = Bun.spawnSync(["git", ...args], {
-    cwd: rootDir,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
-  }
-  return result.stdout.toString();
 }

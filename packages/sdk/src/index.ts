@@ -103,6 +103,8 @@ export type AgentTool<Input = unknown, Output = unknown> = {
   readonly description?: string;
   readonly input?: Schema<Input>;
   readonly output?: Schema<Output>;
+  run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
+  toModelOutput?(output: Output): PromptValue;
 };
 
 /** Returns whether a tool is one of pipr's built-in read-only tools. */
@@ -157,7 +159,7 @@ export type CommandOptions<Input> = {
   parse?: (arguments_: Record<string, string>) => Input;
 };
 
-export type ReviewRecipeOptions = {
+export type ReviewerOptions = {
   name?: string;
   model: ModelProfile;
   fallbacks?: ModelProfile[];
@@ -167,6 +169,27 @@ export type ReviewRecipeOptions = {
     context: AgentPromptContext,
   ) => PromptSource | Promise<PromptSource>;
   tools?: readonly AgentTool[];
+  timeout?: DurationInput;
+};
+
+export type Reviewer = Agent<DefaultReviewInput, ReviewResult>;
+
+export type ReviewEntrypoints = {
+  changeRequest?: ChangeRequestAction[] | false;
+  command?:
+    | string
+    | false
+    | {
+        pattern?: string;
+        permission?: RepositoryPermission;
+        description?: string;
+      };
+  local?: string | false;
+};
+
+type ReviewRecipeEntrypointOptions = {
+  name?: string;
+  entrypoints?: ReviewEntrypoints;
   on?: ChangeRequestAction[] | false;
   command?: string | false;
   commandPermission?: RepositoryPermission;
@@ -179,6 +202,10 @@ export type ReviewRecipeOptions = {
   summary?: boolean;
   timeout?: DurationInput;
 };
+
+export type ReviewRecipeOptions =
+  | (ReviewRecipeEntrypointOptions & { reviewer: Reviewer })
+  | (ReviewRecipeEntrypointOptions & ReviewerOptions & { reviewer?: undefined });
 
 export type DefaultReviewInput = {
   manifest: DiffManifest;
@@ -194,7 +221,15 @@ export type PluginToolDefinition<Input, Output> = {
   description: string;
   input: Schema<Input>;
   output: Schema<Output>;
-  execute(context: unknown, input: Input): Promise<Output>;
+  execute?(context: unknown, input: Input): Promise<Output>;
+  run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
+  toModelOutput?(output: Output): PromptValue;
+};
+
+export type ToolRunOptions<Input> = {
+  input: Input;
+  ctx: unknown;
+  signal?: AbortSignal;
 };
 
 export type PiprBuilder = {
@@ -207,6 +242,7 @@ export type PiprBuilder = {
   model(specification: string, options?: ModelOptions): ModelProfile;
   agent<Input, Output>(definition: AgentDefinition<Input, Output>): Agent<Input, Output>;
   task<Input = void>(name: string, handler: TaskHandler<Input>): Task<Input>;
+  reviewer(options: ReviewerOptions): Reviewer;
   review(options: ReviewRecipeOptions): void;
   command<Input = void>(pattern: string, options: CommandOptions<Input>, task: Task<Input>): void;
   local<Input = void>(name: string, task: Task<Input>): void;
@@ -519,6 +555,9 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       tasks.push(task as Task<unknown>);
       return task;
     },
+    reviewer(options) {
+      return createReviewer(api, options);
+    },
     review(options) {
       registerReviewRecipe(api, publication, options);
     },
@@ -558,7 +597,24 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       if (definition.name === "readOnly") {
         throw new Error("Tool name 'readOnly' is reserved for pipr built-in tools");
       }
-      const tool = { kind: "pipr.tool" as const, ...definition };
+      const execute = definition.execute;
+      let run = definition.run;
+      if (!run && !execute) {
+        throw new Error(`Tool '${definition.name}' must define run`);
+      }
+      if (!run) {
+        const executeTool = execute;
+        if (!executeTool) {
+          throw new Error(`Tool '${definition.name}' must define run`);
+        }
+        run = (options: ToolRunOptions<unknown>) =>
+          executeTool(options.ctx, options.input as never);
+      }
+      const tool = {
+        kind: "pipr.tool" as const,
+        ...definition,
+        run,
+      };
       tools.push(tool);
       return tool;
     },
@@ -633,8 +689,34 @@ function registerReviewRecipe(
   options: ReviewRecipeOptions,
 ): void {
   const name = options.name ?? "review";
-  const agent = api.agent<DefaultReviewInput, ReviewResult>({
+  const agent = options.reviewer ?? createReviewer(api, reviewRecipeReviewerOptions(options, name));
+
+  const task = createReviewRecipeTask(api, name, agent, options);
+  registerReviewRecipeEntrypoints(api, task, options);
+  updateReviewRecipePublication(publication, options);
+}
+
+function reviewRecipeReviewerOptions(
+  options: ReviewRecipeEntrypointOptions & ReviewerOptions,
+  name: string,
+): ReviewerOptions {
+  if (!options.model || !options.instructions) {
+    throw new Error("pipr.review requires model and instructions when reviewer is not provided");
+  }
+  return {
     name,
+    model: options.model,
+    fallbacks: options.fallbacks,
+    instructions: options.instructions,
+    prompt: options.prompt,
+    tools: options.tools,
+    timeout: options.timeout,
+  };
+}
+
+function createReviewer(api: PiprBuilder, options: ReviewerOptions): Reviewer {
+  return api.agent<DefaultReviewInput, ReviewResult>({
+    name: options.name ?? "reviewer",
     model: options.model,
     fallbacks: options.fallbacks,
     instructions: options.instructions,
@@ -650,10 +732,6 @@ function registerReviewRecipe(
           ${api.section("Changed files and valid comment locations", api.compactManifest(input.manifest))}
         `),
   });
-
-  const task = createReviewRecipeTask(api, name, agent, options);
-  registerReviewRecipeEntrypoints(api, task, options);
-  updateReviewRecipePublication(publication, options);
 }
 
 function createReviewRecipeTask(
@@ -664,7 +742,13 @@ function createReviewRecipeTask(
 ): Task {
   return api.task(name, async (context) => {
     const manifest = await context.change.diffManifest({ compressed: true });
-    const result = await context.pi.run(agent, { manifest, change: context.change });
+    const result = await context.pi.run(
+      agent,
+      { manifest, change: context.change },
+      {
+        timeout: options.timeout,
+      },
+    );
     if (options.summary !== false) {
       context.output.summary(result.summary, { key: name, merge: "append" });
     }
@@ -679,21 +763,71 @@ function registerReviewRecipeEntrypoints(
   task: Task,
   options: ReviewRecipeOptions,
 ): void {
-  if (options.on !== false) {
-    api.on.changeRequest(options.on ?? ["opened", "updated", "reopened", "ready"], task);
+  const changeRequest = reviewChangeRequestEntrypoint(options);
+  if (changeRequest) {
+    api.on.changeRequest(changeRequest, task);
   }
-  if (options.command !== false) {
-    api.command(
-      options.command ?? "@pipr review",
-      {
-        permission: options.commandPermission ?? "write",
-      },
-      task,
-    );
+  const command = reviewCommandEntrypoint(options);
+  if (command) {
+    api.command(command.pattern, command.options, task);
   }
-  if (options.localName !== false) {
-    api.local(options.localName ?? "review", task);
+  const local = reviewLocalEntrypoint(options);
+  if (local) {
+    api.local(local, task);
   }
+}
+
+function reviewChangeRequestEntrypoint(
+  options: ReviewRecipeOptions,
+): ChangeRequestAction[] | undefined {
+  const entrypoint = options.entrypoints?.changeRequest ?? options.on;
+  return entrypoint === false
+    ? undefined
+    : (entrypoint ?? ["opened", "updated", "reopened", "ready"]);
+}
+
+function reviewCommandEntrypoint(options: ReviewRecipeOptions):
+  | {
+      pattern: string;
+      options: CommandOptions<unknown>;
+    }
+  | undefined {
+  const entrypoint = options.entrypoints?.command ?? options.command;
+  if (entrypoint === false) {
+    return undefined;
+  }
+  if (typeof entrypoint === "object") {
+    return reviewObjectCommandEntrypoint(entrypoint, options.commandPermission);
+  }
+  return reviewStringCommandEntrypoint(entrypoint, options.commandPermission);
+}
+
+function reviewObjectCommandEntrypoint(
+  entrypoint: Exclude<ReviewEntrypoints["command"], string | false | undefined>,
+  fallbackPermission: RepositoryPermission | undefined,
+) {
+  return {
+    pattern: entrypoint.pattern ?? "@pipr review",
+    options: {
+      permission: entrypoint.permission ?? fallbackPermission ?? "write",
+      description: entrypoint.description,
+    },
+  };
+}
+
+function reviewStringCommandEntrypoint(
+  entrypoint: string | undefined,
+  fallbackPermission: RepositoryPermission | undefined,
+) {
+  return {
+    pattern: entrypoint ?? "@pipr review",
+    options: { permission: fallbackPermission ?? "write" },
+  };
+}
+
+function reviewLocalEntrypoint(options: ReviewRecipeOptions): string | undefined {
+  const entrypoint = options.entrypoints?.local ?? options.localName;
+  return entrypoint === false ? undefined : (entrypoint ?? "review");
 }
 
 function updateReviewRecipePublication(

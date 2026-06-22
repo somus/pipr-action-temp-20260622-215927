@@ -135,37 +135,76 @@ async function maybeLstat(
 }
 
 async function sdkDeclaration(): Promise<string> {
-  const declaration = await rawSdkDeclaration();
+  const embedded = embeddedSdkAssets().declaration;
+  if (embedded?.includes('declare module "@pipr/sdk"')) {
+    return embedded;
+  }
+  const declarations = await rawSdkDeclarations();
   return [
     "// biome-ignore-all format: generated from @pipr/sdk declarations",
     "// biome-ignore-all assist/source/organizeImports: generated from @pipr/sdk declarations",
-    'declare module "@pipr/sdk" {',
-    declaration
-      .replace(/^declare /gm, "")
-      .replace(/^\/\/# sourceMappingURL=.*$/gm, "")
-      .trim(),
-    "}",
+    ...declarations.map((declaration) => declarationModuleBlock(declaration)),
     "",
   ].join("\n");
 }
 
-async function rawSdkDeclaration(): Promise<string> {
-  const declarationPath = await sdkDeclarationPath();
-  if (declarationPath) {
-    return await Bun.file(declarationPath).text();
+type SdkDeclarationModule = {
+  moduleName: string;
+  fileName: string;
+};
+
+const sdkDeclarationModules: SdkDeclarationModule[] = [
+  { moduleName: "@pipr/sdk", fileName: "index.d.mts" },
+  { moduleName: "@pipr/sdk/review", fileName: "review.d.mts" },
+  { moduleName: "@pipr/sdk/tools", fileName: "tools.d.mts" },
+];
+
+async function rawSdkDeclarations(): Promise<Array<SdkDeclarationModule & { source: string }>> {
+  const declarations = await Promise.all(
+    sdkDeclarationModules.map(async (module) => {
+      const declarationPath = await sdkDeclarationPath(module.fileName);
+      return declarationPath
+        ? { ...module, source: await Bun.file(declarationPath).text() }
+        : undefined;
+    }),
+  );
+  if (declarations.every((declaration) => declaration !== undefined)) {
+    return declarations as Array<SdkDeclarationModule & { source: string }>;
   }
   const embedded = embeddedSdkAssets().declaration;
   if (embedded) {
-    return embedded;
+    return [
+      { ...sdkDeclarationModules[0], source: embedded } as SdkDeclarationModule & {
+        source: string;
+      },
+    ];
   }
   throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
 }
 
-async function sdkDeclarationPath(): Promise<string | undefined> {
+function declarationModuleBlock(module: SdkDeclarationModule & { source: string }): string {
+  return [`declare module "${module.moduleName}" {`, declarationSource(module).trim(), "}"].join(
+    "\n",
+  );
+}
+
+function declarationSource(module: SdkDeclarationModule & { source: string }): string {
+  const source = module.source
+    .replace(/^declare /gm, "")
+    .replaceAll('from "./index.js"', 'from "@pipr/sdk"')
+    .replaceAll('from "./index.mjs"', 'from "@pipr/sdk"')
+    .replace(/^import .* from "@pipr\/sdk";$/gm, "")
+    .replace(/^\/\/# sourceMappingURL=.*$/gm, "");
+  return module.moduleName === "@pipr/sdk"
+    ? source
+    : source.replace(/^export \{(?<exports>.*)\};$/gm, 'export {$<exports>} from "@pipr/sdk";');
+}
+
+async function sdkDeclarationPath(fileName: string): Promise<string | undefined> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.resolve(moduleDir, "../../sdk/dist/index.d.mts"),
-    path.resolve(moduleDir, "../../../sdk/dist/index.d.mts"),
+    path.resolve(moduleDir, "../../sdk/dist", fileName),
+    path.resolve(moduleDir, "../../../sdk/dist", fileName),
   ];
   for (const candidate of candidates) {
     const stats = await maybeLstat(candidate);

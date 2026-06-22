@@ -1,17 +1,19 @@
 # Architecture
 
-pipr owns GitHub pull request runtime behavior. Pi owns agent execution.
+pipr owns code host change request runtime behavior. Pi owns agent execution.
+
+For a broader introduction, see [pipr Docs](index.md). For the public TypeScript API, see [PIPR SDK Reference](sdk-reference.md).
 
 ## Runtime flow
 
 1. Load the trusted TypeScript config.
-2. Parse the GitHub pull request or command event.
+2. Parse the code host change request or command event through an adapter.
 3. Build the Diff Manifest from local git state.
 4. Run selected Review Tasks.
 5. Call Pi through `ctx.pi.run()`.
 6. Validate structured review output against the Diff Manifest.
 7. Build the Main Review Comment and Inline Review Comments.
-8. Publish comments through the GitHub API after stale-head checks.
+8. Publish comments through the code host adapter after stale-head checks.
 
 ## Trust boundaries
 
@@ -25,7 +27,9 @@ Pi receives a read-only workspace copy. It can use only read-only built-in tools
 
 User config can register models, agents, tasks, commands, local entrypoints, limits, and typed plugin handles through `@pipr/sdk`.
 
-pipr-owned runtime code keeps diff creation, Pi invocation policy, structured output validation, stale-head checks, marker dedupe, and GitHub writes out of userland tasks.
+pipr-owned runtime code keeps diff creation, Pi invocation policy, structured output validation, stale-head checks, marker dedupe, and code host writes out of userland tasks. GitHub is the first adapter; GitLab, Bitbucket, and Azure DevOps support is coming soon.
+
+See [Code Host Adapters](code-host-adapters.md) for the adapter boundary.
 
 ## Decisions
 
