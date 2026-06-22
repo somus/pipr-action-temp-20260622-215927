@@ -66,7 +66,9 @@ export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
       ? await preparePiCustomTools({ root: sandbox.root, request: options.customTools })
       : undefined;
     preparedTools = mergePreparedPiTools(runtimeRead, customTools);
-    const args = buildPiArgs(options.provider, options.prompt, sandbox.sessionDir, preparedTools);
+    const promptPath = path.join(sandbox.root, "prompt.md");
+    await Bun.write(promptPath, options.prompt);
+    const args = buildPiArgs(options.provider, `@${promptPath}`, sandbox.sessionDir, preparedTools);
     return await runProcess(options.piExecutable ?? "pi", args, {
       cwd: sandbox.workspace,
       env: buildPiEnv(options.provider, sandbox, options.env, preparedTools),

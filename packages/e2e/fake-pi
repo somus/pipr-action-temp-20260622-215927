@@ -3,7 +3,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const prompt = process.argv.at(-1) ?? "";
+const prompt = await readPrompt(process.argv.at(-1) ?? "");
 const args = process.argv.slice(2, -1);
 
 if (!prompt.includes("Diff Manifest:")) {
@@ -38,6 +38,13 @@ async function buildReview() {
     return review("Condensed fixture review", "Condensed act fixture reached Pi after runtime tools passed.");
   }
   return fullFixtureReview();
+}
+
+async function readPrompt(value) {
+  if (!value.startsWith("@")) {
+    return value;
+  }
+  return await Bun.file(value.slice(1)).text();
 }
 
 async function fullFixtureReview() {

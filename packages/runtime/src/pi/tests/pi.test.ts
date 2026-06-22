@@ -360,6 +360,51 @@ describe("buildPiArgs", () => {
     }
   });
 
+  it("passes large prompts through an @file argument", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
+    const piExecutable = path.join(workspace, "fake-pi.sh");
+    const prompt = "Review this diff.\n".repeat(20_000);
+    try {
+      await Bun.write(
+        piExecutable,
+        [
+          "#!/bin/sh",
+          'for arg in "$@"; do',
+          '  case "$arg" in',
+          "    @*) prompt_path=$" + "{arg#@}; printf 'PROMPT_BYTES='; wc -c < \"$prompt_path\" ;;",
+          "  esac",
+          "done",
+          "printf 'ARGS=%s\\n' \"$*\"",
+        ].join("\n"),
+      );
+      await chmod(piExecutable, 0o755);
+
+      const result = await runPi({
+        workspace,
+        piExecutable,
+        prompt,
+        env: {
+          DEEPSEEK_API_KEY: "provided-key",
+          PATH: process.env.PATH,
+        },
+        provider: {
+          id: "deepseek",
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          thinking: "high",
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/PROMPT_BYTES=\s*360000/);
+      expect(result.stdout).toContain("@");
+      expect(result.stdout).not.toContain(prompt);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("times out long-running Pi subprocesses", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
     const piExecutable = path.join(workspace, "slow-pi.sh");
