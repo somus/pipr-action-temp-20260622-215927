@@ -435,7 +435,7 @@ function readInputManifest(input: unknown): DiffManifest | undefined {
 
 function parseAgentOutput(output: string, agent: Agent): ParseAgentResult {
   try {
-    const json = JSON.parse(output) as unknown;
+    const json = JSON.parse(jsonPayload(output)) as unknown;
     if (agent.definition.output.id === prReviewSchemaId) {
       return { ok: true, value: parsePrReview(json), repairAttempted: false };
     }
@@ -443,6 +443,11 @@ function parseAgentOutput(output: string, agent: Agent): ParseAgentResult {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function jsonPayload(output: string): string {
+  const match = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(output.trim());
+  return match?.[1]?.trim() ?? output;
 }
 
 function buildRepairPrompt(options: {

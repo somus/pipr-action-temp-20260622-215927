@@ -282,6 +282,27 @@ describe("runTaskRuntime", () => {
     expect(result.repairAttempted).toBe(true);
   });
 
+  it("accepts review JSON wrapped in a Markdown code fence", async () => {
+    let calls = 0;
+    const plan = testPlan((pipr) => {
+      registerPiReviewTask(pipr, defaultReviewAgent(pipr));
+    });
+
+    const result = await runRuntime({
+      plan,
+      piRunner: async () => {
+        calls += 1;
+        return {
+          ...noFindingsPiResult(),
+          stdout: `\`\`\`json\n${noFindingsPiResult().stdout}\n\`\`\``,
+        };
+      },
+    });
+
+    expect(calls).toBe(1);
+    expect(result.repairAttempted).toBe(false);
+  });
+
   it("rejects unsupported core review fields returned by Pi", async () => {
     let calls = 0;
     const plan = testPlan((pipr) => {
