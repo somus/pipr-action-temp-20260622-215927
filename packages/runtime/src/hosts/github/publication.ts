@@ -46,6 +46,7 @@ const githubReviewCommentSchema = z
 const githubAuthenticatedUserSchema = z.looseObject({
   login: z.string().min(1),
 });
+const githubActionsBotLogin = "github-actions[bot]";
 
 const pullRequestHeadSchema = z.looseObject({
   head: z.looseObject({
@@ -90,6 +91,7 @@ export type GitHubPublicationClient = {
 export function createGitHubPublicationClient(
   env: NodeJS.ProcessEnv = process.env,
 ): GitHubPublicationClient {
+  const authenticatedUserLogin = authenticatedUserLoginFromEnv(env);
   const octokit = new Octokit({
     auth: env.GITHUB_TOKEN,
     baseUrl: env.GITHUB_API_URL ?? "https://api.github.com",
@@ -101,6 +103,9 @@ export function createGitHubPublicationClient(
   });
   return {
     async getAuthenticatedUserLogin() {
+      if (authenticatedUserLogin) {
+        return authenticatedUserLogin;
+      }
       const { data } = await octokit.rest.users.getAuthenticated();
       return githubAuthenticatedUserSchema.parse(data).login;
     },
@@ -162,6 +167,10 @@ export function createGitHubPublicationClient(
       return githubReviewCommentSchema.parse(data);
     },
   };
+}
+
+function authenticatedUserLoginFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  return env.GITHUB_ACTIONS === "true" ? githubActionsBotLogin : undefined;
 }
 
 export async function publishGitHubPublicationPlan(options: {

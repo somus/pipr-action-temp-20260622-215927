@@ -233,6 +233,23 @@ describe("publishPublicationPlan", () => {
 });
 
 describe("createGitHubPublicationClient", () => {
+  it("uses the GitHub Actions bot login without calling the user endpoint", async () => {
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      throw new Error("fetch should not be called");
+    }) as unknown as typeof fetch;
+
+    const client = createGitHubPublicationClient({
+      GITHUB_ACTIONS: "true",
+      GITHUB_API_URL: "https://api.github.test",
+      GITHUB_TOKEN: "actions-token",
+    });
+
+    await expect(client.getAuthenticatedUserLogin()).resolves.toBe("github-actions[bot]");
+    expect(called).toBe(false);
+  });
+
   it("lists all issue and review comment pages before marker checks", async () => {
     const requestedUrls: string[] = [];
     globalThis.fetch = (async (input: string | URL | Request) => {
