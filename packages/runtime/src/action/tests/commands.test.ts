@@ -180,7 +180,8 @@ describe("runActionCommand issue_comment dispatch", () => {
 describe("runActionCommand pull_request dispatch", () => {
   it("marks the GitHub Action workspace as a git safe directory before trusted config reads", async () => {
     const workspace = await createCommandWorkspace();
-    const homeDir = await mkdtemp(path.join(os.tmpdir(), "pipr-action-home-"));
+    const gitConfigDir = await mkdtemp(path.join(os.tmpdir(), "pipr-action-gitconfig-"));
+    const previousHome = process.env.HOME;
     try {
       const eventPath = path.join(workspace.rootDir, "event.json");
       await writePullRequestEvent(eventPath, workspace);
@@ -193,19 +194,21 @@ describe("runActionCommand pull_request dispatch", () => {
         env: {
           ...pullRequestEnv(workspace.rootDir, eventPath),
           GITHUB_ACTIONS: "true",
-          HOME: homeDir,
+          HOME: path.join(gitConfigDir, "read-only-home"),
+          RUNNER_TEMP: gitConfigDir,
         },
         githubPublicationClient: failingGitHubPublishingClient(),
         piExecutable: workspace.piExecutable,
       });
 
       expect(result).toMatchObject({ kind: "dry-run" });
-      await expect(Bun.file(path.join(homeDir, ".gitconfig")).text()).resolves.toContain(
+      await expect(Bun.file(path.join(gitConfigDir, ".gitconfig")).text()).resolves.toContain(
         `directory = ${workspace.rootDir}`,
       );
     } finally {
+      restoreEnv("HOME", previousHome);
       await removeWorkspace(workspace.rootDir);
-      await removeWorkspace(homeDir);
+      await removeWorkspace(gitConfigDir);
     }
   });
 
@@ -606,6 +609,14 @@ function pullRequestEnv(rootDir: string, eventPath: string): NodeJS.ProcessEnv {
     GITHUB_EVENT_PATH: eventPath,
     GITHUB_WORKSPACE: rootDir,
   };
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
 }
 
 async function removeWorkspace(rootDir: string): Promise<void> {

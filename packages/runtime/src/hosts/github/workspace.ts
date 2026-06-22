@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { ChangeRequestEventContext } from "../../types.js";
 
 export function ensureGitHubWorkspaceSafeDirectory(options: {
@@ -9,10 +12,12 @@ export function ensureGitHubWorkspaceSafeDirectory(options: {
     return;
   }
   const workspace = env.GITHUB_WORKSPACE ?? options.rootDir;
+  const gitHome = gitGlobalConfigHome(env);
+  process.env.HOME = gitHome;
   const result = Bun.spawnSync(
     ["git", "config", "--global", "--add", "safe.directory", workspace],
     {
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...env, HOME: gitHome },
       stderr: "pipe",
       stdout: "pipe",
     },
@@ -22,6 +27,15 @@ export function ensureGitHubWorkspaceSafeDirectory(options: {
       `git safe.directory setup failed: ${result.stderr.toString().trim() || result.stdout.toString().trim()}`,
     );
   }
+}
+
+function gitGlobalConfigHome(env: NodeJS.ProcessEnv): string {
+  if (existsSync("/home/bun")) {
+    return "/home/bun";
+  }
+  const root = env.RUNNER_TEMP ?? env.TMPDIR ?? os.tmpdir();
+  mkdirSync(root, { recursive: true });
+  return root;
 }
 
 export function ensureGitHubHeadCheckout(options: {
