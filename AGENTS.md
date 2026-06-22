@@ -23,6 +23,9 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Before introducing a package, tool, or GitHub Action, check the latest upstream stable version and use it unless there is a documented reason not to.
 - Keep versions pinned through the existing sources of truth: `mise.toml`, `package.json`, `bun.lock`, Docker image tags, and workflow action refs.
 - Do not add a runtime dependency when Bun, Node, existing workspace packages, or small local code are enough.
+- Prefer Bun APIs in scripts, tests, and e2e harness code where practical. Do not add Node compatibility shims unless a public package contract needs Node.
+- Use zod at runtime boundaries and fixture boundary parsing instead of ad hoc object guards.
+- Reach for stdlib or Bun first, existing local helpers second, and dependency utilities only when they remove real repeated collection code. Use lodash only when it deletes meaningful repeated collection logic, not for one-off expressions.
 
 ## Architecture
 
@@ -31,6 +34,8 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Keep Fallow as repo quality tooling only. Do not put Fallow into pipr's review runtime.
 - Keep package public surfaces small. Export only deliberate APIs from package roots.
 - Put implementation details behind internal modules. Do not export helpers only for tests or convenience.
+- Keep functions intent-level. Do not extract one-line field readers, throw wrappers, boolean aliases, or tiny pass-through helpers unless they are used in 3+ places or enforce a real domain invariant.
+- Prefer direct control flow inside workflow functions over chains of tiny local helpers.
 - Keep Docker Action, CLI command handling, TypeScript config loading, task execution, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In review tasks, diff parsing, Pi execution, and review validation stay in pipr through `ctx.change.diffManifest()` and `ctx.pi.run()`, not userland blocks.
 - Keep user configuration in `.pipr/config.ts`. `.pi` is only an internal Pi home inside the Docker image.
 - Preserve schema-first reviewer output: validate structured JSON, allow one repair attempt, and drop invalid findings with metadata.
@@ -42,6 +47,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 ## File Organization
 
 - Keep package root `src` small. Prefer `src/index.ts` plus deliberate public exports.
+- Do not import sibling packages through `../package/dist/*`; add a deliberate package export, bin, or e2e entrypoint instead.
 - Organize package internals into domain folders such as `src/action`, `src/config`, `src/diff`, `src/pi`, `src/review`, and `src/shared`.
 - Name modules by current responsibility. Avoid `legacy`, `compat`, or old-system names for unreleased code.
 - Keep docs in `docs/`; keep ADRs in `docs/adr/`.
