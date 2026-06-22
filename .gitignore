@@ -4,6 +4,7 @@ coverage
 .turbo
 .fallow
 .github/act
+.github/workflows/pipr-local*.yml
 .DS_Store
 *.tsbuildinfo
 *.log

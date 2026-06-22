@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { buildDiffManifest, parseNameStatus, parseUnifiedDiff } from "../diff.js";
+import { runGit } from "../git.js";
 
 describe("diff manifest parsing", () => {
   it("parses name-status output", () => {
@@ -439,15 +440,7 @@ function changedFile(manifest: ReturnType<typeof buildDiffManifest>, filePath: s
 }
 
 function git(repo: string, ...args: string[]): string {
-  const result = Bun.spawnSync(["git", ...args], {
-    cwd: repo,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
-  }
-  return result.stdout.toString().trim();
+  return runGit(args, repo).trim();
 }
 
 function makeNumberedLines(prefix: string, count: number): string {

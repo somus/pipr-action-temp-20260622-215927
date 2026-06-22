@@ -63,6 +63,7 @@ export async function piRuntimeToolsExtensionPath(): Promise<string> {
   const candidates = [
     path.join(moduleDir, "pi", "runtime-tools-extension.mjs"),
     path.join(moduleDir, "runtime-tools-extension.mjs"),
+    path.join(moduleDir, "..", "..", "dist", "pi", "runtime-tools-extension.mjs"),
     path.join(moduleDir, "runtime-tools-extension.ts"),
   ];
   for (const candidate of candidates) {

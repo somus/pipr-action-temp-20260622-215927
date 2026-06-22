@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { runGit as runGitCommand } from "../../diff/git.js";
 import type { GitHubPublicationClient } from "../../review/publish.js";
 import type { GitHubCommandClient } from "../command-router.js";
 import { runActionCommandWithDependencies } from "../commands.js";
@@ -633,15 +634,7 @@ async function removeWorkspace(rootDir: string): Promise<void> {
 }
 
 function runGit(cwd: string, args: string[]): string {
-  const result = Bun.spawnSync(["git", ...args], {
-    cwd,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
-  }
-  return result.stdout.toString();
+  return runGitCommand(args, cwd);
 }
 
 function currentGitHead(cwd: string): string {

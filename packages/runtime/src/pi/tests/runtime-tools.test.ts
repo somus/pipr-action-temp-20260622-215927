@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
+import { runGit as runGitCommand } from "../../diff/git.js";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest } from "../../types.js";
 import { preparePiCustomTools } from "../custom-tools.js";
@@ -569,15 +570,7 @@ function manifestWithPreviousPath(filePath: string, previousPath: string): DiffM
 }
 
 function runGit(cwd: string, args: string[]): string {
-  const result = Bun.spawnSync(["git", ...args], {
-    cwd,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr.toString().trim() || `git ${args.join(" ")} failed`);
-  }
-  return result.stdout.toString();
+  return runGitCommand(args, cwd);
 }
 
 async function removeTree(root: string): Promise<void> {

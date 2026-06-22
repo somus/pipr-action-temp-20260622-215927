@@ -1,0 +1,474 @@
+import { dirname, join } from "node:path";
+
+export type ScenarioName = "dry-run" | "full" | "condensed" | "orchestrator";
+export type ScenarioAssertion = "full" | "condensed" | "orchestrator";
+
+export type Scenario = {
+  name: ScenarioName;
+  title: string;
+  workflowFile: string;
+  eventFile: string;
+  publicationFixture?: string;
+  assertion?: ScenarioAssertion;
+  config?: string;
+  baseSample?: string;
+  headPath: string;
+  headContent: string;
+  telemetryDir?: string;
+};
+
+export type PreparedScenario = {
+  scenario: Scenario;
+  tmpRoot: string;
+  worktree: string;
+  baseSha: string;
+  headSha: string;
+  cleanup: () => void;
+};
+
+type PrepareScenarioOptions = {
+  beforeBaseCommit?: (context: { scenario: Scenario; worktree: string }) => Promise<void> | void;
+  forceAddBasePaths?: string[];
+};
+
+type TrackedChange = {
+  status: string;
+  firstPath: string;
+  secondPath?: string;
+};
+
+export const scenarioNames = ["dry-run", "full", "condensed", "orchestrator"] as const;
+const packageRootPath = "packages/e2e";
+export const fixtureRootPath = `${packageRootPath}/fixtures/act`;
+export const actionFixtureScript = `${packageRootPath}/action-fixture.ts`;
+export const fakePiScript = `${packageRootPath}/fake-pi`;
+export const sourceRoot = gitOutput(process.cwd(), ["rev-parse", "--show-toplevel"]).trim();
+
+const fullConfig = `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
+  const reviewer = pipr.agent({
+    name: "review",
+    model,
+    instructions: "Review the act fixture change.",
+    output: pipr.schemas.review,
+    tools: pipr.tools.readOnly,
+    prompt: (input) => pipr.prompt\`Review this change.\\n\${pipr.compactManifest(input.manifest)}\`,
+  });
+  const addReviewTask = (name, priority, secondary = false) => {
+    const task = pipr.task(name, async (ctx) => {
+      const manifest = await ctx.change.diffManifest({ compressed: true });
+      const result = await ctx.pi.run(reviewer, { manifest });
+      if (secondary) {
+        ctx.output.summary("Full fixture secondary section", {
+          key: name,
+          merge: "append",
+          priority,
+        });
+      } else {
+        ctx.output.summary(result.summary, { key: name, merge: "append", priority });
+        ctx.output.findings(result.inlineFindings);
+      }
+    });
+    pipr.on.changeRequest(["opened"], task);
+  };
+
+  addReviewTask("pipr/review", 100);
+  addReviewTask("pipr/full-duplicate-review", 90);
+  addReviewTask("pipr/full-secondary-section", 80, true);
+});
+`;
+
+const condensedConfig = `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
+  pipr.limits({
+    timeoutSeconds: 300,
+    diffManifest: {
+      fullMaxBytes: 1,
+      fullMaxEstimatedTokens: 1,
+      condensedMaxBytes: 262144,
+      condensedMaxEstimatedTokens: 65536,
+      toolResponseMaxBytes: 4096,
+    },
+  });
+  pipr.review({
+    model,
+    instructions: "Review the condensed act fixture.",
+    inlineComments: { max: 5 },
+  });
+});
+`;
+
+const orchestratorConfig = `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+    options: { thinking: "high" },
+  });
+  const specialist = pipr.agent({
+    name: "specialist-reviewer",
+    model,
+    instructions: "Return a focused specialist review.",
+    output: pipr.schemas.review,
+    prompt: (input) => pipr.prompt\`Focus: \${input.focus}\\n\${pipr.compactManifest(input.manifest)}\`,
+  });
+  const orchestrator = pipr.agent({
+    name: "review-orchestrator",
+    model,
+    instructions: "Merge specialist reviews into one final review.",
+    output: pipr.schemas.review,
+    prompt: (input) => pipr.prompt\`Specialist reviews:\\n\${pipr.json(input.reviews)}\`,
+  });
+  const task = pipr.task("review", async (ctx) => {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const [correctness, security, tests] = await Promise.all([
+      ctx.pi.run(specialist, { manifest, focus: "correctness" }),
+      ctx.pi.run(specialist, { manifest, focus: "security" }),
+      ctx.pi.run(specialist, { manifest, focus: "tests" }),
+    ]);
+    const result = await ctx.pi.run(orchestrator, {
+      manifest,
+      reviews: { correctness, security, tests },
+    });
+    ctx.output.summary(result.summary);
+    ctx.output.findings(result.inlineFindings);
+  });
+  pipr.on.changeRequest(["opened"], task);
+});
+`;
+
+export const scenarios: Record<ScenarioName, Scenario> = {
+  "dry-run": {
+    name: "dry-run",
+    title: "pipr local fixture",
+    workflowFile: "pipr-local.yml",
+    eventFile: `${fixtureRootPath}/pull_request.json`,
+    headPath: `${fixtureRootPath}/dry-run-head.txt`,
+    headContent: "dry-run head fixture\n",
+  },
+  full: {
+    name: "full",
+    title: "pipr local full-flow fixture",
+    workflowFile: "pipr-local-full.yml",
+    eventFile: `${fixtureRootPath}/pull_request_full.json`,
+    publicationFixture: "github-publication-full.json",
+    assertion: "full",
+    config: fullConfig,
+    baseSample: `export function reviewTarget(value: string): string {
+  return value.trim();
+}
+`,
+    headPath: `${fixtureRootPath}/project/sample.ts`,
+    headContent: `export function reviewTarget(value: string): string {
+  const normalized = value.trim();
+  return normalized || "fallback";
+}
+`,
+    telemetryDir: "pi-calls-full",
+  },
+  condensed: {
+    name: "condensed",
+    title: "pipr local condensed-flow fixture",
+    workflowFile: "pipr-local-condensed.yml",
+    eventFile: `${fixtureRootPath}/pull_request_condensed.json`,
+    publicationFixture: "github-publication-condensed.json",
+    assertion: "condensed",
+    config: condensedConfig,
+    baseSample: `export function reviewTarget(value: string): string {
+  const legacy = value.toLowerCase();
+  return legacy.trim();
+}
+`,
+    headPath: `${fixtureRootPath}/project/sample.ts`,
+    headContent: `export function reviewTarget(value: string): string {
+  const normalized = value.trim();
+  return normalized || "fallback";
+}
+`,
+  },
+  orchestrator: {
+    name: "orchestrator",
+    title: "pipr local orchestrator fixture",
+    workflowFile: "pipr-local-orchestrator.yml",
+    eventFile: `${fixtureRootPath}/pull_request_orchestrator.json`,
+    publicationFixture: "github-publication-orchestrator.json",
+    assertion: "orchestrator",
+    config: orchestratorConfig,
+    baseSample: `export function reviewTarget(value: string): string {
+  return value.trim();
+}
+`,
+    headPath: `${fixtureRootPath}/project/sample.ts`,
+    headContent: `export function reviewTarget(value: string): string {
+  const normalized = value.trim();
+  return normalized || "fallback";
+}
+`,
+  },
+};
+
+export async function prepareScenarioWorktree(
+  scenario: Scenario,
+  options: PrepareScenarioOptions = {},
+): Promise<PreparedScenario> {
+  const tmpRoot = mktemp(`pipr-e2e-${scenario.name}`);
+  const worktree = join(tmpRoot, "worktree");
+  try {
+    await initializeScenarioWorktree(worktree, scenario, options);
+    const baseSha = await commitScenarioBase(worktree, scenario, options);
+    const headSha = await commitScenarioHead(worktree, scenario);
+    await writePullRequestEvent(worktree, scenario, baseSha, headSha);
+
+    return {
+      scenario,
+      tmpRoot,
+      worktree,
+      baseSha,
+      headSha,
+      cleanup: () => removePath(tmpRoot),
+    };
+  } catch (error) {
+    removePath(tmpRoot);
+    throw error;
+  }
+}
+
+async function initializeScenarioWorktree(
+  worktree: string,
+  scenario: Scenario,
+  options: PrepareScenarioOptions,
+): Promise<void> {
+  run("git", ["clone", "--no-hardlinks", "--quiet", sourceRoot, worktree], sourceRoot);
+  git(worktree, ["config", "user.email", "pipr-act@example.invalid"]);
+  git(worktree, ["config", "user.name", "pipr act fixture"]);
+  git(worktree, ["config", "commit.gpgsign", "false"]);
+  git(worktree, ["config", "gc.auto", "0"]);
+  git(worktree, ["config", "maintenance.auto", "false"]);
+  await overlayTrackedChanges(worktree);
+  await copySourcePath(worktree, packageRootPath);
+  await options.beforeBaseCommit?.({ scenario, worktree });
+  run("chmod", ["755", join(worktree, fakePiScript)], sourceRoot);
+}
+
+async function commitScenarioBase(
+  worktree: string,
+  scenario: Scenario,
+  options: PrepareScenarioOptions,
+): Promise<string> {
+  await writeScenarioConfig(worktree, scenario);
+  await writeScenarioBaseSample(worktree, scenario);
+  forceAddBasePaths(worktree, options.forceAddBasePaths ?? []);
+  git(worktree, ["add", "-A"]);
+  git(worktree, ["commit", "-m", `test: prepare ${scenario.name} e2e fixture base`]);
+  return gitOutput(worktree, ["rev-parse", "HEAD"]).trim();
+}
+
+async function writeScenarioConfig(worktree: string, scenario: Scenario): Promise<void> {
+  if (scenario.config) {
+    await writeWorktreeFile(worktree, ".pipr/config.ts", scenario.config);
+  }
+}
+
+async function writeScenarioBaseSample(worktree: string, scenario: Scenario): Promise<void> {
+  if (scenario.baseSample) {
+    await writeWorktreeFile(worktree, scenario.headPath, scenario.baseSample);
+  }
+}
+
+function forceAddBasePaths(worktree: string, paths: string[]): void {
+  for (const path of paths) {
+    git(worktree, ["add", "-f", path]);
+  }
+}
+
+async function commitScenarioHead(worktree: string, scenario: Scenario): Promise<string> {
+  await writeWorktreeFile(worktree, scenario.headPath, scenario.headContent);
+  git(worktree, ["add", "-A"]);
+  git(worktree, ["commit", "-m", `test: prepare ${scenario.name} e2e fixture head`]);
+  return gitOutput(worktree, ["rev-parse", "HEAD"]).trim();
+}
+
+export function scenarioFromName(name: string | undefined): Scenario | undefined {
+  return name && isScenarioName(name) ? scenarios[name] : undefined;
+}
+
+export function envValue(name: string): string | undefined {
+  const value = Bun.env[name];
+  return value ? value : undefined;
+}
+
+export async function writeWorktreeFile(
+  worktree: string,
+  relativePath: string,
+  content: string,
+): Promise<void> {
+  const target = join(worktree, relativePath);
+  run("mkdir", ["-p", dirname(target)], sourceRoot);
+  await Bun.write(target, content);
+}
+
+export function run(command: string, args: string[], cwd: string): void {
+  const result = Bun.spawnSync([command, ...args], {
+    cwd,
+    env: Bun.env,
+    stderr: "inherit",
+    stdout: "inherit",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed with exit ${result.exitCode}`);
+  }
+}
+
+export function runOutput(
+  command: string,
+  args: string[],
+  cwd: string,
+): { stdout: string; stderr: string } {
+  const result = Bun.spawnSync([command, ...args], {
+    cwd,
+    env: Bun.env,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const stdout = result.stdout.toString();
+  const stderr = result.stderr.toString();
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} failed with exit ${result.exitCode}\n${stdout}${stderr}`,
+    );
+  }
+  return { stdout, stderr };
+}
+
+function isScenarioName(name: string): name is ScenarioName {
+  return scenarioNames.includes(name as ScenarioName);
+}
+
+async function overlayTrackedChanges(worktree: string): Promise<void> {
+  for (const change of trackedChanges()) {
+    await overlayTrackedChange(worktree, change);
+  }
+}
+
+function trackedChanges(): TrackedChange[] {
+  const changes = gitOutput(sourceRoot, ["diff", "--name-status", "HEAD", "--"]).trim();
+  return changes ? changes.split("\n").map(parseTrackedChange) : [];
+}
+
+function parseTrackedChange(line: string): TrackedChange {
+  const [status, firstPath, secondPath] = line.split("\t");
+  if (!status || !firstPath) {
+    throw new Error(`Unexpected git diff --name-status line '${line}'`);
+  }
+  return { status, firstPath, secondPath };
+}
+
+async function overlayTrackedChange(worktree: string, change: TrackedChange): Promise<void> {
+  if (change.status === "D") {
+    removePath(join(worktree, change.firstPath));
+    return;
+  }
+  if (change.status.startsWith("R")) {
+    removePath(join(worktree, change.firstPath));
+    await copySourcePath(worktree, renamedPath(change));
+    return;
+  }
+  await copySourcePath(worktree, change.firstPath);
+}
+
+function renamedPath(change: TrackedChange): string {
+  if (!change.secondPath) {
+    throw new Error(`Rename diff for '${change.firstPath}' is missing destination path`);
+  }
+  return change.secondPath;
+}
+
+async function copySourcePath(worktree: string, relativePath: string): Promise<void> {
+  const source = join(sourceRoot, relativePath);
+  if (!pathExists(source)) {
+    return;
+  }
+  const target = join(worktree, relativePath);
+  run("mkdir", ["-p", dirname(target)], sourceRoot);
+  removePath(target);
+  run("cp", ["-pR", source, target], sourceRoot);
+}
+
+async function writePullRequestEvent(
+  worktree: string,
+  scenario: Scenario,
+  baseSha: string,
+  headSha: string,
+): Promise<void> {
+  await writeWorktreeFile(
+    worktree,
+    scenario.eventFile,
+    `${JSON.stringify(
+      {
+        action: "opened",
+        number: 1,
+        pull_request: {
+          number: 1,
+          base: { sha: baseSha, ref: "main", repo: { full_name: "local/pipr" } },
+          head: { sha: headSha, ref: "feature", repo: { full_name: "local/pipr" } },
+        },
+        repository: { full_name: "local/pipr" },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+function git(cwd: string, args: string[]): void {
+  run("git", args, cwd);
+}
+
+function gitOutput(cwd: string, args: string[]): string {
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`git ${args.join(" ")} failed with exit ${result.exitCode}`);
+  }
+  return result.stdout.toString();
+}
+
+function removePath(path: string): void {
+  run("rm", ["-rf", path], sourceRoot);
+}
+
+function pathExists(path: string): boolean {
+  return (
+    Bun.spawnSync(["test", "-e", path], {
+      stderr: "ignore",
+      stdout: "ignore",
+    }).exitCode === 0
+  );
+}
+
+function mktemp(prefix: string): string {
+  const result = Bun.spawnSync(["mktemp", "-d", `/tmp/${prefix}.XXXXXX`], {
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`mktemp failed with exit ${result.exitCode}`);
+  }
+  return result.stdout.toString().trim();
+}
