@@ -339,17 +339,7 @@ describe("buildPiArgs", () => {
         workspace,
         piExecutable,
         prompt: "Review this diff.",
-        env: {
-          DEEPSEEK_API_KEY: "provided-key",
-          PATH: process.env.PATH,
-        },
-        provider: {
-          id: "deepseek",
-          provider: "deepseek",
-          model: "deepseek-v4-pro",
-          thinking: "high",
-          apiKeyEnv: "DEEPSEEK_API_KEY",
-        },
+        ...deepseekRunOptions(),
       });
 
       expect(result.exitCode).toBe(0);
@@ -383,23 +373,44 @@ describe("buildPiArgs", () => {
         workspace,
         piExecutable,
         prompt,
-        env: {
-          DEEPSEEK_API_KEY: "provided-key",
-          PATH: process.env.PATH,
-        },
-        provider: {
-          id: "deepseek",
-          provider: "deepseek",
-          model: "deepseek-v4-pro",
-          thinking: "high",
-          apiKeyEnv: "DEEPSEEK_API_KEY",
-        },
+        ...deepseekRunOptions(),
       });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toMatch(/PROMPT_BYTES=\s*360000/);
       expect(result.stdout).toContain("@");
       expect(result.stdout).not.toContain(prompt);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts assistant text from Pi JSON event streams", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-source-"));
+    const piExecutable = path.join(workspace, "fake-pi");
+    const reviewJson = '{"summary":{"body":"No findings."},"inlineFindings":[]}';
+    try {
+      await Bun.write(
+        piExecutable,
+        [
+          "#!/usr/bin/env bun",
+          'console.log(JSON.stringify({ type: "session", version: 3 }));',
+          `console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: ${JSON.stringify(
+            reviewJson,
+          )} }] } }));`,
+        ].join("\n"),
+      );
+      await chmod(piExecutable, 0o755);
+
+      const result = await runPi({
+        workspace,
+        piExecutable,
+        prompt: "Review this diff.",
+        ...deepseekRunOptions(),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(reviewJson);
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
@@ -417,13 +428,7 @@ describe("buildPiArgs", () => {
         piExecutable,
         prompt: "Review this diff.",
         timeoutSeconds: 1,
-        provider: {
-          id: "backup",
-          provider: "deepseek",
-          model: "deepseek-v4-pro",
-          thinking: "high",
-          apiKeyEnv: "DEEPSEEK_API_KEY",
-        },
+        ...deepseekRunOptions({ id: "backup" }),
       });
 
       expect(result.exitCode).toBe(124);
@@ -464,22 +469,31 @@ async function runFakePiWithToolOptions(
       workspace,
       piExecutable,
       prompt: "Review this diff.",
-      env: {
-        DEEPSEEK_API_KEY: "provided-key",
-        PATH: process.env.PATH,
-      },
-      provider: {
-        id: "deepseek",
-        provider: "deepseek",
-        model: "deepseek-v4-pro",
-        thinking: "high",
-        apiKeyEnv: "DEEPSEEK_API_KEY",
-      },
+      ...deepseekRunOptions(),
       ...options,
     });
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+}
+
+function deepseekRunOptions(
+  providerPatch: Partial<PiRunOptions["provider"]> = {},
+): Pick<PiRunOptions, "env" | "provider"> {
+  return {
+    env: {
+      DEEPSEEK_API_KEY: "provided-key",
+      PATH: process.env.PATH,
+    },
+    provider: {
+      id: "deepseek",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      thinking: "high",
+      apiKeyEnv: "DEEPSEEK_API_KEY",
+      ...providerPatch,
+    },
+  };
 }
 
 function restoreEnv(key: string, value: string | undefined): void {

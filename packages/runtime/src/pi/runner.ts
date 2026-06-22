@@ -69,12 +69,13 @@ export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
     const promptPath = path.join(sandbox.root, "prompt.md");
     await Bun.write(promptPath, options.prompt);
     const args = buildPiArgs(options.provider, `@${promptPath}`, sandbox.sessionDir, preparedTools);
-    return await runProcess(options.piExecutable ?? "pi", args, {
+    const result = await runProcess(options.piExecutable ?? "pi", args, {
       cwd: sandbox.workspace,
       env: buildPiEnv(options.provider, sandbox, options.env, preparedTools),
       started,
       timeoutSeconds: options.timeoutSeconds,
     });
+    return result.exitCode === 0 ? { ...result, stdout: normalizePiStdout(result.stdout) } : result;
   } finally {
     await preparedTools?.custom?.close();
     await chmodRecursive(sandbox.root, 0o755);
@@ -231,6 +232,95 @@ async function chmodRecursive(target: string, mode: number): Promise<void> {
   for (const entry of entries) {
     await chmodRecursive(path.join(target, entry.name), mode);
   }
+}
+
+function normalizePiStdout(stdout: string): string {
+  return extractAssistantTextFromJsonEvents(stdout) ?? stdout;
+}
+
+function extractAssistantTextFromJsonEvents(stdout: string): string | undefined {
+  const events = parseJsonEventLines(stdout);
+  if (!events) {
+    return undefined;
+  }
+  let text: string | undefined;
+  for (const event of events) {
+    text = assistantTextFromEvent(event) ?? text;
+  }
+  return text;
+}
+
+function parseJsonEventLines(stdout: string): Record<string, unknown>[] | undefined {
+  const events: Record<string, unknown>[] = [];
+  for (const line of eventLines(stdout)) {
+    const event = parseJsonRecord(line);
+    if (!event) {
+      return undefined;
+    }
+    events.push(event);
+  }
+  return events.some((event) => typeof event.type === "string") ? events : undefined;
+}
+
+function eventLines(stdout: string): string[] {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function parseJsonRecord(line: string): Record<string, unknown> | undefined {
+  try {
+    const value = JSON.parse(line) as unknown;
+    return isRecord(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function assistantTextFromEvent(event: Record<string, unknown>): string | undefined {
+  if (event.type === "message_end" || event.type === "turn_end") {
+    return assistantMessageText(event.message);
+  }
+  if (event.type === "agent_end") {
+    return lastAssistantMessageText(event.messages);
+  }
+}
+
+function lastAssistantMessageText(messages: unknown): string | undefined {
+  if (!Array.isArray(messages)) {
+    return undefined;
+  }
+  let text: string | undefined;
+  for (const message of messages) {
+    text = assistantMessageText(message) ?? text;
+  }
+  return text;
+}
+
+function assistantMessageText(message: unknown): string | undefined {
+  if (!isRecord(message) || message.role !== "assistant") {
+    return undefined;
+  }
+  return textContent(message.content);
+}
+
+function textContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((block) =>
+      isRecord(block) && block.type === "text" && typeof block.text === "string" ? block.text : "",
+    )
+    .join("");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function runProcess(
