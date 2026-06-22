@@ -1,11 +1,12 @@
 import { Octokit } from "@octokit/rest";
 import type { RuntimePlan } from "@pipr/sdk";
 import { z } from "zod";
+import { isPiprCommandLine } from "../commands/grammar.js";
 import {
-  commandPatternPrefixMatches,
-  isPiprCommandLine,
-  parseCommandPattern,
-} from "../commands/grammar.js";
+  parsePlanCommandInput as parseSelectedPlanCommandInput,
+  selectCommandForInvocation,
+  selectPlanCommand,
+} from "../config/task-selection.js";
 import { githubApiVersion, parseRepoSlug } from "../shared/github.js";
 import type { CommandPermissionLevel } from "../types.js";
 
@@ -139,10 +140,27 @@ export function resolvePlanCommand(
   if (!isPiprCommandLine(line)) {
     return { kind: "ignored", reason: "comment did not target pipr" };
   }
-  let matched: PlanCommandResolution | undefined;
-  matched = findMatchedPlanCommand(plan, line);
-  if (matched) {
-    return matched;
+  const selected = selectPlanCommand(plan, line);
+  if (selected?.kind === "matched") {
+    return {
+      kind: "matched",
+      invocation: {
+        taskName: selected.command.task.name,
+        commandName: selected.commandName,
+        requiredPermission: selected.command.permission,
+        line: selected.line,
+        pattern: selected.command.pattern,
+        arguments: selected.arguments,
+      },
+    };
+  }
+  if (selected?.kind === "invalid") {
+    return {
+      kind: "invalid",
+      reason: selected.error,
+      requiredPermission: selected.command.permission,
+      body: renderPlanCommandHelp(plan, selected.error),
+    };
   }
   return {
     kind: "help",
@@ -163,49 +181,11 @@ function renderPlanCommandHelp(plan: RuntimePlan, reason?: string): string {
   return lines.join("\n");
 }
 
-function findMatchedPlanCommand(
-  plan: RuntimePlan,
-  line: string,
-): PlanCommandResolution | undefined {
-  let firstInvalid: PlanCommandResolution | undefined;
-  for (const command of plan.commands) {
-    const parsed = parseCommandPattern(command.pattern, line);
-    if (!parsed.ok) {
-      if (commandPatternPrefixMatches(command.pattern, line) && !firstInvalid) {
-        firstInvalid = {
-          kind: "invalid",
-          reason: parsed.error,
-          requiredPermission: command.permission,
-          body: renderPlanCommandHelp(plan, parsed.error),
-        };
-      }
-      continue;
-    }
-    return {
-      kind: "matched",
-      invocation: {
-        taskName: command.task.name,
-        commandName: planCommandName(command.pattern),
-        requiredPermission: command.permission,
-        line,
-        pattern: command.pattern,
-        arguments: parsed.value,
-      },
-    };
-  }
-  return firstInvalid;
-}
-
 export function parsePlanCommandInputs(
   plan: RuntimePlan,
   invocation: Extract<PlanCommandResolution, { kind: "matched" }>["invocation"],
 ): PlanCommandResolution {
-  const command = plan.commands.find(
-    (candidate) =>
-      candidate.task.name === invocation.taskName && candidate.pattern === invocation.pattern,
-  );
-  const matchingCommand =
-    command ?? plan.commands.find((candidate) => candidate.task.name === invocation.taskName);
+  const matchingCommand = selectCommandForInvocation(plan, invocation);
   if (!matchingCommand) {
     return {
       kind: "invalid",
@@ -219,7 +199,7 @@ export function parsePlanCommandInputs(
       kind: "matched",
       invocation: {
         ...invocation,
-        inputs: parsePlanCommandInput(matchingCommand, invocation.arguments),
+        inputs: parseSelectedPlanCommandInput(matchingCommand, invocation.arguments),
       },
     };
   } catch (error) {
@@ -231,17 +211,6 @@ export function parsePlanCommandInputs(
       body: renderPlanCommandHelp(plan, reason),
     };
   }
-}
-
-function parsePlanCommandInput(
-  command: RuntimePlan["commands"][number],
-  values: Record<string, string>,
-): unknown {
-  return command.parse ? command.parse(values) : values;
-}
-
-function planCommandName(pattern: string): string {
-  return pattern.replace(/^@pipr\s+/, "").split(/\s+/)[0] ?? pattern;
 }
 
 export function hasRequiredRepositoryPermission(

@@ -32,10 +32,10 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Keep Fallow as repo quality tooling only. Do not put Fallow into pipr's review runtime.
 - Keep package public surfaces small. Export only deliberate APIs from package roots.
 - Put implementation details behind internal modules. Do not export helpers only for tests or convenience.
-- Keep Docker Action, CLI command handling, TypeScript config loading, task execution, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In review tasks, diff parsing, Pi execution, and review validation are runtime-owned through `ctx.change.diffManifest()` and `ctx.pi.run()`, not userland blocks.
+- Keep Docker Action, CLI command handling, TypeScript config loading, task execution, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In review tasks, diff parsing, Pi execution, and review validation stay in pipr through `ctx.change.diffManifest()` and `ctx.pi.run()`, not userland blocks.
 - Keep user configuration in `.pipr/config.ts`. `.pi` is only an internal Pi home inside the Docker image.
 - Preserve schema-first reviewer output: validate structured JSON, allow one repair attempt, and drop invalid findings with metadata.
-- Keep inline publishing strict: same-range comments only, capped count, confidence filtering, invalid finding drops, and marker dedupe.
+- Keep inline publishing strict: same-range comments only, capped count, invalid finding drops, and marker dedupe.
 - Do not add backward compatibility aliases, legacy fallbacks, or migration shims for unreleased APIs unless explicitly requested.
 - Use Fallow as a maintainability gate. Fix surfaced duplication, dependency hygiene, dead exports, and complexity instead of broad ignores.
 - Fallow ignores must be narrow and temporary. Do not ignore TypeScript source or tests by package folder. Fixture and golden asset ignores are acceptable.

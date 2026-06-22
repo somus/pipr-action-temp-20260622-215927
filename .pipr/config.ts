@@ -11,8 +11,8 @@ export default definePipr((pipr) => {
     model,
     instructions: `
       Review the pull request diff for correctness, security,
-      maintainability, and test risk.
-      Return only high-confidence findings that target valid diff ranges.
+      maintainability, and test coverage.
+      Return only actionable findings that target valid diff ranges.
     `,
     inlineComments: { max: 5 },
     timeout: "5m",

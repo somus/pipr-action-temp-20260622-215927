@@ -9,17 +9,12 @@ import {
 } from "../types.js";
 
 const finding: ReviewFinding = {
-  title: "Bug",
   body: "This can fail.",
   path: "src/a.ts",
   rangeId: "range-1",
   side: "RIGHT",
   startLine: 10,
   endLine: 10,
-  severity: "high",
-  category: "correctness",
-  confidence: 0.9,
-  evidenceSnippet: "fail()",
 };
 
 const review: PrReview = {
@@ -42,7 +37,6 @@ describe("runtime boundary schemas", () => {
       ],
       publication: {
         maxInlineComments: 5,
-        minConfidence: 0.75,
       },
     });
 
@@ -63,7 +57,6 @@ describe("runtime boundary schemas", () => {
         ],
         publication: {
           maxInlineComments: 51,
-          minConfidence: 0.75,
         },
       }),
     ).toThrow();
@@ -143,7 +136,6 @@ describe("runtime boundary schemas", () => {
           providers: [],
           publication: {
             maxInlineComments: 5,
-            minConfidence: 0.75,
           },
         },
         warnings: [],

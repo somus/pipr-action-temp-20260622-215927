@@ -53,7 +53,7 @@ describe("pipr CLI", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain("pipr review requires --base <sha>");
   });
 
-  it("runs a named local entrypoint without GitHub publication", async () => {
+  it("runs a named local entrypoint without GitHub publishing", async () => {
     const workspace = await createLocalReviewWorkspace();
     try {
       const result = await runCli(

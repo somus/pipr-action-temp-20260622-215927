@@ -1,8 +1,8 @@
-# Runtime-owned publication kernel
+# pipr-owned Comment Publishing
 
 Review tasks produce typed comment contributions. They do not call GitHub APIs directly.
 
-The runtime-owned Publication Kernel:
+Comment Publishing:
 
 - reduces `MainSectionContribution` values into one deterministic Main Review Comment
 - renders that comment through the internal `MainCommentLayout`
@@ -14,6 +14,6 @@ The runtime-owned Publication Kernel:
 - caps Inline Review Comments only when `publication.maxInlineComments` is configured
 - dedupes Inline Review Comments by hidden finding marker and reviewed head SHA
 - maps inline findings to GitHub `line`, `side`, `start_line`, and `start_side` fields
-- reports publication failures in metadata and fails the Action for the MVP
+- reports comment publishing failures in metadata and fails the Action for the MVP
 
-The reducer controls conflict handling and list item dedupe before one GitHub comment upsert. This keeps GitHub mutation policy deterministic and runtime-owned. Tasks and future plugins can contribute review content, but publication order, conflict handling, stale-head checks, marker dedupe, and API writes remain inside pipr.
+The reducer controls conflict handling and list item dedupe before one GitHub comment upsert. This keeps GitHub write policy deterministic and pipr-owned. Tasks and future plugins can contribute review content, but comment order, conflict handling, stale-head checks, marker dedupe, and API writes remain inside pipr.

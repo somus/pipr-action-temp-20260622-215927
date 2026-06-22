@@ -62,12 +62,6 @@ async function writeFullFixtureReview() {
     writeReview("Fixture review", "Fake Pi found no commentable ranges.");
   }
 
-  const evidenceSnippet =
-    range.preview
-      ?.split("\n")
-      .map((line) => line.trim())
-      .find(Boolean) ?? "changed fixture line";
-
   console.log(
     JSON.stringify({
       summary: {
@@ -76,17 +70,13 @@ async function writeFullFixtureReview() {
       },
       inlineFindings: [
         {
-          title: "Fixture inline finding",
           body: "Full-flow act reached inline publication.",
           path: range.path,
           rangeId: range.id,
           side: range.side,
           startLine: range.startLine,
           endLine: range.startLine,
-          severity: "medium",
-          category: "maintainability",
-          confidence: 0.99,
-          evidenceSnippet,
+          data: { category: "maintainability" },
         },
       ],
     }),

@@ -50,7 +50,6 @@ const piprConfigSchema = z.strictObject({
   providers: z.array(providerConfigSchema).min(1),
   publication: z.strictObject({
     maxInlineComments: z.number().int().min(0).max(50).optional(),
-    minConfidence: z.number().min(0).max(1),
   }),
   limits: z
     .strictObject({

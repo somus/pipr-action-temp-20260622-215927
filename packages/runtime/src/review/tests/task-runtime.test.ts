@@ -32,7 +32,6 @@ const config: PiprConfig = {
   providers: [provider],
   publication: {
     maxInlineComments: 5,
-    minConfidence: 0.75,
   },
 };
 
@@ -120,12 +119,12 @@ describe("runTaskRuntime", () => {
     });
 
     const result = await runRuntime({
-      config: { ...config, publication: { ...config.publication, maxInlineComments: 1 } },
+      config: { ...config, publication: { maxInlineComments: 1 } },
       plan,
     });
 
     expect(result.publicationPlan.metadata.selectedTasks).toEqual(["slow", "fast"]);
-    expect(result.inlineCommentDrafts.map((item) => item.finding.title)).toEqual(["slow"]);
+    expect(result.inlineCommentDrafts.map((item) => item.finding.body)).toEqual(["slow body"]);
   });
 
   it("applies Diff Manifest options exposed on task context", async () => {
@@ -607,17 +606,12 @@ function reviewTestManifestWithContext(): DiffManifest {
 
 function finding(title: string, rangeId: string, startLine: number): ReviewFinding {
   return {
-    title,
     body: `${title} body`,
     path: "src/a.ts",
     rangeId,
     side: "RIGHT",
     startLine,
     endLine: startLine,
-    severity: "high",
-    category: "correctness",
-    confidence: 0.9,
-    evidenceSnippet: "fail()",
   };
 }
 

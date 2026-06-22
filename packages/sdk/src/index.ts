@@ -36,48 +36,40 @@ export type Schema<T> = {
   safeParse(value: unknown): SchemaParseResult<T>;
 };
 
+export const reviewOutputSchemaId = "core/pr-review";
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+export type JsonObject = { [key: string]: JsonValue };
+
 export type ReviewSummary = {
   title?: string;
   body: string;
-  risk?: "low" | "medium" | "high" | "critical";
 };
 
-export type ReviewFinding = {
-  title: string;
+export type ReviewFinding<TData extends JsonObject = JsonObject> = {
   body: string;
   path: string;
   rangeId: string;
   side: "RIGHT" | "LEFT";
   startLine: number;
   endLine: number;
-  severity: "critical" | "high" | "medium" | "low" | "nit";
-  category:
-    | "correctness"
-    | "security"
-    | "tests"
-    | "performance"
-    | "maintainability"
-    | "docs"
-    | "architecture"
-    | "other";
-  confidence: number;
-  evidenceSnippet: string;
   suggestedFix?: string;
-  semanticAnchor?: string;
-  fingerprintHint?: string;
+  data?: TData;
 };
 
-export type ReviewResult = {
+export type ReviewResult<TData extends JsonObject = JsonObject> = {
   summary: ReviewSummary;
-  inlineFindings: ReviewFinding[];
+  inlineFindings: ReviewFinding<TData>[];
+  metadata?: JsonObject;
 };
 
-export type ReviewCandidates = {
+export type ReviewCandidates<TData extends JsonObject = JsonObject> = {
   summary?: ReviewSummary;
-  candidates: Array<ReviewFinding & { candidateId: string }>;
+  candidates: Array<ReviewFinding<TData> & { candidateId: string }>;
 };
 
-export type ConsolidatedReview = ReviewResult;
+export type ConsolidatedReview<TData extends JsonObject = JsonObject> = ReviewResult<TData>;
 
 export type PromptSource = string | PromptText;
 export type PromptValue = unknown;
@@ -180,7 +172,6 @@ export type ReviewRecipeOptions = {
     | false
     | {
         max?: number;
-        minConfidence?: number;
       };
   summary?: boolean;
   timeout?: DurationInput;
@@ -241,7 +232,6 @@ export type RuntimePlan = {
   tools: AgentTool[];
   publication: {
     maxInlineComments?: number;
-    minConfidence?: number;
   };
   limits?: RuntimeLimits;
 };
@@ -399,7 +389,7 @@ export function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): P
 }
 
 export const schemas: BuiltinSchemaCatalog = {
-  review: createSchema<ReviewResult>("core/pr-review", parseReviewResult),
+  review: createSchema<ReviewResult>(reviewOutputSchemaId, parseReviewResult),
   reviewCandidates: createSchema<ReviewCandidates>("core/review-candidates", parseReviewCandidates),
   consolidatedReview: createSchema<ConsolidatedReview>(
     "core/consolidated-review",
@@ -649,19 +639,83 @@ function updateReviewRecipePublication(
   const next = reviewRecipePublication(options);
   if (
     publication.maxInlineComments !== undefined &&
-    (publication.maxInlineComments !== next.maxInlineComments ||
-      publication.minConfidence !== next.minConfidence)
+    publication.maxInlineComments !== next.maxInlineComments
   ) {
     throw new Error("pipr.review inlineComments settings must match across review recipes");
   }
   publication.maxInlineComments = next.maxInlineComments;
-  publication.minConfidence = next.minConfidence;
 }
 
 function reviewRecipePublication(options: ReviewRecipeOptions): RuntimePlan["publication"] {
   return {
     maxInlineComments: options.inlineComments === false ? 0 : (options.inlineComments?.max ?? 5),
-    minConfidence: options.inlineComments === false ? 1 : options.inlineComments?.minConfidence,
+  };
+}
+
+export function parseReviewResult(value: unknown): ReviewResult {
+  const record = requireRecord(value, "ReviewResult");
+  assertOnlyKeys(record, "ReviewResult", ["summary", "inlineFindings", "metadata"]);
+  const summary = parseReviewSummary(record.summary);
+  const inlineFindings = requireArray(record.inlineFindings, "ReviewResult.inlineFindings").map(
+    parseReviewFinding,
+  );
+  const metadata =
+    record.metadata === undefined ? undefined : requireJsonObject(record.metadata, "metadata");
+  return metadata === undefined
+    ? { summary, inlineFindings }
+    : { summary, inlineFindings, metadata };
+}
+
+export function parseReviewCandidates(value: unknown): ReviewCandidates {
+  const record = requireRecord(value, "ReviewCandidates");
+  assertOnlyKeys(record, "ReviewCandidates", ["summary", "candidates"]);
+  const summary = record.summary === undefined ? undefined : parseReviewSummary(record.summary);
+  const candidates = requireArray(record.candidates, "ReviewCandidates.candidates").map(
+    (candidate) => {
+      const candidateRecord = requireRecord(candidate, "candidate");
+      const parsed = parseReviewFindingRecord(candidateRecord, ["candidateId"]) as ReviewFinding & {
+        candidateId: string;
+      };
+      parsed.candidateId = requireString(candidateRecord.candidateId, "candidateId");
+      return parsed;
+    },
+  );
+  return summary === undefined ? { candidates } : { summary, candidates };
+}
+
+export function parseReviewSummary(value: unknown): ReviewSummary {
+  const record = requireRecord(value, "ReviewSummary");
+  assertOnlyKeys(record, "ReviewSummary", ["title", "body"]);
+  const summary: ReviewSummary = { body: requireString(record.body, "summary.body") };
+  if (record.title !== undefined) {
+    summary.title = requireString(record.title, "summary.title");
+  }
+  return summary;
+}
+
+export function parseReviewFinding(value: unknown): ReviewFinding {
+  return parseReviewFindingRecord(requireRecord(value, "ReviewFinding"), []);
+}
+
+export function reviewSchemaExample(): ReviewResult {
+  return {
+    summary: {
+      title: "Optional concise review title.",
+      body: "Concise pull request review summary.",
+    },
+    inlineFindings: [
+      {
+        body: "Specific issue and why it matters.",
+        path: "src/example.ts",
+        rangeId: "rng_example",
+        side: "RIGHT",
+        startLine: 1,
+        endLine: 1,
+        suggestedFix: "Optional fix.",
+        data: { category: "correctness" },
+      },
+    ],
+    metadata: {},
   };
 }
 
@@ -705,87 +759,34 @@ function createSchema<T>(id: string, parseValue: (value: unknown) => T): Schema<
   };
 }
 
-function parseReviewResult(value: unknown): ReviewResult {
-  const record = requireRecord(value, "ReviewResult");
-  if (record.nonInlineFindings !== undefined) {
-    throw new Error("ReviewResult.nonInlineFindings is not supported in the MVP");
-  }
-  const summary = parseReviewSummary(record.summary);
-  const inlineFindings = requireArray(record.inlineFindings, "ReviewResult.inlineFindings").map(
-    parseReviewFinding,
-  );
-  return { summary, inlineFindings };
-}
-
-function parseReviewCandidates(value: unknown): ReviewCandidates {
-  const record = requireRecord(value, "ReviewCandidates");
-  const summary = record.summary === undefined ? undefined : parseReviewSummary(record.summary);
-  const candidates = requireArray(record.candidates, "ReviewCandidates.candidates").map(
-    (candidate) => {
-      const parsed = parseReviewFinding(candidate) as ReviewFinding & { candidateId: string };
-      parsed.candidateId = requireString(
-        requireRecord(candidate, "candidate").candidateId,
-        "candidateId",
-      );
-      return parsed;
-    },
-  );
-  return summary === undefined ? { candidates } : { summary, candidates };
-}
-
-function parseReviewSummary(value: unknown): ReviewSummary {
-  const record = requireRecord(value, "ReviewSummary");
-  const summary: ReviewSummary = { body: requireString(record.body, "summary.body") };
-  if (record.title !== undefined) {
-    summary.title = requireString(record.title, "summary.title");
-  }
-  if (record.risk !== undefined) {
-    summary.risk = requireEnum(record.risk, "summary.risk", ["low", "medium", "high", "critical"]);
-  }
-  return summary;
-}
-
-function parseReviewFinding(value: unknown): ReviewFinding {
-  const record = requireRecord(value, "ReviewFinding");
+function parseReviewFindingRecord(
+  record: Record<string, unknown>,
+  extraKeys: string[],
+): ReviewFinding {
+  assertOnlyKeys(record, "ReviewFinding", [
+    "body",
+    "path",
+    "rangeId",
+    "side",
+    "startLine",
+    "endLine",
+    "suggestedFix",
+    "data",
+    ...extraKeys,
+  ]);
   const finding: ReviewFinding = {
-    title: requireString(record.title, "finding.title"),
     body: requireString(record.body, "finding.body"),
     path: requireString(record.path, "finding.path"),
     rangeId: requireString(record.rangeId, "finding.rangeId"),
     side: requireEnum(record.side, "finding.side", ["RIGHT", "LEFT"]),
     startLine: requirePositiveInteger(record.startLine, "finding.startLine"),
     endLine: requirePositiveInteger(record.endLine, "finding.endLine"),
-    severity: requireEnum(record.severity, "finding.severity", [
-      "critical",
-      "high",
-      "medium",
-      "low",
-      "nit",
-    ]),
-    category: requireEnum(record.category, "finding.category", [
-      "correctness",
-      "security",
-      "tests",
-      "performance",
-      "maintainability",
-      "docs",
-      "architecture",
-      "other",
-    ]),
-    confidence: requireConfidence(record.confidence, "finding.confidence"),
-    evidenceSnippet: requireString(record.evidenceSnippet, "finding.evidenceSnippet"),
   };
-  if (record.id !== undefined) {
-    throw new Error("finding.id is not supported in the MVP");
-  }
   if (record.suggestedFix !== undefined) {
     finding.suggestedFix = requireString(record.suggestedFix, "finding.suggestedFix");
   }
-  if (record.semanticAnchor !== undefined) {
-    finding.semanticAnchor = requireString(record.semanticAnchor, "finding.semanticAnchor");
-  }
-  if (record.fingerprintHint !== undefined) {
-    finding.fingerprintHint = requireString(record.fingerprintHint, "finding.fingerprintHint");
+  if (record.data !== undefined) {
+    finding.data = requireJsonObject(record.data, "finding.data");
   }
   return finding;
 }
@@ -818,13 +819,6 @@ function requirePositiveInteger(value: unknown, label: string): number {
   return value;
 }
 
-function requireConfidence(value: unknown, label: string): number {
-  if (typeof value !== "number" || value < 0 || value > 1) {
-    throw new Error(`${label} must be a number from 0 to 1`);
-  }
-  return value;
-}
-
 function requireEnum<const T extends readonly [string, ...string[]]>(
   value: unknown,
   label: string,
@@ -834,6 +828,75 @@ function requireEnum<const T extends readonly [string, ...string[]]>(
     throw new Error(`${label} must be one of: ${allowed.join(", ")}`);
   }
   return value;
+}
+
+function assertOnlyKeys(record: Record<string, unknown>, label: string, allowed: string[]): void {
+  const allowedSet = new Set(allowed);
+  for (const key of Object.keys(record)) {
+    if (!allowedSet.has(key)) {
+      throw new Error(`${label}.${key} is not supported`);
+    }
+  }
+}
+
+function requireJsonObject(value: unknown, label: string): JsonObject {
+  if (!isJsonRecord(value)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return requireJsonObjectValue(value, label, new WeakSet<object>());
+}
+
+function requireJsonValueInner(value: unknown, label: string, seen: WeakSet<object>): JsonValue {
+  if (isJsonPrimitive(value)) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return requireJsonArray(value, label, seen);
+  }
+  if (isJsonRecord(value)) {
+    return requireJsonObjectValue(value, label, seen);
+  }
+  throw new Error(`${label} must be JSON`);
+}
+
+function isJsonPrimitive(value: unknown): value is JsonPrimitive {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function requireJsonArray(value: unknown[], label: string, seen: WeakSet<object>): JsonValue[] {
+  assertJsonTreeNotSeen(value, label, seen);
+  return value.map((item) => requireJsonValueInner(item, label, seen));
+}
+
+function requireJsonObjectValue(
+  value: Record<string, unknown>,
+  label: string,
+  seen: WeakSet<object>,
+): JsonObject {
+  assertJsonTreeNotSeen(value, label, seen);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, requireJsonValueInner(item, label, seen)]),
+  );
+}
+
+function assertJsonTreeNotSeen(value: object, label: string, seen: WeakSet<object>): void {
+  if (seen.has(value)) {
+    throw new Error(`${label} must be JSON`);
+  }
+  seen.add(value);
 }
 
 function renderPromptTemplate(strings: TemplateStringsArray, values: PromptValue[]): string {

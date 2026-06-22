@@ -14,17 +14,12 @@ const baseReview: PrReview = {
   summary: { body: "Looks fine." },
   inlineFindings: [
     {
-      title: "Bug",
       body: "This can fail.",
       path: "src/a.ts",
       rangeId: "range-1",
       side: "RIGHT",
       startLine: 10,
       endLine: 11,
-      severity: "high",
-      category: "correctness",
-      confidence: 0.9,
-      evidenceSnippet: "const x = fail();",
     },
   ],
 };
@@ -34,7 +29,7 @@ if (!baseFinding) {
 }
 
 describe("validatePrReview", () => {
-  it("uses one Review Output Contract for examples and runtime schema", () => {
+  it("uses one Review Output for examples and runtime schema", () => {
     expect(parsePrReview(reviewSchemaExample()).summary.body).toBe(
       "Concise pull request review summary.",
     );
@@ -87,7 +82,6 @@ describe("validatePrReview", () => {
 
   it("keeps findings inside a commentable range", () => {
     const validated = validatePrReview(baseReview, manifest, {
-      minConfidence: 0.75,
       expectedHeadSha: "head",
     });
 
@@ -95,22 +89,16 @@ describe("validatePrReview", () => {
     expect(validated.droppedFindings).toHaveLength(0);
   });
 
-  it("drops low confidence and excluded-file findings", () => {
+  it("drops excluded-file findings", () => {
     const review: PrReview = {
       ...baseReview,
-      inlineFindings: [
-        { ...baseFinding, confidence: 0.5 },
-        { ...baseFinding, path: "bun.lock", rangeId: "range-lock" },
-      ],
+      inlineFindings: [{ ...baseFinding, path: "bun.lock", rangeId: "range-lock" }],
     };
 
-    const validated = validatePrReview(review, manifest, {
-      minConfidence: 0.75,
-    });
+    const validated = validatePrReview(review, manifest, {});
 
     expect(validated.validFindings).toHaveLength(0);
     expect(validated.droppedFindings.map((drop) => drop.reason)).toEqual([
-      "confidence 0.5 below 0.75",
       "file excluded from inline comments: lock file",
     ]);
   });
@@ -122,14 +110,14 @@ describe("validatePrReview", () => {
         { ...baseFinding, side: "LEFT" },
         { ...baseFinding, path: "src/other.ts" },
         { ...baseFinding, rangeId: "missing" },
-        { ...baseFinding, evidenceSnippet: "not near target" },
+        { ...baseFinding, startLine: 12, endLine: 11 },
+        { ...baseFinding, startLine: 9 },
         baseFinding,
         baseFinding,
       ],
     };
 
     const validated = validatePrReview(review, manifest, {
-      minConfidence: 0.75,
       expectedHeadSha: "head",
     });
 
@@ -138,28 +126,27 @@ describe("validatePrReview", () => {
       "finding side does not match range side",
       "finding path does not match range path",
       "unknown rangeId 'missing'",
-      "finding evidenceSnippet was not found near the target range",
+      "finding startLine is after endLine",
+      "finding lines fall outside the commentable range",
       "duplicate finding fingerprint",
     ]);
   });
 
-  it("keeps repeated semantic findings when they target different ranges", () => {
+  it("keeps repeated finding bodies when they target different ranges", () => {
     const review: PrReview = {
       ...baseReview,
       inlineFindings: [
-        { ...baseFinding, fingerprintHint: "same-root-cause" },
+        baseFinding,
         {
           ...baseFinding,
           rangeId: "range-2",
           startLine: 20,
           endLine: 21,
-          fingerprintHint: "same-root-cause",
         },
       ],
     };
 
     const validated = validatePrReview(review, manifest, {
-      minConfidence: 0.75,
       expectedHeadSha: "head",
     });
 
@@ -170,7 +157,6 @@ describe("validatePrReview", () => {
   it("fails validation when the Diff Manifest head is stale", () => {
     expect(() =>
       validatePrReview(baseReview, manifest, {
-        minConfidence: 0.75,
         expectedHeadSha: "new-head",
       }),
     ).toThrow("does not match expected head SHA");

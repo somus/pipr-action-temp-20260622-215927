@@ -139,19 +139,12 @@ describe("definePipr", () => {
     expect(() => buildPiprPlan(reviewRecipeFactory({ max: 3 }, { max: 5 }))).toThrow(
       "inlineComments settings must match",
     );
-    expect(() =>
-      buildPiprPlan(
-        reviewRecipeFactory({ max: 3, minConfidence: 0.75 }, { max: 3, minConfidence: 0.9 }),
-      ),
-    ).toThrow("inlineComments settings must match");
   });
 
   it("allows matching global inline publication settings across review recipes", () => {
-    const plan = buildPiprPlan(
-      reviewRecipeFactory({ max: 3, minConfidence: 0.75 }, { max: 3, minConfidence: 0.75 }),
-    );
+    const plan = buildPiprPlan(reviewRecipeFactory({ max: 3 }, { max: 3 }));
 
-    expect(plan.publication).toEqual({ maxInlineComments: 3, minConfidence: 0.75 });
+    expect(plan.publication).toEqual({ maxInlineComments: 3 });
   });
 
   it("lets explicit plugins install typed helpers without adding plan modules", () => {
@@ -176,12 +169,15 @@ describe("definePipr", () => {
     expect("jsonSchema" in schemas.review).toBe(false);
     expect(() => schemas.summary.parse({ body: "Looks good." })).not.toThrow();
     expect(() => schemas.summary.parse({ body: 123 })).toThrow("summary.body");
+    expect(() => schemas.summary.parse({ body: "Looks good.", risk: "low" })).toThrow(
+      "ReviewSummary.risk is not supported",
+    );
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
-        inlineFindings: [{ title: "Missing fields" }],
+        inlineFindings: [{ title: "Old title", ...validReviewFinding() }],
       }),
-    ).toThrow("finding.body");
+    ).toThrow("ReviewFinding.title is not supported");
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
@@ -194,11 +190,33 @@ describe("definePipr", () => {
         summary: { body: "Review." },
         inlineFindings: [validReviewFinding({ id: "finding-1" })],
       }),
-    ).toThrow("finding.id is not supported");
+    ).toThrow("ReviewFinding.id is not supported");
+    expect(
+      schemas.review.parse({
+        summary: { body: "Review." },
+        inlineFindings: [validReviewFinding({ data: { category: "correctness" } })],
+        metadata: { source: "test" },
+      }),
+    ).toMatchObject({
+      inlineFindings: [{ data: { category: "correctness" } }],
+      metadata: { source: "test" },
+    });
+    expect(() =>
+      schemas.review.parse({
+        summary: { body: "Review." },
+        inlineFindings: [validReviewFinding({ data: { when: new Date() } })],
+      }),
+    ).toThrow("finding.data must be JSON");
+    expect(() =>
+      schemas.review.parse({
+        summary: { body: "Review." },
+        inlineFindings: [validReviewFinding({ data: { values: new Map([["key", "value"]]) } })],
+      }),
+    ).toThrow("finding.data must be JSON");
   });
 });
 
-type InlineComments = false | { max?: number; minConfidence?: number };
+type InlineComments = false | { max?: number };
 
 function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineComments) {
   return definePipr((pipr) => {
@@ -227,17 +245,12 @@ function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineCo
 
 function validReviewFinding(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    title: "Finding",
     body: "Finding body.",
     path: "src/example.ts",
     rangeId: "rng_example",
     side: "RIGHT",
     startLine: 1,
     endLine: 1,
-    severity: "medium",
-    category: "correctness",
-    confidence: 0.9,
-    evidenceSnippet: "changed code",
     ...overrides,
   };
 }

@@ -10,6 +10,7 @@ import {
   loadRuntimeProject,
   validateProject,
 } from "../config/project.js";
+import { selectLocalTask } from "../config/task-selection.js";
 import {
   createGitHubPublicationClient,
   type GitHubPublicationClient,
@@ -171,7 +172,7 @@ export async function runLocalTaskCommand(
     ...options,
     requireProviderEnv: true,
   });
-  const local = runtime.plan.locals.find((entry) => entry.name === options.localName);
+  const local = selectLocalTask(runtime.plan, options.localName);
   if (!local) {
     throw new Error(`Local entry '${options.localName}' was not registered`);
   }

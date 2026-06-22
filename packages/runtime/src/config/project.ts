@@ -3,8 +3,6 @@ import type { ProviderConfig, RuntimeSettings } from "../types.js";
 import { parseProviderConfig, parseRuntimeSettings } from "../types.js";
 import { loadTypescriptConfig } from "./ts-loader.js";
 
-const defaultMinConfidence = 0.75;
-
 export type LoadRuntimeProjectOptions = {
   rootDir: string;
   configDir?: string;
@@ -104,7 +102,6 @@ function planToRuntimeSettings(
       providers,
       publication: {
         maxInlineComments: plan.publication.maxInlineComments,
-        minConfidence: plan.publication.minConfidence ?? defaultMinConfidence,
       },
       limits: plan.limits,
     },

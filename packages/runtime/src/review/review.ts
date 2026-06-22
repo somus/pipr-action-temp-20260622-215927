@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { createDiffRangeIndex } from "../diff/ranges.js";
 import type { CommentableRange, DiffManifest, ValidatedReview } from "../types.js";
 import { parseValidatedReview } from "../types.js";
 import {
@@ -9,11 +10,11 @@ import {
   type ReviewFinding,
   reviewSchemaExample,
 } from "./contract.js";
+import { findingRangeMismatchReason } from "./range-validation.js";
 
 export { parsePrReview, prReviewJsonSchema, prReviewSchemaId, reviewSchemaExample };
 
 export type ValidateReviewOptions = {
-  minConfidence: number;
   expectedHeadSha?: string;
 };
 
@@ -27,14 +28,7 @@ export function validatePrReview(
       `Diff Manifest head SHA '${manifest.headSha}' does not match expected head SHA '${options.expectedHeadSha}'`,
     );
   }
-  const ranges = new Map(
-    manifest.files.flatMap((file) => file.commentableRanges.map((range) => [range.id, range])),
-  );
-  const excludedFiles = new Map(
-    manifest.files
-      .filter((file) => file.excludedReason)
-      .map((file) => [file.path, file.excludedReason ?? "excluded"]),
-  );
+  const ranges = createDiffRangeIndex(manifest);
   const seenFingerprints = new Set<string>();
 
   const validFindings: ReviewFinding[] = [];
@@ -45,9 +39,8 @@ export function validatePrReview(
     const reason = findingDropReason({
       finding,
       fingerprint,
-      range: ranges.get(finding.rangeId),
-      excludedReason: excludedFiles.get(finding.path),
-      minConfidence: options.minConfidence,
+      range: ranges.rangeById(finding.rangeId),
+      excludedReason: ranges.excludedReason(finding.path),
       seenFingerprints,
     });
 
@@ -72,22 +65,14 @@ type FindingValidationContext = {
   fingerprint: string;
   range?: CommentableRange;
   excludedReason?: string;
-  minConfidence: number;
   seenFingerprints: Set<string>;
 };
 
 type FindingValidator = (context: FindingValidationContext) => string | undefined;
 
 const findingValidators: FindingValidator[] = [
-  validateConfidence,
   validateExcludedFile,
-  validateKnownRange,
-  validatePath,
-  validateSide,
-  validateLineOrder,
-  validateLineBounds,
-  validateRangePreview,
-  validateEvidence,
+  validateRangeMatch,
   validateDuplicateFingerprint,
 ];
 
@@ -101,57 +86,14 @@ function findingDropReason(context: FindingValidationContext): string | undefine
   return undefined;
 }
 
-function validateConfidence(context: FindingValidationContext): string | undefined {
-  return context.finding.confidence < context.minConfidence
-    ? `confidence ${context.finding.confidence} below ${context.minConfidence}`
-    : undefined;
-}
-
 function validateExcludedFile(context: FindingValidationContext): string | undefined {
   return context.excludedReason
     ? `file excluded from inline comments: ${context.excludedReason}`
     : undefined;
 }
 
-function validateKnownRange(context: FindingValidationContext): string | undefined {
-  return context.range ? undefined : `unknown rangeId '${context.finding.rangeId}'`;
-}
-
-function validatePath(context: FindingValidationContext): string | undefined {
-  return context.range?.path !== context.finding.path
-    ? "finding path does not match range path"
-    : undefined;
-}
-
-function validateSide(context: FindingValidationContext): string | undefined {
-  return context.range?.side !== context.finding.side
-    ? "finding side does not match range side"
-    : undefined;
-}
-
-function validateLineOrder(context: FindingValidationContext): string | undefined {
-  return context.finding.startLine > context.finding.endLine
-    ? "finding startLine is after endLine"
-    : undefined;
-}
-
-function validateLineBounds(context: FindingValidationContext): string | undefined {
-  const range = context.range;
-  return range &&
-    (context.finding.startLine < range.startLine || context.finding.endLine > range.endLine)
-    ? "finding lines fall outside the commentable range"
-    : undefined;
-}
-
-function validateRangePreview(context: FindingValidationContext): string | undefined {
-  return context.range?.preview ? undefined : "range preview unavailable for evidence validation";
-}
-
-function validateEvidence(context: FindingValidationContext): string | undefined {
-  return context.range?.preview &&
-    !evidenceMatchesRange(context.finding.evidenceSnippet, context.range.preview)
-    ? "finding evidenceSnippet was not found near the target range"
-    : undefined;
+function validateRangeMatch(context: FindingValidationContext): string | undefined {
+  return findingRangeMismatchReason(context.finding, context.range);
 }
 
 function validateDuplicateFingerprint(context: FindingValidationContext): string | undefined {
@@ -167,26 +109,6 @@ export function findingFingerprint(finding: ReviewFinding): string {
     finding.side,
     `${finding.startLine}-${finding.endLine}`,
   ];
-  const basis = [
-    ...location,
-    finding.fingerprintHint ??
-      [
-        finding.title,
-        finding.body,
-        finding.severity,
-        finding.category,
-        finding.evidenceSnippet,
-        finding.semanticAnchor ?? "",
-      ].join("\n"),
-  ].join("\n");
+  const basis = [...location, finding.body].join("\n");
   return crypto.createHash("sha256").update(basis).digest("hex").slice(0, 16);
-}
-
-function evidenceMatchesRange(evidenceSnippet: string, rangePreview: string): boolean {
-  const evidence = normalizeEvidence(evidenceSnippet);
-  return evidence.length > 0 && normalizeEvidence(rangePreview).includes(evidence);
-}
-
-function normalizeEvidence(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
 }

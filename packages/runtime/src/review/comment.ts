@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createDiffRangeIndex } from "../diff/ranges.js";
 import type {
   DiffManifest,
   PrReview,
@@ -215,7 +216,7 @@ export function reviewToMainSectionContributions(options: {
 
   const findingItems = options.validated.validFindings.map((finding) => ({
     fingerprint: findingFingerprint(finding),
-    body: `- **${finding.title}**: ${finding.body}`,
+    body: `- ${finding.body}`,
   }));
   if (findingItems.length > 0) {
     contributions.push({
@@ -236,15 +237,11 @@ export function prepareInlinePublicationItems(options: {
   reviewedHeadSha: string;
   existingMarkers?: Set<string>;
 }): InlinePublicationItem[] {
-  const ranges = new Map(
-    options.manifest.files.flatMap((file) =>
-      file.commentableRanges.map((range) => [range.id, range]),
-    ),
-  );
+  const ranges = createDiffRangeIndex(options.manifest);
   const seenMarkers = new Set(options.existingMarkers);
   return parseInlinePublicationItems(
     options.validated.validFindings.flatMap((finding) => {
-      const range = ranges.get(finding.rangeId);
+      const range = ranges.rangeById(finding.rangeId);
       if (!range) {
         throw new Error(
           `Validated finding range '${finding.rangeId}' is missing from Diff Manifest`,
@@ -331,7 +328,7 @@ function defaultMainCommentLayout(): MainCommentLayout {
     heading: "pipr Review",
     sections: [
       { id: "summary", title: "Summary", order: 10, empty: "No summary was produced." },
-      { id: "findings", title: "Findings", order: 20, empty: "No high-confidence findings." },
+      { id: "findings", title: "Findings", order: 20, empty: "No findings." },
       { id: "metadata", title: "Review metadata", order: 30, collapsed: true },
     ],
   };
@@ -507,12 +504,7 @@ function renderInlineBody(finding: ReviewFinding, marker: string): string {
   const [, fingerprint = "", reviewedHeadSha = ""] = marker.split(":").slice(1);
   return [
     `<!-- ${findingMarkerPrefix} fingerprint=${fingerprint} head=${reviewedHeadSha} -->`,
-    `**${finding.title}**`,
-    "",
     finding.body,
-    "",
-    `Severity: \`${finding.severity}\`  `,
-    `Confidence: \`${finding.confidence.toFixed(2)}\``,
     finding.suggestedFix ? `\nSuggested fix:\n\n${finding.suggestedFix}` : "",
   ]
     .filter(Boolean)

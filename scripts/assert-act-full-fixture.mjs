@@ -36,7 +36,7 @@ function assertMainComment(body) {
   );
   assert(!body.includes("pipr/docs-only"), "path-missed task was selected");
   assert(
-    countOccurrences(body, "Fixture inline finding") === 1,
+    countOccurrences(body, "Full-flow act reached inline publication.") === 1,
     "duplicate findings were not deduped in main comment",
   );
 }

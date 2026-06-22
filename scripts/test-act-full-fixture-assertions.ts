@@ -64,7 +64,7 @@ expectFailure("duplicate findings were not deduped in main comment", {
   ...validFullFixture(),
   issueComments: [
     {
-      body: `${fullMainCommentBody()}\nFixture inline finding`,
+      body: `${fullMainCommentBody()}\nFull-flow act reached inline publication.`,
     },
   ],
 });
@@ -127,7 +127,7 @@ function fullMainCommentBody(): string {
     "",
     "Full fixture secondary section",
     "",
-    "- **Fixture inline finding**: Full-flow act reached inline publication.",
+    "- Full-flow act reached inline publication.",
     "",
     "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
   ].join("\n");

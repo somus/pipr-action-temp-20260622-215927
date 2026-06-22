@@ -17,17 +17,13 @@ const validated: ValidatedReview = {
   },
   validFindings: [
     {
-      title: "Bug",
       body: "This can fail.",
       path: "src/a.ts",
       rangeId: "range-1",
       side: "RIGHT",
       startLine: 10,
       endLine: 10,
-      severity: "high",
-      category: "correctness",
-      confidence: 0.9,
-      evidenceSnippet: "fail()",
+      suggestedFix: "Use a safe call.",
     },
   ],
   droppedFindings: [],
@@ -119,6 +115,11 @@ describe("comments", () => {
     expect(second).toHaveLength(0);
     expect(first[0]?.body).toContain("<!-- pipr:finding fingerprint=");
     expect(first[0]?.body).toContain(" head=head -->");
+    expect(first[0]?.body).toContain("This can fail.");
+    expect(first[0]?.body).toContain("Suggested fix:");
+    expect(first[0]?.body).toContain("Use a safe call.");
+    expect(first[0]?.body).not.toContain("Severity:");
+    expect(first[0]?.body).not.toContain("Confidence:");
   });
 
   it("dedupes duplicate findings in the same draft batch", () => {

@@ -9,12 +9,12 @@ The GitHub pull request automation product that reviews pull requests through Pi
 _Avoid_: legacy product names
 
 **pipr Configuration**:
-The repository-local TypeScript product control plane under `.pipr/config.ts`.
+The repository-local TypeScript config under `.pipr/config.ts`.
 _Avoid_: legacy configuration roots, `.pi/`
 
-**Action Trust Boundary**:
-The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads executable review authority from trusted Action provider inputs and base-commit `.pipr/config.ts` plus its local imports.
-_Avoid_: PR-authored runtime authority
+**Trusted Action Inputs**:
+The Docker Action treats PR-head `.pipr/` changes as reviewed code, but loads executable review settings from trusted Action provider inputs and base-commit `.pipr/config.ts` plus its local imports.
+_Avoid_: PR-authored review settings
 
 **TypeScript Config**:
 The single supported user authoring surface. `pipr init` creates `.pipr/config.ts`, `.pipr/tsconfig.json`, and `.pipr/types/pipr-sdk.d.ts`.
@@ -36,25 +36,25 @@ _Avoid_: publisher
 A typed value parsed from a command or local entrypoint and passed to a `pipr.task()` callback.
 _Avoid_: environment variable, hidden prompt state
 
-**Runtime-Owned Pi Read Tool**:
-A pipr-attached Pi tool enabled by the trusted runtime for condensed Diff Manifest runs, such as `pipr_read_diff(path?, rangeId?)` or range-scoped `pipr_read_at_ref(path, ref, rangeId)`.
+**pipr Diff Read Tool**:
+A pipr-attached Pi tool enabled by trusted pipr code for condensed Diff Manifest runs, such as `pipr_read_diff(path?, rangeId?)` or range-scoped `pipr_read_at_ref(path, ref, rangeId)`.
 _Avoid_: plugin tool, GitHub API tool, shell access
 
 **Review Task**:
 A `pipr.task()` callback that gathers context, runs agents, validates output through runtime helpers, and contributes review comments.
 _Avoid_: YAML workflow, block graph
 
-**Review Kernel**:
-The runtime-owned review path used by `ctx.change.diffManifest()` and `ctx.pi.run()`. It creates the Diff Manifest, prepares prompt payloads and runtime read tools, runs Pi with configured model fallback and retry policy, repairs invalid structured output when configured, and validates Review Findings before comment rendering.
+**Review Run**:
+The pipr-owned review path used by `ctx.change.diffManifest()` and `ctx.pi.run()`. It creates the Diff Manifest, prepares prompt payloads and pipr Diff Read Tools, runs Pi with configured model fallback and retry policy, repairs invalid structured output when configured, and validates Review Findings before comment rendering.
 _Avoid_: user-authored diff or validation block
 
-The Review Kernel computes the Diff Manifest once per pull request runtime call and shares it across matching Review Tasks and Agent calls. Matching pull request tasks run in parallel and reduce in deterministic config order.
+The Review Run computes the Diff Manifest once per pull request runtime call and shares it across matching Review Tasks and Agent calls. Matching pull request tasks run in parallel and reduce in deterministic config order.
 
-**Publication Kernel**:
-The runtime-owned reducer and GitHub adapter that turns task comment contributions into one Main Review Comment upsert and capped Inline Review Comment writes.
+**Comment Publishing**:
+The pipr-owned reducer and GitHub writer that turns task comment contributions into one Main Review Comment upsert and capped Inline Review Comment writes.
 _Avoid_: task-authored GitHub comment writes
 
-Pull request events can select multiple Review Tasks. The Publication Kernel reduces all task contributions into one Main Review Comment and one capped Inline Review Comment set. `ctx.output.section` and `ctx.output.summary` emit named section contributions. The default section merge policy is `exclusive`; tasks must explicitly choose `append`, `replace`, or `list` when sharing a section.
+Pull request events can select multiple Review Tasks. Comment Publishing reduces all task contributions into one Main Review Comment and one capped Inline Review Comment set. `ctx.output.section` and `ctx.output.summary` emit named section contributions. The default section merge policy is `exclusive`; tasks must explicitly choose `append`, `replace`, or `list` when sharing a section.
 
 **Review Finding**:
 An actionable issue found in a pull request and anchored to a validated diff range.
@@ -69,7 +69,7 @@ The compact changed-code model that defines files, hunks, and ranges where revie
 _Avoid_: raw diff
 
 **Condensed Diff Manifest**:
-A size-reduced prompt form that preserves mapping fields while dropping non-mapping context. Pi can use runtime-owned read tools to request bounded, range-scoped extra context.
+A size-reduced prompt form that preserves mapping fields while dropping non-mapping context. Pi can use pipr Diff Read Tools to request bounded, range-scoped extra context.
 _Avoid_: lossy location model, model-owned diff parsing
 
 **Main Review Comment**:

@@ -1,6 +1,6 @@
 # pipr
 
-pipr is a Pi-powered GitHub PR automation runtime. The current runtime validates `.pipr/config.ts`, loads GitHub pull request events, builds a local Diff Manifest, runs Pi for schema-first review JSON, validates findings against commentable ranges, reduces task contributions into one publication plan, then upserts the Main Review Comment and publishes Inline Review Comments.
+pipr is a Pi-powered GitHub PR automation runtime. The current runtime validates `.pipr/config.ts`, loads GitHub pull request events, builds a local Diff Manifest, runs Pi for schema-first review JSON, validates findings against commentable ranges, prepares comments, then upserts the Main Review Comment and publishes Inline Review Comments.
 
 ## Development
 
@@ -16,7 +16,7 @@ Local GitHub Action testing uses `act`:
 mise run check-actions
 ```
 
-This builds the Docker Action image, verifies the installed Pi CLI contract, and runs local Action fixtures through `act`. The dry-run fixture proves Docker Action packaging and event/config loading without calling Pi or publishing comments. The full-flow fixture uses fake Pi and fake GitHub publication storage, then asserts one Main Review Comment and one Inline Review Comment payload are produced.
+This builds the Docker Action image, verifies the installed Pi CLI contract, and runs local Action fixtures through `act`. The dry-run fixture proves Docker Action packaging and event/config loading without calling Pi or publishing comments. The full-flow fixture uses fake Pi and fake GitHub comment storage, then asserts one Main Review Comment and one Inline Review Comment payload are produced.
 
 `check-actions` builds one local image, `pipr-action:act`, then generates local-only Action metadata under `.github/act/` so every `act` fixture uses that prebuilt image instead of rebuilding the Dockerfile. To test a future published image after the repository exists on GitHub, run:
 
@@ -81,12 +81,12 @@ The Docker Action pins provider execution from trusted Action inputs, not from P
 
 For small pull requests, pipr sends the full Diff Manifest in the reviewer prompt. If the
 serialized manifest exceeds configured byte or estimated-token limits, pipr sends a condensed
-manifest that preserves deterministic mapping fields and attaches runtime-owned read tools:
+manifest that preserves deterministic mapping fields and attaches pipr Diff Read Tools:
 `pipr_read_diff(path?, rangeId?)` and `pipr_read_at_ref(path, ref, rangeId)`. These are not
 `.pipr/` plugin tools and never expose GitHub APIs, shell access, writes, comment publishing, or
 path-only base file reads.
 
-The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load `.pipr/config.ts` and local imports from the pull request base commit. Pi still reviews the PR head. Runtime-owned code owns deterministic diff creation, Pi execution, review validation, publication reduction, stale-head checks, main-comment upsert, inline marker dedupe, and GitHub comment writes. Invalid or deleted PR-head `.pipr/` files cannot block the trusted review run. The base commit must contain `.pipr/config.ts`.
+The Action ignores PR-head `.pipr/` as executable authority. Non-dry Action runs load `.pipr/config.ts` and local imports from the pull request base commit. Pi still reviews the PR head. pipr code owns deterministic diff creation, Pi execution, review validation, comment preparation, stale-head checks, main-comment upsert, inline marker dedupe, and GitHub comment writes. Invalid or deleted PR-head `.pipr/` files cannot block the trusted review run. The base commit must contain `.pipr/config.ts`.
 
 ## Minimal Config
 
@@ -106,8 +106,8 @@ export default definePipr((pipr) => {
     model,
     instructions: `
       Review the pull request diff for correctness, security,
-      maintainability, and test risk.
-      Return only high-confidence findings that target valid diff ranges.
+      maintainability, and test coverage.
+      Return only actionable findings that target valid diff ranges.
     `,
     inlineComments: { max: 5 },
     timeout: "5m",
@@ -139,7 +139,7 @@ The public authoring surface is the `@pipr/sdk` builder. Use `pipr.model`, `pipr
 const security = pipr.agent({
   name: "security-reviewer",
   model,
-  instructions: "Review only security risk.",
+  instructions: "Review only security issues.",
   output: pipr.schemas.review,
   prompt: (input) => pipr.prompt`
     Review this pull request for security issues.
@@ -164,22 +164,22 @@ overrides the agent's primary model and fallback list. Otherwise pipr uses `agen
 `agent.fallbacks`, then the config default model. Invalid structured output gets one repair attempt
 by default; transient Pi execution retries default to zero. Set `agent.retry.invalidOutput` and
 `agent.retry.transientFailure` to override those counts per agent. GitHub Action provider inputs are
-an explicit trust-boundary override: when they are present, pipr uses only that trusted provider and
+an explicit trusted override: when they are present, pipr uses only that trusted provider and
 does not run agent or task fallbacks.
 
 `definePlugin`, `pipr.use`, and `pipr.tool` support explicit TypeScript plugin registration.
 Plugin tools are typed and visible in the runtime plan, but attaching custom plugin tools to Pi
-agents fails closed in the MVP. Pi only receives pipr's built-in read-only tools plus runtime-owned
-Diff Manifest helper tools for condensed runs. Review output for inline publication must use
+agents fails closed in the MVP. Pi only receives pipr's built-in read-only tools plus pipr
+Diff Read Tools for condensed runs. Review output for inline comments must use
 `pipr.schemas.review`; non-inline findings are not part of the MVP Review Result.
 
 Command triggers run only for `issue_comment` events that target pull requests. pipr checks `github.event.issue.pull_request`, fetches PR metadata, checks the commenter with GitHub's collaborator permission API, parses command arguments, and only then starts the task. Permissions are ordered `read < triage < write < maintain < admin`; command permission defaults to `write`.
 
-The runtime computes the Diff Manifest once per review run and shares it with all matching tasks. Pull request tasks run concurrently and publish one combined publication plan. Main Review Comment section writes default to `exclusive`; use `append`, `replace`, or `list` when multiple tasks intentionally share a section.
+The runtime computes the Diff Manifest once per review run and shares it with all matching tasks. Pull request tasks run concurrently and publish one combined set of comments. Main Review Comment section writes default to `exclusive`; use `append`, `replace`, or `list` when multiple tasks intentionally share a section.
 
 Use `pipr inspect` to see registered models, agents, tasks, events, commands, locals, and tools from the TypeScript runtime plan.
 
-Local entrypoints run the same task logic without GitHub publication. They require an explicit base commit:
+Local entrypoints run the same task logic without GitHub comment publishing. They require an explicit base commit:
 
 ```bash
 pipr review --base origin/main

@@ -1,5 +1,6 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
+import { createDiffRangeIndex } from "../diff/ranges.js";
 import { isRecord } from "../shared/record.js";
 import type { CommentableRange, DiffHunk, DiffManifest, DiffManifestFile } from "../types.js";
 
@@ -58,11 +59,12 @@ export type LineSliceResult = {
 
 export function readDiffFromRuntimeData(data: RuntimeToolData, params: ReadDiffParams): unknown {
   const { path: filePath, rangeId } = params;
+  const ranges = createDiffRangeIndex(data.manifest);
   if (filePath !== undefined) {
     assertSafeManifestPath(filePath);
-    assertKnownManifestPath(data.manifest, filePath);
+    ranges.requireFile(filePath);
   }
-  if (rangeId !== undefined && !findRange(data.manifest, rangeId)) {
+  if (rangeId !== undefined && !ranges.findRange(rangeId)) {
     throw new Error(`Unknown Diff Manifest range '${rangeId}'`);
   }
   const files = data.manifest.files
@@ -107,9 +109,10 @@ export function resolveReadAtRefRequest(
   params: ReadAtRefParams,
 ): ReadAtRefRequest {
   assertSafeManifestPath(params.path);
-  const file = assertKnownManifestPath(manifest, params.path);
-  const range = assertKnownRange(manifest, file, params.rangeId);
-  const hunk = assertKnownHunk(file, range);
+  const ranges = createDiffRangeIndex(manifest);
+  const file = ranges.requireFile(params.path);
+  const range = ranges.requireRangeInFile(file, params.rangeId);
+  const hunk = ranges.requireHunk(file, range);
   const sourcePath = params.ref === "base" ? (file.previousPath ?? file.path) : file.path;
   assertSafeManifestPath(sourcePath);
   return {
@@ -233,45 +236,6 @@ function lineWindowForRange(
     startLine: Math.max(hunkStart, range.startLine - readAtRefContextLines),
     endLine: Math.min(hunkEnd, range.endLine + readAtRefContextLines),
   };
-}
-
-function assertKnownManifestPath(manifest: DiffManifest, filePath: string): DiffManifestFile {
-  const file = manifest.files.find((item) => item.path === filePath);
-  if (!file) {
-    throw new Error(`Path '${filePath}' is not in the Diff Manifest`);
-  }
-  return file;
-}
-
-function assertKnownRange(
-  manifest: DiffManifest,
-  file: DiffManifestFile,
-  rangeId: string,
-): CommentableRange {
-  const range = file.commentableRanges.find((item) => item.id === rangeId);
-  if (range) {
-    return range;
-  }
-  if (findRange(manifest, rangeId)) {
-    throw new Error(`Diff Manifest range '${rangeId}' is not in path '${file.path}'`);
-  }
-  throw new Error(`Unknown Diff Manifest range '${rangeId}'`);
-}
-
-function assertKnownHunk(file: DiffManifestFile, range: CommentableRange): DiffHunk {
-  const hunk = file.hunks.find(
-    (item) => item.hunkIndex === range.hunkIndex && item.contentHash === range.hunkContentHash,
-  );
-  if (!hunk) {
-    throw new Error(`Diff Manifest range '${range.id}' has no matching hunk`);
-  }
-  return hunk;
-}
-
-function findRange(manifest: DiffManifest, rangeId: string): boolean {
-  return manifest.files.some((file) =>
-    file.commentableRanges.some((range) => range.id === rangeId),
-  );
 }
 
 function optionalString(value: unknown): string | undefined {

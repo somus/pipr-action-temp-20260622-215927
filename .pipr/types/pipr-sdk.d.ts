@@ -37,38 +37,38 @@ type Schema<T> = {
   parse(value: unknown): T;
   safeParse(value: unknown): SchemaParseResult<T>;
 };
+const reviewOutputSchemaId = "core/pr-review";
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+type JsonObject = {
+  [key: string]: JsonValue;
+};
 type ReviewSummary = {
   title?: string;
   body: string;
-  risk?: "low" | "medium" | "high" | "critical";
 };
-type ReviewFinding = {
-  title: string;
+type ReviewFinding<TData extends JsonObject = JsonObject> = {
   body: string;
   path: string;
   rangeId: string;
   side: "RIGHT" | "LEFT";
   startLine: number;
   endLine: number;
-  severity: "critical" | "high" | "medium" | "low" | "nit";
-  category: "correctness" | "security" | "tests" | "performance" | "maintainability" | "docs" | "architecture" | "other";
-  confidence: number;
-  evidenceSnippet: string;
   suggestedFix?: string;
-  semanticAnchor?: string;
-  fingerprintHint?: string;
+  data?: TData;
 };
-type ReviewResult = {
+type ReviewResult<TData extends JsonObject = JsonObject> = {
   summary: ReviewSummary;
-  inlineFindings: ReviewFinding[];
+  inlineFindings: ReviewFinding<TData>[];
+  metadata?: JsonObject;
 };
-type ReviewCandidates = {
+type ReviewCandidates<TData extends JsonObject = JsonObject> = {
   summary?: ReviewSummary;
-  candidates: Array<ReviewFinding & {
+  candidates: Array<ReviewFinding<TData> & {
     candidateId: string;
   }>;
 };
-type ConsolidatedReview = ReviewResult;
+type ConsolidatedReview<TData extends JsonObject = JsonObject> = ReviewResult<TData>;
 type PromptSource = string | PromptText;
 type PromptValue = unknown;
 type PromptText = {
@@ -149,7 +149,6 @@ type ReviewRecipeOptions = {
   localName?: string | false;
   inlineComments?: false | {
     max?: number;
-    minConfidence?: number;
   };
   summary?: boolean;
   timeout?: DurationInput;
@@ -211,7 +210,6 @@ type RuntimePlan = {
   tools: AgentTool[];
   publication: {
     maxInlineComments?: number;
-    minConfidence?: number;
   };
   limits?: RuntimeLimits;
 };
@@ -336,7 +334,12 @@ function isPiprConfigFactory(value: unknown): value is PiprConfigFactory;
 function buildPiprPlan(factory: PiprConfigFactory): RuntimePlan;
 function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle>;
 const schemas: BuiltinSchemaCatalog;
+function parseReviewResult(value: unknown): ReviewResult;
+function parseReviewCandidates(value: unknown): ReviewCandidates;
+function parseReviewSummary(value: unknown): ReviewSummary;
+function parseReviewFinding(value: unknown): ReviewFinding;
+function reviewSchemaExample(): ReviewResult;
 function renderPromptValue(value: PromptValue): string;
 //#endregion
-export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommandOptions, ConsolidatedReview, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonPromptOptions, ModelOptions, ModelProfile, OutputCollector, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCandidates, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, SectionContributionOptions, SummaryContributionOptions, Task, TaskContext, TaskHandler, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, renderPromptValue, schemas };
+export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommandOptions, ConsolidatedReview, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonValue, ModelOptions, ModelProfile, OutputCollector, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCandidates, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, SectionContributionOptions, SummaryContributionOptions, Task, TaskContext, TaskHandler, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, parseReviewCandidates, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schemas };
 }

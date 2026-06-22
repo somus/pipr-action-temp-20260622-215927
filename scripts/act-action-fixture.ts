@@ -10,6 +10,18 @@ import {
 } from "../packages/runtime/dist/action/fixture-dependencies.mjs";
 
 type LoadedActionResult = Exclude<ActionCommandResult, { kind: "ignored" }>;
+type ActionResultHandlers = {
+  [Kind in ActionCommandResult["kind"]]: (
+    result: Extract<ActionCommandResult, { kind: Kind }>,
+  ) => void;
+};
+
+const actionResultHandlers: ActionResultHandlers = {
+  ignored: handleIgnoredActionResult,
+  "dry-run": handleDryRunActionResult,
+  "command-help": handleCommandHelpActionResult,
+  review: handleReviewActionResult,
+};
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -54,23 +66,7 @@ function envValue(name: string): string | undefined {
 }
 
 function handleActionResult(result: ActionCommandResult): void {
-  if (result.kind === "ignored") {
-    handleIgnoredActionResult(result);
-    return;
-  }
-  handleLoadedActionResult(result);
-}
-
-function handleLoadedActionResult(result: LoadedActionResult): void {
-  if (result.kind === "dry-run") {
-    handleDryRunActionResult(result);
-    return;
-  }
-  if (result.kind === "command-help") {
-    handleCommandHelpActionResult(result);
-    return;
-  }
-  handleReviewActionResult(result);
+  actionResultHandlers[result.kind](result as never);
 }
 
 function handleIgnoredActionResult(

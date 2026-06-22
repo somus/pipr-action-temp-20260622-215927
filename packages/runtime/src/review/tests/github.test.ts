@@ -7,17 +7,12 @@ import {
 } from "../github.js";
 
 const finding: ReviewFinding = {
-  title: "Bug",
   body: "This can fail.",
   path: "src/a.ts",
   rangeId: "rng_abcd1234_h1_RIGHT_10_12_deadbeefcafe",
   side: "RIGHT",
   startLine: 10,
   endLine: 12,
-  severity: "high",
-  category: "correctness",
-  confidence: 0.9,
-  evidenceSnippet: "fail()",
 };
 
 const range: CommentableRange = {

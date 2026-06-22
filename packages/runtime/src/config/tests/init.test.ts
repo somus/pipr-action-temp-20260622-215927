@@ -1,6 +1,7 @@
 import { access, mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { initOfficialMinimalProject, listOfficialMinimalFiles } from "../init.js";
 import { validateProject } from "../project.js";
@@ -26,6 +27,9 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).toContain("readonly apiKey?: SecretRef;");
     expect(sdkTypes).toContain("readonly options?: Record<string, unknown>;");
     expect(sdkTypes).not.toContain("piprSdkDeclaration");
+    expect(sdkTypes).toBe(
+      await readFile(path.join(repoRoot(), ".pipr", "types", "pipr-sdk.d.ts"), "utf8"),
+    );
     expect(await listFiles(path.join(rootDir, ".pipr"))).toEqual([
       "config.ts",
       "tsconfig.json",
@@ -87,6 +91,10 @@ describe("initOfficialMinimalProject", () => {
     ).rejects.toThrow("configDir must be inside rootDir");
   });
 });
+
+function repoRoot(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
+}
 
 async function listFiles(rootDir: string, prefix = ""): Promise<string[]> {
   const files: string[] = [];

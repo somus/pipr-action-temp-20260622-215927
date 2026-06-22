@@ -158,7 +158,7 @@ describe("buildPiArgs", () => {
     ).toBe("off");
   });
 
-  it("adds runtime-owned read tools through an explicit extension", () => {
+  it("adds pipr Diff Read Tools through an explicit extension", () => {
     const args = buildPiArgs(
       {
         id: "backup",

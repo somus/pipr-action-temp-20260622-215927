@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CommentableRange, ReviewFinding } from "../types.js";
 import { reviewSideSchema } from "../types.js";
+import { assertFindingMatchesRange } from "./range-validation.js";
 
 export const githubReviewCommentLocationSchema = z
   .strictObject({
@@ -48,22 +49,4 @@ export function mapFindingToGithubReviewCommentLocation(options: {
     location.start_side = finding.side;
   }
   return githubReviewCommentLocationSchema.parse(location);
-}
-
-function assertFindingMatchesRange(finding: ReviewFinding, range: CommentableRange): void {
-  if (finding.rangeId !== range.id) {
-    throw new Error("finding rangeId does not match range");
-  }
-  if (finding.path !== range.path) {
-    throw new Error("finding path does not match range path");
-  }
-  if (finding.side !== range.side) {
-    throw new Error("finding side does not match range side");
-  }
-  if (finding.startLine < range.startLine || finding.endLine > range.endLine) {
-    throw new Error("finding lines fall outside the commentable range");
-  }
-  if (finding.startLine > finding.endLine) {
-    throw new Error("finding startLine is after endLine");
-  }
 }

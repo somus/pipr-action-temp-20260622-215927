@@ -100,7 +100,7 @@ describe("runActionCommand issue_comment dispatch", () => {
           dryRun: false,
           env: issueCommentEnv(workspace.rootDir, eventPath),
           githubClient: failingGitHubClient(),
-          githubPublicationClient: failingGitHubPublicationClient(),
+          githubPublicationClient: failingGitHubPublishingClient(),
           piExecutable: workspace.piExecutable,
         }),
       ).resolves.toMatchObject({
@@ -209,7 +209,7 @@ describe("runActionCommand pull_request dispatch", () => {
           GITHUB_ACTIONS: "true",
           HOME: homeDir,
         },
-        githubPublicationClient: failingGitHubPublicationClient(),
+        githubPublicationClient: failingGitHubPublishingClient(),
         piExecutable: workspace.piExecutable,
       });
 
@@ -241,7 +241,7 @@ describe("runActionCommand pull_request dispatch", () => {
         eventPath,
         dryRun: true,
         env: pullRequestEnv(workspace.rootDir, eventPath),
-        githubPublicationClient: failingGitHubPublicationClient(),
+        githubPublicationClient: failingGitHubPublishingClient(),
         piExecutable: workspace.piExecutable,
       });
 
@@ -297,7 +297,7 @@ describe("runActionCommand pull_request dispatch", () => {
         eventPath,
         dryRun: false,
         env: pullRequestEnv(workspace.rootDir, eventPath),
-        githubPublicationClient: failingGitHubPublicationClient(),
+        githubPublicationClient: failingGitHubPublishingClient(),
         piExecutable: workspace.piExecutable,
       });
 
@@ -575,28 +575,28 @@ function fakeGitHubPublicationClient(workspace: CommandWorkspace): GitHubPublica
   };
 }
 
-function failingGitHubPublicationClient(): GitHubPublicationClient {
+function failingGitHubPublishingClient(): GitHubPublicationClient {
   return {
     async getAuthenticatedUserLogin() {
-      throw new Error("GitHub publication should not be called");
+      throw new Error("GitHub publishing should not be called");
     },
     async getPullRequestHeadSha() {
-      throw new Error("GitHub publication should not be called");
+      throw new Error("GitHub publishing should not be called");
     },
     async listIssueComments() {
-      throw new Error("GitHub publication should not be called");
+      throw new Error("GitHub publishing should not be called");
     },
     async createIssueComment() {
-      throw new Error("GitHub publication should not be called");
+      throw new Error("GitHub publishing should not be called");
     },
     async updateIssueComment() {
-      throw new Error("GitHub publication should not be called");
+      throw new Error("GitHub publishing should not be called");
     },
     async listReviewComments() {
-      throw new Error("GitHub publication should not be called");
+      throw new Error("GitHub publishing should not be called");
     },
     async createReviewComment() {
-      throw new Error("GitHub publication should not be called");
+      throw new Error("GitHub publishing should not be called");
     },
   };
 }
