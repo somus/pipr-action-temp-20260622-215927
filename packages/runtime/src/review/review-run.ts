@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Agent, AgentTool, DurationInput, RuntimePlan, TaskContext } from "@pipr/sdk";
 import { isBuiltinReadOnlyTool, renderPromptValue } from "@pipr/sdk";
+import { compact, uniqBy } from "lodash-es";
+import { z } from "zod";
 import { piReadOnlyToolNames } from "../pi/contract.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../pi/runner.js";
 import { piRuntimeReadToolNames } from "../pi/runtime-tools.js";
@@ -74,6 +76,11 @@ type RetrySettings = {
   invalidOutput: number;
   transientFailure: number;
 };
+
+const retrySettingsSchema = z.strictObject({
+  invalidOutput: z.number().int().min(0),
+  transientFailure: z.number().int().min(0),
+});
 
 type AgentAttemptResult =
   | { ok: true; value: unknown; repairAttempted: boolean }
@@ -206,20 +213,10 @@ async function runPiWithTransientRetries(
 }
 
 function retrySettings(agent: Agent): RetrySettings {
-  return {
-    invalidOutput: nonNegativeInteger(agent.definition.retry?.invalidOutput ?? 1, "invalidOutput"),
-    transientFailure: nonNegativeInteger(
-      agent.definition.retry?.transientFailure ?? 0,
-      "transientFailure",
-    ),
-  };
-}
-
-function nonNegativeInteger(value: number, label: string): number {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Agent retry.${label} must be a non-negative integer`);
-  }
-  return value;
+  return retrySettingsSchema.parse({
+    invalidOutput: agent.definition.retry?.invalidOutput ?? 1,
+    transientFailure: agent.definition.retry?.transientFailure ?? 0,
+  });
 }
 
 function resolveAgentTools(agent: Agent, _plan: RuntimePlan): AgentToolResolution {
@@ -258,11 +255,7 @@ function selectProviders(
     primary ? resolveProvider(runtime.config, primary.name) : runtime.provider,
     ...fallbacks.map((model) => resolveProvider(runtime.config, model.name)),
   ];
-  return uniqueProviders(providers);
-}
-
-function uniqueProviders(providers: ProviderConfig[]): ProviderConfig[] {
-  return [...new Map(providers.map((provider) => [provider.id, provider])).values()];
+  return uniqBy(providers, (provider) => provider.id);
 }
 
 function errorMessage(error: unknown): string {
@@ -279,7 +272,7 @@ async function renderAgentPrompt(
     ...options.agentRunContext.prompt,
   });
   const availableTools = [...piReadOnlyToolNames];
-  return [
+  return compact([
     "You are pipr's agent for a change request.",
     `Available Pi tools: ${availableTools.join(", ")}.`,
     "Do not use bash, write, edit, platform APIs, or comment publishing tools.",
@@ -294,9 +287,7 @@ async function renderAgentPrompt(
       ? `Run Instructions:\n${renderPromptValue(options.runOptions.instructions)}`
       : undefined,
     `Prompt:\n${renderPromptValue(prompt)}`,
-  ]
-    .filter((part) => part !== undefined)
-    .join("\n\n");
+  ]).join("\n\n");
 }
 
 function customToolPrompt(agentTools: AgentToolResolution): string | undefined {
@@ -397,7 +388,7 @@ function withManifestToolContext(
     manifestPrompt.mode === "condensed"
       ? [...piReadOnlyToolNames, ...piRuntimeReadToolNames]
       : [...piReadOnlyToolNames];
-  return [
+  return compact([
     prompt,
     "Diff Manifest Payload:",
     JSON.stringify(
@@ -429,9 +420,7 @@ function withManifestToolContext(
           "pipr_read_at_ref(path, ref, rangeId) reads bounded base or head file content.",
         ].join("\n")
       : undefined,
-  ]
-    .filter((part) => part !== undefined)
-    .join("\n\n");
+  ]).join("\n\n");
 }
 
 function readInputManifest(input: unknown): DiffManifest | undefined {

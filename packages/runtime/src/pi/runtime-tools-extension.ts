@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { compact } from "lodash-es";
+import { z } from "zod";
 import {
   assertNoSymlinkPath,
   type BaseRangeSnapshot,
   boundedLineSlice,
   type ReadAtRefParams,
-  type ReadDiffParams,
   type RuntimeToolData,
   readAtRefParams,
   readDiffFromRuntimeData,
@@ -43,6 +44,30 @@ type CustomToolData = {
   tools: Array<{ name: string; description?: string }>;
 };
 
+const customToolDataSchema = z.strictObject({
+  tools: z.array(
+    z.strictObject({
+      name: z.string().min(1),
+      description: z.string().optional(),
+    }),
+  ),
+});
+
+const customToolBridgePayloadSchema = z.record(z.string(), z.unknown());
+const readableBaseSnapshotSchema = z.looseObject({
+  path: z.string(),
+  ref: z.enum(["base", "head"]),
+  sourcePath: z.string(),
+  rangeId: z.string(),
+  startLine: z.number(),
+  endLine: z.number(),
+  available: z.literal(true),
+  relativePath: z.string(),
+  bytes: z.number().optional(),
+  truncated: z.boolean().optional(),
+});
+
+/** Registers pipr runtime read tools and config-defined custom tools with Pi. */
 export default function piprRuntimeTools(pi: PiExtensionHost): void {
   const registrations = toolRegistrations();
   if (registrations.length === 0) {
@@ -57,10 +82,10 @@ function toolRegistrations(): Array<{
   dataPath: string;
   register(pi: PiExtensionHost, dataPath: string): void;
 }> {
-  return [
+  return compact([
     registration(runtimeDataPath(), registerRuntimeReadTools),
     registration(customToolsDataPath(), registerCustomTools),
-  ].filter((item) => item !== undefined);
+  ]);
 }
 
 function registration(
@@ -87,7 +112,7 @@ function registerRuntimeReadTools(pi: PiExtensionHost, dataPath: string): void {
     },
     async execute(_toolCallId, params) {
       const data = await loadData(dataPath);
-      const result = readDiff(data, readDiffParams(params));
+      const result = readDiffFromRuntimeData(data, readDiffParams(params));
       return textResult(result);
     },
   });
@@ -179,7 +204,7 @@ async function loadData(dataPath: string): Promise<RuntimeToolData> {
 }
 
 function loadCustomToolData(dataPath: string): CustomToolData {
-  return JSON.parse(readFileSync(dataPath, "utf8")) as CustomToolData;
+  return customToolDataSchema.parse(JSON.parse(readFileSync(dataPath, "utf8")));
 }
 
 async function callCustomTool(
@@ -205,11 +230,11 @@ async function parseCustomToolBridgePayload(
   response: Response,
   tool: string,
 ): Promise<Record<string, unknown>> {
-  const payload = (await response.json()) as unknown;
-  if (typeof payload !== "object" || payload === null) {
+  try {
+    return customToolBridgePayloadSchema.parse(await response.json());
+  } catch {
     throw new Error(`Custom tool '${tool}' returned invalid bridge response`);
   }
-  return payload as Record<string, unknown>;
 }
 
 function assertCustomToolBridgeOk(
@@ -228,10 +253,6 @@ function textResult(value: unknown): ToolResult {
     content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
     details: value,
   };
-}
-
-function readDiff(data: RuntimeToolData, params: ReadDiffParams): unknown {
-  return readDiffFromRuntimeData(data, params);
 }
 
 async function readAtRef(
@@ -256,36 +277,23 @@ async function readBaseSnapshot(
   params: ReadAtRefParams,
   request: ReturnType<typeof resolveReadAtRefRequest>,
 ): Promise<unknown> {
-  if (hasReadableBaseSnapshot(snapshot)) {
-    return await readAvailableBaseSnapshot(dataRoot, snapshot, params, request);
+  const readable = readableBaseSnapshotSchema.safeParse(snapshot);
+  if (!readable.success) {
+    return snapshot ?? unavailableReadAtRefResult(request);
   }
-  return snapshot ?? unavailableReadAtRefResult(request);
-}
-
-function hasReadableBaseSnapshot(
-  snapshot: BaseRangeSnapshot | undefined,
-): snapshot is BaseRangeSnapshot & { available: true; relativePath: string } {
-  return snapshot?.available === true && typeof snapshot.relativePath === "string";
-}
-
-async function readAvailableBaseSnapshot(
-  dataRoot: string,
-  snapshot: BaseRangeSnapshot & { available: true; relativePath: string },
-  params: ReadAtRefParams,
-  request: ReturnType<typeof resolveReadAtRefRequest>,
-): Promise<unknown> {
-  const content = await readFile(path.join(dataRoot, snapshot.relativePath));
+  const snapshotData = readable.data;
+  const content = await readFile(path.join(dataRoot, snapshotData.relativePath));
   return {
     path: params.path,
     ref: params.ref,
     sourcePath: request.sourcePath,
     rangeId: params.rangeId,
-    startLine: snapshot.startLine,
-    endLine: snapshot.endLine,
+    startLine: snapshotData.startLine,
+    endLine: snapshotData.endLine,
     available: true,
     content: content.toString("utf8"),
-    bytes: snapshot.bytes,
-    truncated: snapshot.truncated,
+    bytes: snapshotData.bytes,
+    truncated: snapshotData.truncated,
   };
 }
 

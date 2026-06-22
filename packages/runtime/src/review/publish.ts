@@ -102,6 +102,7 @@ export type PublicationResult = {
   };
 };
 
+/** Error thrown when GitHub publication fails after producing partial result metadata. */
 export class PublicationError extends Error {
   constructor(
     message: string,
@@ -272,7 +273,7 @@ async function publishInlineComments(options: {
         pullRequestNumber: options.event.pullRequestNumber,
       })
     )
-      .filter((comment) => isOwnerComment(comment, options.ownerLogin))
+      .filter((comment) => comment.authorLogin === options.ownerLogin)
       .map((comment) => comment.body ?? ""),
   );
   let posted = 0;
@@ -325,16 +326,9 @@ function findMainComment(
   const token = `<!-- ${marker} pr=${pullRequestNumber} -->`;
   return comments.find(
     (comment) =>
-      isOwnerComment(comment, ownerLogin) &&
+      comment.authorLogin === ownerLogin &&
       (comment.body === null || comment.body === undefined
         ? undefined
         : firstNonEmptyLine(comment.body)) === token,
   );
-}
-
-function isOwnerComment(
-  comment: GitHubIssueComment | GitHubReviewComment,
-  ownerLogin: string,
-): boolean {
-  return comment.authorLogin === ownerLogin;
 }

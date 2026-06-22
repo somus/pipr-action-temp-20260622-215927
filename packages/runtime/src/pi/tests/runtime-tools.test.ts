@@ -8,17 +8,17 @@ import { describe, expect, it } from "vitest";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest } from "../../types.js";
 import { preparePiCustomTools } from "../custom-tools.js";
-import { preparePiRuntimeReadTools, readAtRef, readDiffFromManifest } from "../runtime-tools.js";
+import { preparePiRuntimeReadTools, readAtRef } from "../runtime-tools.js";
+import { readDiffFromRuntimeData } from "../runtime-tools-core.js";
 
 describe("pipr runtime Pi read tools", () => {
   it("reads bounded Diff Manifest data by path and range id", () => {
-    const result = readDiffFromManifest(
-      reviewTestManifest(),
+    const result = readDiffFromRuntimeData(
+      { manifest: reviewTestManifest(), toolResponseMaxBytes: 10_000, baseRanges: {} },
       {
         path: "src/a.ts",
         rangeId: "range-1",
       },
-      10_000,
     ) as { value: { files: DiffManifest["files"] } };
 
     expect(result.value.files).toHaveLength(1);
@@ -29,15 +29,24 @@ describe("pipr runtime Pi read tools", () => {
 
   it("rejects unknown tool paths and ranges", () => {
     expect(() =>
-      readDiffFromManifest(reviewTestManifest(), { path: "src/missing.ts" }, 10_000),
+      readDiffFromRuntimeData(
+        { manifest: reviewTestManifest(), toolResponseMaxBytes: 10_000, baseRanges: {} },
+        { path: "src/missing.ts" },
+      ),
     ).toThrow("is not in the Diff Manifest");
     expect(() =>
-      readDiffFromManifest(reviewTestManifest(), { rangeId: "missing-range" }, 10_000),
+      readDiffFromRuntimeData(
+        { manifest: reviewTestManifest(), toolResponseMaxBytes: 10_000, baseRanges: {} },
+        { rangeId: "missing-range" },
+      ),
     ).toThrow("Unknown Diff Manifest range");
   });
 
   it("caps Diff Manifest tool responses", () => {
-    const result = readDiffFromManifest(reviewTestManifest(), {}, 12) as {
+    const result = readDiffFromRuntimeData(
+      { manifest: reviewTestManifest(), toolResponseMaxBytes: 12, baseRanges: {} },
+      {},
+    ) as {
       truncated: boolean;
       maxBytes: number;
     };
@@ -375,7 +384,10 @@ describe("pipr runtime Pi read tools", () => {
 
       const diffParams = { path: "src/new.ts", rangeId: "range-1" };
       expect(await executeExtensionTool(diffTool, repo.root, diffParams)).toEqual(
-        readDiffFromManifest(manifest, diffParams, 10_000),
+        readDiffFromRuntimeData(
+          { manifest, toolResponseMaxBytes: 10_000, baseRanges: {} },
+          diffParams,
+        ),
       );
 
       const atRefParams = { path: "src/new.ts", ref: "head" as const, rangeId: "range-1" };
@@ -388,9 +400,12 @@ describe("pipr runtime Pi read tools", () => {
         }),
       );
 
-      expect(() => readDiffFromManifest(manifest, { path: "src/missing.ts" }, 10_000)).toThrow(
-        "is not in the Diff Manifest",
-      );
+      expect(() =>
+        readDiffFromRuntimeData(
+          { manifest, toolResponseMaxBytes: 10_000, baseRanges: {} },
+          { path: "src/missing.ts" },
+        ),
+      ).toThrow("is not in the Diff Manifest");
       await expect(
         executeExtensionTool(diffTool, repo.root, { path: "src/missing.ts" }),
       ).rejects.toThrow("is not in the Diff Manifest");

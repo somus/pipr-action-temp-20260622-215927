@@ -1,4 +1,5 @@
 import type { ChangeRequestAction, RuntimePlan, Task } from "@pipr/sdk";
+import { uniqBy } from "lodash-es";
 import { commandPatternPrefixMatches, parseCommandPattern } from "../commands/grammar.js";
 
 export type SelectedPlanCommand =
@@ -31,10 +32,11 @@ export function selectChangeRequestTasks(plan: RuntimePlan, event: { action?: st
   if (!action) {
     return [];
   }
-  return uniqueTasks(
+  return uniqBy(
     plan.changeRequestTriggers
       .filter((trigger) => trigger.actions.includes(action))
       .map((trigger) => trigger.task),
+    (task) => task.name,
   );
 }
 
@@ -105,10 +107,6 @@ function changeRequestActionForEvent(action: string | undefined): ChangeRequestA
     return action;
   }
   return undefined;
-}
-
-function uniqueTasks(tasks: Task[]): Task[] {
-  return [...new Map(tasks.map((task) => [task.name, task])).values()];
 }
 
 function planCommandName(pattern: string): string {

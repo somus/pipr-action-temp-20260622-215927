@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { chmod, cp, lstat, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { compact } from "lodash-es";
 import type { DiffManifest, ProviderConfig } from "../types.js";
 import {
   type PiCustomToolRequest,
@@ -148,7 +149,7 @@ function mergePreparedPiTools(
   runtimeRead: PreparedPiRuntimeReadTools | undefined,
   custom: PreparedPiCustomTools | undefined,
 ): PreparedPiTools | undefined {
-  const tools = [runtimeRead, custom].filter((tool) => tool !== undefined);
+  const tools = compact([runtimeRead, custom]);
   const first = tools[0];
   if (!first) {
     return undefined;

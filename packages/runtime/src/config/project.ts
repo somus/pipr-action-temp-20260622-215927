@@ -1,4 +1,4 @@
-import type { Agent, ModelProfile, RuntimePlan } from "@pipr/sdk";
+import type { ModelProfile, RuntimePlan } from "@pipr/sdk";
 import type { ProviderConfig, RuntimeSettings } from "../types.js";
 import { parseProviderConfig, parseRuntimeSettings } from "../types.js";
 import { loadTypescriptConfig } from "./ts-loader.js";
@@ -62,7 +62,7 @@ export function inspectRuntimePlan(plan: RuntimePlan, source: string): InspectRu
   return {
     source,
     models: plan.models.map((model) => model.name),
-    agents: plan.agents.map((agent) => agentName(agent)),
+    agents: plan.agents.map((agent) => agent.name ?? "anonymous-agent"),
     tasks: plan.tasks.map((task) => task.name),
     events: plan.changeRequestTriggers.map((trigger) => ({
       task: trigger.task.name,
@@ -113,18 +113,14 @@ function modelToProvider(model: ModelProfile): ProviderConfig {
   if (!model.apiKey) {
     throw new Error(`Model '${model.name}' must declare apiKey: pipr.secret("ENV_NAME")`);
   }
+  const thinking = model.options?.thinking;
   return parseProviderConfig({
     id: model.name,
     provider: model.provider,
     model: model.model,
     apiKeyEnv: model.apiKey.name,
-    thinking: readThinking(model),
+    thinking: typeof thinking === "string" ? thinking : undefined,
   });
-}
-
-function readThinking(model: ModelProfile): string | undefined {
-  const value = model.options?.thinking;
-  return typeof value === "string" ? value : undefined;
 }
 
 function assertUniqueProviders(providers: ProviderConfig[], source: string): void {
@@ -151,8 +147,4 @@ function assertRequiredProviderEnv(
       `Missing provider env vars: ${missing.map((provider) => provider.apiKeyEnv).join(", ")}`,
     );
   }
-}
-
-function agentName(agent: Agent): string {
-  return agent.name ?? "anonymous-agent";
 }

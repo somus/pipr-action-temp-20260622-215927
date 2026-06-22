@@ -1,8 +1,3 @@
-export type CommandDefinitionLike = {
-  aliases?: string[];
-  pattern?: string;
-};
-
 export type CommandPatternParseResult =
   | { ok: true; value: Record<string, string> }
   | { ok: false; error: string };
@@ -18,16 +13,6 @@ export function firstNonEmptyLine(value: string): string | undefined {
 
 export function isPiprCommandLine(line: string): boolean {
   return line === piprCommandPrefix || line.startsWith(`${piprCommandPrefix} `);
-}
-
-export function isPiprCommandTrigger(value: string): boolean {
-  return tokenize(value)[0] === piprCommandPrefix;
-}
-
-export function commandLabels(command: CommandDefinitionLike): string[] {
-  return [command.pattern, ...(command.aliases ?? [])].filter(
-    (value): value is string => value !== undefined,
-  );
 }
 
 export function parseCommandPattern(pattern: string, line: string): CommandPatternParseResult {
@@ -71,14 +56,6 @@ export function commandPatternPrefixMatches(pattern: string, line: string): bool
   return true;
 }
 
-export function commandPatternInputIds(pattern: string): string[] {
-  return patternPartsFor(pattern).flatMap((part) =>
-    tokenize(isOptionalPart(part) ? part.slice(1, -1) : part)
-      .filter(isCaptureToken)
-      .map((token) => token.slice(1, -1)),
-  );
-}
-
 function parseOptionalPatternPart(
   pattern: string,
   lineTokens: string[],
@@ -94,7 +71,10 @@ function parseOptionalPatternPart(
   for (const token of patternTokens) {
     const nextIndex = parsePatternToken(token, lineTokens, index, captures);
     if (nextIndex === undefined) {
-      replaceRecord(captures, snapshot);
+      for (const key of Object.keys(captures)) {
+        delete captures[key];
+      }
+      Object.assign(captures, snapshot);
       return undefined;
     }
     index = nextIndex;
@@ -133,11 +113,4 @@ function isCaptureToken(value: string): boolean {
 
 function tokenize(value: string): string[] {
   return value.trim().split(/\s+/).filter(Boolean);
-}
-
-function replaceRecord(target: Record<string, string>, source: Record<string, string>): void {
-  for (const key of Object.keys(target)) {
-    delete target[key];
-  }
-  Object.assign(target, source);
 }

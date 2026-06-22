@@ -1,3 +1,4 @@
+import { compact, uniq } from "lodash-es";
 import picomatch from "picomatch";
 import type { DiffManifest, DiffManifestFile, PathFilter } from "../types.js";
 
@@ -69,9 +70,7 @@ export function pathMatchesFilter(filePath: string, filter: PathFilter | undefin
 }
 
 function candidatePaths(file: Pick<DiffManifestFile, "path" | "previousPath">): string[] {
-  return [
-    ...new Set([file.path, file.previousPath].filter((item): item is string => Boolean(item))),
-  ];
+  return uniq(compact([file.path, file.previousPath]));
 }
 
 function normalizePath(filePath: string): string {

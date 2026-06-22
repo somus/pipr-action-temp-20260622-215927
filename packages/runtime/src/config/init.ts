@@ -22,7 +22,7 @@ type StarterFile = {
 };
 
 export function listOfficialMinimalFiles(): string[] {
-  return starterFilePaths();
+  return ["config.ts", "tsconfig.json", path.join("types", "pipr-sdk.d.ts")];
 }
 
 export async function initOfficialMinimalProject(
@@ -67,10 +67,6 @@ async function starterFiles(): Promise<StarterFile[]> {
   ];
 }
 
-function starterFilePaths(): string[] {
-  return ["config.ts", "tsconfig.json", path.join("types", "pipr-sdk.d.ts")];
-}
-
 async function assertSafeTargetAncestors(
   targets: Array<StarterFile & { absolutePath: string }>,
   projectDir: string,
@@ -85,7 +81,7 @@ async function assertNoSymlinkAncestors(filePath: string, projectDir: string): P
   let current = path.resolve(path.dirname(filePath));
   const ancestors: string[] = [];
 
-  while (current === root || isPathInside(current, root)) {
+  while (isPathContained(current, root)) {
     ancestors.push(current);
     if (current === root) {
       break;
@@ -165,10 +161,6 @@ async function sdkDeclarationPath(): Promise<string> {
     }
   }
   throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
-}
-
-function isPathInside(child: string, parent: string): boolean {
-  return child !== parent && isPathContained(child, parent);
 }
 
 const starterConfigTs = `import { definePipr } from "@pipr/sdk";

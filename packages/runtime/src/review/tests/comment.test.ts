@@ -3,10 +3,8 @@ import type { ValidatedReview } from "../../types.js";
 import {
   buildPublicationPlan,
   extractFindingMarkers,
-  parseInlineCommentDrafts,
-  prepareInlineCommentDrafts,
+  prepareInlinePublicationItems,
   reduceMainSectionContributions,
-  renderMainComment,
   reviewToMainSectionContributions,
 } from "../comment.js";
 
@@ -69,25 +67,45 @@ const manifest = {
 
 describe("comments", () => {
   it("renders one main comment marker", () => {
-    const body = renderMainComment({
+    const body = buildPublicationPlan({
       event: { pullRequestNumber: 1, headSha: "abc123" },
-      review: validated.review,
-      validFindings: validated.validFindings,
-      droppedCount: 0,
-      providerModel: "deepseek-v4-pro",
-    });
+      mainContributions: reviewToMainSectionContributions({
+        sourceId: "pipr/review",
+        validated,
+      }),
+      inlineItems: [],
+      metadata: {
+        runtimeVersion: "0.0.0",
+        reviewedHeadSha: "abc123",
+        providerModels: ["deepseek-v4-pro"],
+        selectedTasks: ["review"],
+        failedTasks: [],
+        validFindings: validated.validFindings.length,
+        droppedFindings: 0,
+      },
+    }).mainComment;
 
     expect(body).toContain("<!-- pipr:main-comment pr=1 -->");
     expect(body).toContain("# pipr Review");
   });
 
   it("renders the Main Review Comment from a MainCommentLayout", () => {
-    const body = renderMainComment({
+    const body = buildPublicationPlan({
       event: { pullRequestNumber: 1, headSha: "abc123" },
-      review: validated.review,
-      validFindings: [],
-      droppedCount: 0,
-      providerModel: "deepseek-v4-pro",
+      mainContributions: reviewToMainSectionContributions({
+        sourceId: "pipr/review",
+        validated: { ...validated, validFindings: [] },
+      }),
+      inlineItems: [],
+      metadata: {
+        runtimeVersion: "0.0.0",
+        reviewedHeadSha: "abc123",
+        providerModels: ["deepseek-v4-pro"],
+        selectedTasks: ["review"],
+        failedTasks: [],
+        validFindings: 0,
+        droppedFindings: 0,
+      },
       layout: {
         marker: "pipr:custom-main",
         heading: "Custom Review",
@@ -97,7 +115,7 @@ describe("comments", () => {
           { id: "metadata", title: "Trace", order: 30, collapsed: true },
         ],
       },
-    });
+    }).mainComment;
 
     expect(body).toContain("<!-- pipr:custom-main pr=1 -->");
     expect(body).toContain("# Custom Review");
@@ -107,9 +125,14 @@ describe("comments", () => {
   });
 
   it("dedupes inline drafts with hidden markers", () => {
-    const first = prepareInlineCommentDrafts(validated, manifest, "head");
+    const first = prepareInlinePublicationItems({ validated, manifest, reviewedHeadSha: "head" });
     const markers = extractFindingMarkers(first.map((draft) => draft.body));
-    const second = prepareInlineCommentDrafts(validated, manifest, "head", markers);
+    const second = prepareInlinePublicationItems({
+      validated,
+      manifest,
+      reviewedHeadSha: "head",
+      existingMarkers: markers,
+    });
 
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(0);
@@ -127,34 +150,46 @@ describe("comments", () => {
     if (!finding) {
       throw new Error("test fixture missing finding");
     }
-    const drafts = prepareInlineCommentDrafts(
-      {
+    const drafts = prepareInlinePublicationItems({
+      validated: {
         ...validated,
         validFindings: [finding, finding],
       },
       manifest,
-      "head",
-    );
+      reviewedHeadSha: "head",
+    });
 
     expect(drafts).toHaveLength(1);
   });
 
   it("rejects malformed inline comment drafts", () => {
     expect(() =>
-      parseInlineCommentDrafts([
-        {
-          path: "src/a.ts",
-          side: "RIGHT",
-          startLine: 10,
-          endLine: 10,
-          body: "",
-          marker: "pipr:finding:abc:head",
-          fingerprint: "0123456789abcdef",
+      buildPublicationPlan({
+        event: { pullRequestNumber: 1, headSha: "head" },
+        mainContributions: [],
+        inlineItems: [
+          {
+            path: "src/a.ts",
+            side: "RIGHT",
+            startLine: 10,
+            endLine: 10,
+            body: "",
+            marker: "pipr:finding:abc:head",
+            fingerprint: "0123456789abcdef",
+            reviewedHeadSha: "head",
+            finding: validated.validFindings[0],
+            range: manifest.files[0]?.commentableRanges[0],
+          } as never,
+        ],
+        metadata: {
+          runtimeVersion: "0.0.0",
           reviewedHeadSha: "head",
-          finding: validated.validFindings[0],
-          range: manifest.files[0]?.commentableRanges[0],
+          selectedTasks: ["review"],
+          failedTasks: [],
+          validFindings: 0,
+          droppedFindings: 0,
         },
-      ]),
+      }),
     ).toThrow();
   });
 

@@ -7,12 +7,10 @@ import {
   assertNoSymlinkPath,
   type BaseRangeSnapshot,
   boundedLineSlice,
-  isSafeManifestPath,
   type LineWindow,
-  type ReadDiffParams,
+  parseManifestPath,
   type RuntimeToolData,
   readAtRefParams,
-  readDiffFromRuntimeData,
   resolveAllowedPath,
   resolveReadAtRefRequest,
   unavailableReadAtRefResult,
@@ -32,8 +30,6 @@ export type PreparedPiRuntimeReadTools = {
   dataPath: string;
   toolNames: readonly PiRuntimeReadToolName[];
 };
-
-export type { ReadDiffParams } from "./runtime-tools-core.js";
 
 export async function preparePiRuntimeReadTools(options: {
   root: string;
@@ -87,17 +83,6 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
-export function readDiffFromManifest(
-  manifest: DiffManifest,
-  params: ReadDiffParams,
-  maxBytes: number,
-): unknown {
-  return readDiffFromRuntimeData(
-    { manifest, toolResponseMaxBytes: maxBytes, baseRanges: {} },
-    params,
-  );
-}
-
 export async function readAtRef(options: {
   workspace: string;
   manifest: DiffManifest;
@@ -149,7 +134,9 @@ async function materializeBaseRangeSnapshots(options: {
 }): Promise<Record<string, BaseRangeSnapshot>> {
   const ranges: Record<string, BaseRangeSnapshot> = {};
   for (const [index, file] of options.manifest.files.entries()) {
-    if (!isSafeManifestPath(file.path)) {
+    try {
+      parseManifestPath(file.path);
+    } catch {
       continue;
     }
     for (const [rangeIndex, range] of file.commentableRanges.entries()) {
@@ -206,7 +193,11 @@ function readGitBlobSlice(options: {
     encoding: "buffer",
     maxBuffer: 16 * 1024 * 1024,
   });
-  if (isMaxBufferError(result.error)) {
+  if (
+    typeof result.error === "object" &&
+    result.error !== null &&
+    Reflect.get(result.error, "code") === "ENOBUFS"
+  ) {
     return { available: false };
   }
   if (result.status !== 0) {
@@ -216,10 +207,6 @@ function readGitBlobSlice(options: {
     throw new Error(`Unable to read '${options.filePath}' at ${options.ref}`);
   }
   return boundedLineSlice(result.stdout.toString("utf8"), options.window, options.maxBytes);
-}
-
-function isMaxBufferError(error: Error | undefined): boolean {
-  return typeof error === "object" && error !== null && Reflect.get(error, "code") === "ENOBUFS";
 }
 
 async function readWorkspaceFileSlice(options: {

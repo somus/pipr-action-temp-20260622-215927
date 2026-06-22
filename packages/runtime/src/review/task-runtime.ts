@@ -7,6 +7,7 @@ import type {
   TaskContext,
 } from "@pipr/sdk";
 import { renderPromptValue } from "@pipr/sdk";
+import { uniq } from "lodash-es";
 import { selectRuntimeTasks } from "../config/task-selection.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "../diff/diff.js";
 import type {
@@ -146,7 +147,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       trustedConfigHash: options.trustedConfigHash,
       reviewedHeadSha: options.event.headSha,
       providerModels:
-        output.providerModels.length > 0 ? uniqueStrings(output.providerModels) : [provider.model],
+        output.providerModels.length > 0 ? uniq(output.providerModels) : [provider.model],
       taskMetadata: taskMetadata(output),
       selectedTasks: tasks.map((task) => task.name),
       failedTasks: [],
@@ -388,22 +389,15 @@ function renderSectionValue<T>(value: T, render?: (value: T) => string): unknown
   if (render) {
     return render(value);
   }
-  if (isNativeSectionValue(value)) {
+  if (
+    typeof value === "string" ||
+    (Array.isArray(value) && value.every((item) => typeof item === "string")) ||
+    (Array.isArray(value) &&
+      value.every((item) => typeof item === "object" && item !== null && !Array.isArray(item)))
+  ) {
     return value;
   }
   return renderPromptValue(value);
-}
-
-function isNativeSectionValue(value: unknown): value is MainSectionContribution["value"] {
-  return (
-    typeof value === "string" ||
-    (Array.isArray(value) && value.every((item) => typeof item === "string")) ||
-    (Array.isArray(value) && value.every(isRecord))
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function collectedReview(output: OutputState): PrReview {
@@ -461,8 +455,4 @@ function skippedTaskRuntimeResult(options: {
 
 function resolveDefaultProvider(config: PiprConfig): ProviderConfig {
   return resolveProvider(config, config.defaultProvider);
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values)];
 }

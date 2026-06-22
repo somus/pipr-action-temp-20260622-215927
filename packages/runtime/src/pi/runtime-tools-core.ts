@@ -1,7 +1,7 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { createDiffRangeIndex } from "../diff/ranges.js";
-import { isRecord } from "../shared/record.js";
 import type { CommentableRange, DiffHunk, DiffManifest, DiffManifestFile } from "../types.js";
 
 const readAtRefContextLines = 3;
@@ -57,11 +57,40 @@ export type LineSliceResult = {
   truncated: boolean;
 };
 
+const readDiffParamsSchema = z.preprocess(
+  (params) => {
+    const record =
+      typeof params === "object" && params !== null && !Array.isArray(params)
+        ? (params as Record<string, unknown>)
+        : {};
+    return {
+      path: typeof record.path === "string" ? record.path : undefined,
+      rangeId: typeof record.rangeId === "string" ? record.rangeId : undefined,
+    };
+  },
+  z.object({
+    path: z.string().optional(),
+    rangeId: z.string().optional(),
+  }),
+);
+
+const readAtRefParamsSchema = z.preprocess(
+  (params) =>
+    typeof params === "object" && params !== null && !Array.isArray(params) ? params : {},
+  z.object({
+    path: z.unknown(),
+    ref: z.enum(["base", "head"], {
+      error: (issue) => `Unsupported ref '${String(issue.input)}'`,
+    }),
+    rangeId: z.string({ error: "rangeId must be a string" }),
+  }),
+);
+
 export function readDiffFromRuntimeData(data: RuntimeToolData, params: ReadDiffParams): unknown {
-  const { path: filePath, rangeId } = params;
+  const { rangeId } = params;
+  const filePath = params.path === undefined ? undefined : parseManifestPath(params.path);
   const ranges = createDiffRangeIndex(data.manifest);
   if (filePath !== undefined) {
-    assertSafeManifestPath(filePath);
     ranges.requireFile(filePath);
   }
   if (rangeId !== undefined && !ranges.findRange(rangeId)) {
@@ -108,13 +137,14 @@ export function resolveReadAtRefRequest(
   manifest: DiffManifest,
   params: ReadAtRefParams,
 ): ReadAtRefRequest {
-  assertSafeManifestPath(params.path);
+  const filePath = parseManifestPath(params.path);
   const ranges = createDiffRangeIndex(manifest);
-  const file = ranges.requireFile(params.path);
+  const file = ranges.requireFile(filePath);
   const range = ranges.requireRangeInFile(file, params.rangeId);
   const hunk = ranges.requireHunk(file, range);
-  const sourcePath = params.ref === "base" ? (file.previousPath ?? file.path) : file.path;
-  assertSafeManifestPath(sourcePath);
+  const sourcePath = parseManifestPath(
+    params.ref === "base" ? (file.previousPath ?? file.path) : file.path,
+  );
   return {
     file,
     range,
@@ -137,19 +167,17 @@ export function unavailableReadAtRefResult(request: ReadAtRefRequest): BaseRange
   };
 }
 
-export function isSafeManifestPath(filePath: string): boolean {
-  return (
-    filePath.length > 0 &&
-    !filePath.includes("\0") &&
-    !path.isAbsolute(filePath) &&
-    !filePath.split(/[\\/]/).some((part) => part === ".." || part === ".git" || part === "")
-  );
-}
-
-function assertSafeManifestPath(filePath: unknown): asserts filePath is string {
-  if (typeof filePath !== "string" || !isSafeManifestPath(filePath)) {
+export function parseManifestPath(filePath: unknown): string {
+  if (
+    typeof filePath !== "string" ||
+    filePath.length === 0 ||
+    filePath.includes("\0") ||
+    path.isAbsolute(filePath) ||
+    filePath.split(/[\\/]/).some((part) => part === ".." || part === ".git" || part === "")
+  ) {
     throw new Error(`Unsafe manifest path '${String(filePath)}'`);
   }
+  return filePath;
 }
 
 export function resolveAllowedPath(root: string, filePath: string): string {
@@ -174,26 +202,12 @@ export async function assertNoSymlinkPath(root: string, filePath: string): Promi
 }
 
 export function readDiffParams(params: unknown): ReadDiffParams {
-  const record = isRecord(params) ? params : {};
-  return {
-    path: optionalString(record.path),
-    rangeId: optionalString(record.rangeId),
-  };
+  return readDiffParamsSchema.parse(params);
 }
 
 export function readAtRefParams(params: unknown): ReadAtRefParams {
-  const record = isRecord(params) ? params : {};
-  const filePath = record.path;
-  const ref = record.ref;
-  const rangeId = record.rangeId;
-  assertSafeManifestPath(filePath);
-  if (ref !== "base" && ref !== "head") {
-    throw new Error(`Unsupported ref '${String(ref)}'`);
-  }
-  if (typeof rangeId !== "string") {
-    throw new Error("rangeId must be a string");
-  }
-  return { path: filePath, ref, rangeId };
+  const parsed = readAtRefParamsSchema.parse(params);
+  return { path: parseManifestPath(parsed.path), ref: parsed.ref, rangeId: parsed.rangeId };
 }
 
 function filterManifestFileRanges(
@@ -236,8 +250,4 @@ function lineWindowForRange(
     startLine: Math.max(hunkStart, range.startLine - readAtRefContextLines),
     endLine: Math.min(hunkEnd, range.endLine + readAtRefContextLines),
   };
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }

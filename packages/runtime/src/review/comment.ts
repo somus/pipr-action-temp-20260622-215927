@@ -1,8 +1,8 @@
+import { compact } from "lodash-es";
 import { z } from "zod";
 import { createDiffRangeIndex } from "../diff/ranges.js";
 import type {
   DiffManifest,
-  PrReview,
   PullRequestEventContext,
   ReviewFinding,
   ValidatedReview,
@@ -135,23 +135,6 @@ export type BuildPublicationPlanOptions = {
   maxInlineComments?: number;
 };
 
-export type RenderMainCommentOptions = {
-  event: Pick<PullRequestEventContext, "pullRequestNumber" | "headSha">;
-  review: PrReview;
-  validFindings: ReviewFinding[];
-  droppedCount: number;
-  providerModel: string;
-  layout?: MainCommentLayout;
-};
-
-function parseInlinePublicationItems(value: unknown): InlinePublicationItem[] {
-  return inlinePublicationItemsSchema.parse(value);
-}
-
-export function parseInlineCommentDrafts(value: unknown): InlineCommentDraft[] {
-  return parseInlinePublicationItems(value);
-}
-
 export function buildPublicationPlan(options: BuildPublicationPlanOptions): PublicationPlan {
   const layout = options.layout ?? defaultMainCommentLayout();
   const cappedInlineItems =
@@ -239,7 +222,7 @@ export function prepareInlinePublicationItems(options: {
 }): InlinePublicationItem[] {
   const ranges = createDiffRangeIndex(options.manifest);
   const seenMarkers = new Set(options.existingMarkers);
-  return parseInlinePublicationItems(
+  return inlinePublicationItemsSchema.parse(
     options.validated.validFindings.flatMap((finding) => {
       const range = ranges.rangeById(finding.rangeId);
       if (!range) {
@@ -271,15 +254,6 @@ export function prepareInlinePublicationItems(options: {
   );
 }
 
-export function prepareInlineCommentDrafts(
-  validated: ValidatedReview,
-  manifest: DiffManifest,
-  reviewedHeadSha: string,
-  existingMarkers: Set<string> = new Set(),
-): InlineCommentDraft[] {
-  return prepareInlinePublicationItems({ validated, manifest, reviewedHeadSha, existingMarkers });
-}
-
 export function extractFindingMarkers(commentBodies: string[]): Set<string> {
   const markers = new Set<string>();
   const pattern =
@@ -294,32 +268,6 @@ export function extractFindingMarkers(commentBodies: string[]): Set<string> {
     }
   }
   return markers;
-}
-
-export function renderMainComment(options: RenderMainCommentOptions): string {
-  const metadata: Omit<PublicationMetadata, "cappedInlineFindings"> = {
-    runtimeVersion,
-    reviewedHeadSha: options.event.headSha,
-    providerModels: [options.providerModel],
-    selectedTasks: ["review"],
-    failedTasks: [],
-    validFindings: options.validFindings.length,
-    droppedFindings: options.droppedCount,
-  };
-  return buildPublicationPlan({
-    event: options.event,
-    layout: options.layout,
-    mainContributions: reviewToMainSectionContributions({
-      sourceId: "pipr/review",
-      validated: {
-        review: options.review,
-        validFindings: options.validFindings,
-        droppedFindings: [],
-      },
-    }),
-    inlineItems: [],
-    metadata,
-  }).mainComment;
 }
 
 function defaultMainCommentLayout(): MainCommentLayout {
@@ -466,7 +414,7 @@ function renderListItem(item: Record<string, unknown>): string {
 }
 
 function metadataContribution(metadata: PublicationMetadata): MainSectionContribution {
-  const lines = [
+  const lines = compact([
     `Runtime: \`${metadata.runtimeVersion}\`  `,
     `Reviewed head: \`${metadata.reviewedHeadSha}\`  `,
     metadata.trustedConfigSha
@@ -486,7 +434,7 @@ function metadataContribution(metadata: PublicationMetadata): MainSectionContrib
     `Valid inline findings: \`${metadata.validFindings}\`  `,
     `Dropped findings: \`${metadata.droppedFindings}\`  `,
     `Capped inline findings: \`${metadata.cappedInlineFindings}\``,
-  ].filter((line): line is string => line !== undefined);
+  ]);
   return {
     sourceId: "core/publication",
     sectionId: "metadata",

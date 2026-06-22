@@ -1,7 +1,6 @@
 import type { ProviderConfig } from "../types.js";
 import {
   type PiProviderInvocation,
-  type PiThinkingLevel,
   parsePiProviderInvocation,
   piReadOnlyToolNames,
 } from "./contract.js";
@@ -11,11 +10,7 @@ export function toPiProviderInvocation(provider: ProviderConfig): PiProviderInvo
     provider: provider.provider,
     model: provider.model,
     apiKeyEnv: provider.apiKeyEnv,
-    thinking: toPiThinkingLevel(provider),
+    thinking: provider.thinking ?? "high",
     tools: piReadOnlyToolNames,
   });
-}
-
-function toPiThinkingLevel(provider: ProviderConfig): PiThinkingLevel {
-  return provider.thinking ?? "high";
 }

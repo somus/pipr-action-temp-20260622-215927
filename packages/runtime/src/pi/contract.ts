@@ -49,7 +49,6 @@ const piProviderInvocationSchema = z.strictObject({
   tools: piReadOnlyToolNamesSchema,
 });
 
-export type PiThinkingLevel = z.infer<typeof piThinkingLevelSchema>;
 export type PiProviderProfile = z.infer<typeof piProviderProfileSchema>;
 export type PiProviderInvocation = z.infer<typeof piProviderInvocationSchema>;
 

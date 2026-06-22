@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { z } from "zod";
 import { piRuntimeToolsExtensionPath } from "./runtime-tools.js";
 
 type SchemaLike<T = unknown> = {
@@ -30,6 +31,11 @@ export type PreparedPiCustomTools = {
   readonly toolNames: readonly string[];
   close(): Promise<void>;
 };
+
+const bridgePayloadSchema = z.object({
+  tool: z.string({ error: "Custom tool bridge payload missing tool" }).min(1),
+  params: z.unknown().optional(),
+});
 
 export async function preparePiCustomTools(options: {
   root: string;
@@ -119,20 +125,16 @@ async function handleBridgeRequest(
     const result = tool.output.parse(output);
     writeJson(response, 200, { ok: true, result });
   } catch (error) {
-    writeJson(response, 500, { ok: false, error: errorMessage(error) });
+    writeJson(response, 500, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
 function parseBridgePayload(body: string): { tool: string; params: unknown } {
-  const value = JSON.parse(body) as unknown;
-  if (typeof value !== "object" || value === null) {
-    throw new Error("Custom tool bridge payload must be an object");
-  }
-  const tool = Reflect.get(value, "tool");
-  if (typeof tool !== "string" || tool.length === 0) {
-    throw new Error("Custom tool bridge payload missing tool");
-  }
-  return { tool, params: Reflect.get(value, "params") };
+  const payload = bridgePayloadSchema.parse(JSON.parse(body));
+  return { tool: payload.tool, params: payload.params };
 }
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
@@ -154,8 +156,4 @@ function writeJson(response: ServerResponse, status: number, value: unknown): vo
   response.statusCode = status;
   response.setHeader("content-type", "application/json");
   response.end(JSON.stringify(value));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

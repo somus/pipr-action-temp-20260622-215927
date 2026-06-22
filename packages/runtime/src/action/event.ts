@@ -11,8 +11,8 @@ const githubPullRequestPayloadSchema = z.looseObject({
       full_name: z.string().optional(),
     })
     .optional(),
-  pull_request: z
-    .looseObject({
+  pull_request: z.looseObject(
+    {
       number: z.number().optional(),
       title: z.string().optional(),
       body: z.string().nullable().optional(),
@@ -31,11 +31,10 @@ const githubPullRequestPayloadSchema = z.looseObject({
           sha: z.string().optional(),
         })
         .optional(),
-    })
-    .optional(),
+    },
+    { error: "GitHub event payload does not contain pull_request" },
+  ),
 });
-
-type GitHubPullRequestPayload = z.infer<typeof githubPullRequestPayloadSchema>;
 
 const githubIssueCommentPayloadSchema = z.looseObject({
   action: z.string().optional(),
@@ -62,6 +61,35 @@ const githubIssueCommentPayloadSchema = z.looseObject({
     .optional(),
 });
 
+const pullRequestEventInputSchema = z.strictObject({
+  eventName: z.string().min(1),
+  action: z.string().optional(),
+  repo: z.string({ error: "GitHub pull request event is missing repo" }).min(1),
+  pullRequestNumber: z
+    .number({ error: "GitHub pull request event is missing PR number" })
+    .int()
+    .positive(),
+  title: z.string(),
+  description: z.string(),
+  baseSha: z.string({ error: "GitHub pull request event is missing base SHA" }).min(1),
+  headSha: z.string({ error: "GitHub pull request event is missing head SHA" }).min(1),
+  workspace: z.string().min(1),
+});
+
+const issueCommentEventContextSchema = z.strictObject({
+  eventName: z.literal("issue_comment"),
+  action: z.string().optional(),
+  repo: z.string({ error: "GitHub issue comment event is missing repo" }).min(1),
+  issueNumber: z
+    .number({ error: "GitHub issue comment event is missing issue number" })
+    .int()
+    .positive(),
+  isPullRequest: z.boolean(),
+  commentBody: z.string(),
+  commenter: z.string({ error: "GitHub issue comment event is missing comment user" }).min(1),
+  workspace: z.string().min(1),
+});
+
 export type IssueCommentEventContext = {
   eventName: "issue_comment";
   action?: string;
@@ -77,20 +105,28 @@ export async function loadPullRequestEventContext(
   eventPath: string,
   env: NodeJS.ProcessEnv,
 ): Promise<PullRequestEventContext> {
-  const payload = await readEventPayload(eventPath);
-  const pullRequest = requirePullRequest(payload);
+  const payload = githubPullRequestPayloadSchema.parse(
+    JSON.parse(await readFile(eventPath, "utf8")),
+  );
+  const pullRequest = payload.pull_request;
 
-  return parsePullRequestEventContext({
-    eventName: readEventName(env),
-    action: payload.action,
-    repo: readRepo(payload, pullRequest, env),
-    pullRequestNumber: readPullRequestNumber(payload, pullRequest),
-    title: pullRequest.title ?? "",
-    description: pullRequest.body ?? "",
-    baseSha: readBaseSha(pullRequest),
-    headSha: readHeadSha(pullRequest),
-    workspace: readWorkspace(env),
-  });
+  return parsePullRequestEventContext(
+    pullRequestEventInputSchema.parse({
+      eventName: env.GITHUB_EVENT_NAME ?? "pull_request",
+      action: payload.action,
+      repo: [
+        payload.repository?.full_name,
+        pullRequest.base?.repo?.full_name,
+        env.GITHUB_REPOSITORY,
+      ].find((value) => value !== undefined && value.length > 0),
+      pullRequestNumber: [pullRequest.number, payload.number].find((value) => value !== undefined),
+      title: pullRequest.title ?? "",
+      description: pullRequest.body ?? "",
+      baseSha: pullRequest.base?.sha,
+      headSha: pullRequest.head?.sha,
+      workspace: env.GITHUB_WORKSPACE ?? process.cwd(),
+    }),
+  );
 }
 
 export async function loadIssueCommentEventContext(
@@ -100,76 +136,16 @@ export async function loadIssueCommentEventContext(
   const payload = githubIssueCommentPayloadSchema.parse(
     JSON.parse(await readFile(eventPath, "utf8")),
   );
-  return {
+  return issueCommentEventContextSchema.parse({
     eventName: "issue_comment",
     action: payload.action,
-    repo: firstString(payload.repository?.full_name, env.GITHUB_REPOSITORY) ?? missingField("repo"),
-    issueNumber: payload.issue?.number ?? missingField("issue number"),
+    repo: [payload.repository?.full_name, env.GITHUB_REPOSITORY].find(
+      (value) => value !== undefined && value.length > 0,
+    ),
+    issueNumber: payload.issue?.number,
     isPullRequest: payload.issue?.pull_request !== undefined,
     commentBody: payload.comment?.body ?? "",
-    commenter: payload.comment?.user?.login ?? missingField("comment user"),
-    workspace: readWorkspace(env),
-  };
-}
-
-async function readEventPayload(eventPath: string): Promise<GitHubPullRequestPayload> {
-  return githubPullRequestPayloadSchema.parse(JSON.parse(await readFile(eventPath, "utf8")));
-}
-
-function requirePullRequest(
-  payload: GitHubPullRequestPayload,
-): NonNullable<GitHubPullRequestPayload["pull_request"]> {
-  if (payload.pull_request) {
-    return payload.pull_request;
-  }
-  throw new Error("GitHub event payload does not contain pull_request");
-}
-
-function readRepo(
-  payload: GitHubPullRequestPayload,
-  pullRequest: NonNullable<GitHubPullRequestPayload["pull_request"]>,
-  env: NodeJS.ProcessEnv,
-): string {
-  return (
-    firstString(
-      payload.repository?.full_name,
-      pullRequest.base?.repo?.full_name,
-      env.GITHUB_REPOSITORY,
-    ) ?? missingField("repo")
-  );
-}
-
-function readPullRequestNumber(
-  payload: GitHubPullRequestPayload,
-  pullRequest: NonNullable<GitHubPullRequestPayload["pull_request"]>,
-): number {
-  return firstNumber(pullRequest.number, payload.number) ?? missingField("PR number");
-}
-
-function readBaseSha(pullRequest: NonNullable<GitHubPullRequestPayload["pull_request"]>): string {
-  return pullRequest.base?.sha ?? missingField("base SHA");
-}
-
-function readHeadSha(pullRequest: NonNullable<GitHubPullRequestPayload["pull_request"]>): string {
-  return pullRequest.head?.sha ?? missingField("head SHA");
-}
-
-function readWorkspace(env: NodeJS.ProcessEnv): string {
-  return env.GITHUB_WORKSPACE ?? process.cwd();
-}
-
-function readEventName(env: NodeJS.ProcessEnv): string {
-  return env.GITHUB_EVENT_NAME ?? "pull_request";
-}
-
-function firstString(...values: Array<string | undefined>): string | undefined {
-  return values.find((value) => value !== undefined && value.length > 0);
-}
-
-function firstNumber(...values: Array<number | undefined>): number | undefined {
-  return values.find((value) => value !== undefined);
-}
-
-function missingField(field: string): never {
-  throw new Error(`GitHub pull request event is missing ${field}`);
+    commenter: payload.comment?.user?.login,
+    workspace: env.GITHUB_WORKSPACE ?? process.cwd(),
+  });
 }

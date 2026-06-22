@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  commandLabels,
-  commandPatternInputIds,
   commandPatternPrefixMatches,
   firstNonEmptyLine,
   isPiprCommandLine,
-  isPiprCommandTrigger,
   parseCommandPattern,
 } from "../grammar.js";
 
@@ -15,21 +12,6 @@ describe("command grammar", () => {
     expect(isPiprCommandLine("@pipr")).toBe(true);
     expect(isPiprCommandLine("@pipr review")).toBe(true);
     expect(isPiprCommandLine("@piprbot review")).toBe(false);
-    expect(isPiprCommandTrigger("@pipr review [--scope <scope>]")).toBe(true);
-    expect(isPiprCommandTrigger("@piprbot review")).toBe(false);
-  });
-
-  it("extracts labels and pattern input ids", () => {
-    expect(
-      commandLabels({
-        pattern: "@pipr explain <finding> [--scope <scope>]",
-        aliases: ["@pipr review"],
-      }),
-    ).toEqual(["@pipr explain <finding> [--scope <scope>]", "@pipr review"]);
-    expect(commandPatternInputIds("@pipr explain <finding> [--scope <scope>]")).toEqual([
-      "finding",
-      "scope",
-    ]);
   });
 
   it("parses required positional and optional named arguments", () => {

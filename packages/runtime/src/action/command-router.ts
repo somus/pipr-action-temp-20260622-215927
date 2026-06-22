@@ -121,7 +121,7 @@ export function createGitHubCommandClient(
         });
         return repositoryPermissionResponseSchema.parse(data);
       } catch (error) {
-        if (isOctokitStatus(error, 404)) {
+        if (typeof error === "object" && error !== null && Reflect.get(error, "status") === 404) {
           return noRepositoryPermission;
         }
         throw error;
@@ -232,8 +232,11 @@ function effectiveRepositoryPermission(
   actual: RepositoryPermissionResponse,
   required: CommandPermissionLevel,
 ): CommandPermissionLevel | undefined {
-  if (isKnownPermission(actual.role_name)) {
-    return actual.role_name;
+  if (
+    actual.role_name !== undefined &&
+    knownPermissions.has(actual.role_name as CommandPermissionLevel)
+  ) {
+    return actual.role_name as CommandPermissionLevel;
   }
   if (required === "triage" || required === "maintain") {
     return undefined;
@@ -246,12 +249,4 @@ function effectiveRepositoryPermission(
     return actual.permission;
   }
   return undefined;
-}
-
-function isKnownPermission(value: string | undefined): value is CommandPermissionLevel {
-  return value !== undefined && knownPermissions.has(value as CommandPermissionLevel);
-}
-
-function isOctokitStatus(error: unknown, status: number): boolean {
-  return typeof error === "object" && error !== null && Reflect.get(error, "status") === status;
 }

@@ -124,6 +124,12 @@ export type ActionCommandResult =
       publication: PublicationResult;
     };
 
+type TrustedRuntimeProject = LoadedRuntimeProject & {
+  trustedConfigSha: string;
+  trustedConfigHash: string;
+};
+
+/** Initializes the official minimal `.pipr` project files. */
 export async function runInitCommand(
   options: InitCommandOptions,
 ): Promise<InitOfficialMinimalProjectResult> {
@@ -134,6 +140,7 @@ export async function runInitCommand(
   });
 }
 
+/** Loads and validates the runtime project configuration. */
 export async function runValidateCommand(options: RuntimeCommandOptions): Promise<RuntimeSettings> {
   return (
     await validateProject({
@@ -143,6 +150,7 @@ export async function runValidateCommand(options: RuntimeCommandOptions): Promis
   ).settings;
 }
 
+/** Returns an inspectable summary of the configured runtime plan. */
 export async function runInspectCommand(
   options: RuntimeCommandOptions,
 ): Promise<InspectCommandResult> {
@@ -150,6 +158,7 @@ export async function runInspectCommand(
   return inspectRuntimePlan(runtime.plan, runtime.settings.source);
 }
 
+/** Loads the runtime config and pull request event without running review publication. */
 export async function runDryRunCommand(
   options: DryRunCommandOptions,
 ): Promise<DryRunCommandResult> {
@@ -165,6 +174,7 @@ export async function runDryRunCommand(
   };
 }
 
+/** Runs a named local task against the configured Git base and head revisions. */
 export async function runLocalTaskCommand(
   options: LocalTaskCommandOptions,
 ): Promise<LocalTaskCommandResult> {
@@ -196,6 +206,7 @@ export async function runLocalTaskCommand(
   });
 }
 
+/** Runs the GitHub Action workflow for pull request and issue-comment events. */
 export async function runActionCommand(
   options: ActionCommandOptions,
 ): Promise<ActionCommandResult> {
@@ -206,7 +217,7 @@ export async function runActionCommandWithDependencies(
   options: ActionCommandDependencyOptions,
 ): Promise<ActionCommandResult> {
   ensureGitHubWorkspaceSafeDirectory({ rootDir: options.rootDir, env: options.env });
-  if (actionEventName(options) === "issue_comment") {
+  if ((actionEnv(options).GITHUB_EVENT_NAME ?? "pull_request") === "issue_comment") {
     return await runIssueCommentActionCommand(options);
   }
   const event = await loadPullRequestEventContext(options.eventPath, options.env ?? process.env);
@@ -263,7 +274,7 @@ type PreparedIssueCommentCommand =
       line: string;
       github: GitHubCommandClient;
       event: PullRequestEventContext;
-      trustedRuntime: LoadedRuntimeProject;
+      trustedRuntime: TrustedRuntimeProject;
       resolution: Exclude<PlanCommandResolution, { kind: "ignored" }>;
     };
 
@@ -386,7 +397,7 @@ async function dispatchIssueCommentCommand(
 
 async function runTrustedReviewAndPublish(options: {
   options: ActionCommandDependencyOptions;
-  trustedRuntime: LoadedRuntimeProject;
+  trustedRuntime: TrustedRuntimeProject;
   provider: ProviderConfig;
   event: PullRequestEventContext;
   taskName?: string;
@@ -408,8 +419,8 @@ async function runTrustedReviewAndPublish(options: {
     plan: options.trustedRuntime.plan,
     taskName: options.taskName,
     taskInput: options.taskInput,
-    trustedConfigSha: readTrustedRuntimeSha(options.trustedRuntime),
-    trustedConfigHash: readTrustedRuntimeHash(options.trustedRuntime),
+    trustedConfigSha: options.trustedRuntime.trustedConfigSha,
+    trustedConfigHash: options.trustedRuntime.trustedConfigHash,
     piExecutable: options.options.piExecutable,
   });
   if (review.kind === "skipped") {
@@ -424,16 +435,6 @@ async function runTrustedReviewAndPublish(options: {
     plan: review.publicationPlan,
   });
   return { kind: "completed", review, publication };
-}
-
-function readTrustedRuntimeSha(runtime: LoadedRuntimeProject): string | undefined {
-  const trusted = runtime as unknown as { trustedConfigSha?: unknown };
-  return typeof trusted.trustedConfigSha === "string" ? trusted.trustedConfigSha : undefined;
-}
-
-function readTrustedRuntimeHash(runtime: LoadedRuntimeProject): string | undefined {
-  const trusted = runtime as unknown as { trustedConfigHash?: unknown };
-  return typeof trusted.trustedConfigHash === "string" ? trusted.trustedConfigHash : undefined;
 }
 
 function trustedActionConfig(
@@ -489,29 +490,23 @@ function readTrustedProviderOption(
 ): string {
   return (
     [
-      trustedProviderOptions(options)[optionKey],
+      options.trustedProvider?.[optionKey],
       readActionInput(actionEnv(options), inputName),
       fallback,
     ].find((value) => value !== undefined && value.length > 0) ?? ""
   );
 }
 
-function trustedProviderOptions(
-  options: ActionCommandDependencyOptions,
-): NonNullable<ActionCommandDependencyOptions["trustedProvider"]> {
-  return options.trustedProvider ?? {};
-}
-
 function actionEnv(options: ActionCommandDependencyOptions): NodeJS.ProcessEnv {
   return options.env ?? process.env;
 }
 
-function actionEventName(options: ActionCommandDependencyOptions): string {
-  return actionEnv(options).GITHUB_EVENT_NAME ?? "pull_request";
-}
-
 function readActionInput(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  for (const key of actionInputEnvKeys(name)) {
+  for (const key of [
+    `INPUT_${name}`,
+    `INPUT_${name.toUpperCase()}`,
+    `INPUT_${name.replaceAll("-", "_").toUpperCase()}`,
+  ]) {
     const value = env[key];
     if (value) {
       return value;
@@ -520,19 +515,17 @@ function readActionInput(env: NodeJS.ProcessEnv, name: string): string | undefin
   return undefined;
 }
 
-function actionInputEnvKeys(name: string): string[] {
-  return [
-    `INPUT_${name}`,
-    `INPUT_${name.toUpperCase()}`,
-    `INPUT_${name.replaceAll("-", "_").toUpperCase()}`,
-  ];
-}
-
 function ensurePullRequestHeadCheckout(rootDir: string, event: PullRequestEventContext): void {
   if (!hasGitCommit(rootDir, event.headSha)) {
-    runGit(rootDir, ["fetch", "--no-tags", "--depth=1", "origin", pullRequestHeadRef(event)]);
+    runGit(rootDir, [
+      "fetch",
+      "--no-tags",
+      "--depth=1",
+      "origin",
+      `refs/pull/${event.pullRequestNumber}/head`,
+    ]);
   }
-  if (currentGitHead(rootDir) !== event.headSha) {
+  if (runGit(rootDir, ["rev-parse", "HEAD"]).trim() !== event.headSha) {
     runGit(rootDir, ["checkout", "--detach", event.headSha]);
   }
 }
@@ -544,14 +537,6 @@ function hasGitCommit(rootDir: string, sha: string): boolean {
   } catch {
     return false;
   }
-}
-
-function currentGitHead(rootDir: string): string {
-  return runGit(rootDir, ["rev-parse", "HEAD"]).trim();
-}
-
-function pullRequestHeadRef(event: PullRequestEventContext): string {
-  return `refs/pull/${event.pullRequestNumber}/head`;
 }
 
 function runGit(rootDir: string, args: string[]): string {
