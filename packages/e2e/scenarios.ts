@@ -156,6 +156,7 @@ export const scenarios: Record<ScenarioName, Scenario> = {
     title: "pipr local fixture",
     workflowFile: "pipr-local.yml",
     eventFile: `${fixtureRootPath}/pull_request.json`,
+    baseSample: "dry-run base fixture\n",
     headPath: `${fixtureRootPath}/dry-run-head.txt`,
     headContent: "dry-run head fixture\n",
   },

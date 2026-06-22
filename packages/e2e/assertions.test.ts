@@ -6,9 +6,11 @@ import {
   assertActFullFixture,
   assertActOrchestratorFixture,
 } from "./assertions.ts";
+import { prepareScenarioWorktree, scenarios } from "./scenarios.ts";
 
 const headSha = "head-sha";
 
+await assertDryRunScenarioPreparation();
 await assertActionMetadataRendering();
 
 await assertActFullFixture(validFullFixture(), headSha);
@@ -68,6 +70,16 @@ expectOrchestratorFailure("orchestrated summary missing", {
 });
 
 console.log("act fixture assertion tests ok");
+
+async function assertDryRunScenarioPreparation(): Promise<void> {
+  expect(scenarios["dry-run"].baseSample).toBeTruthy();
+  const prepared = await prepareScenarioWorktree(scenarios["dry-run"]);
+  try {
+    expect(prepared.baseSha).not.toBe(prepared.headSha);
+  } finally {
+    prepared.cleanup();
+  }
+}
 
 async function assertActionMetadataRendering(): Promise<void> {
   const source = await Bun.file(new URL("../../action.yml", import.meta.url)).text();
