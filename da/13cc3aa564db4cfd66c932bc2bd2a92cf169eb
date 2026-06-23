@@ -1,0 +1,73 @@
+packages/runtime/src/config/init.ts
+  s_054d6734c886f4::t_5a3240cbb573a0 26-31,38-39,41,43,47,69,71-78,80,207,217-249,298-299,301-319,321,334
+  s_054d6734c886f4::t_29eca93afa1c04 79,322-327,330
+  s_054d6734c886f4::t_f8e7087a0cf3e1 320
+  s_054d6734c886f4::t_f0d8f1736216c3 300,328-329,331-333
+  s_054d6734c886f4::t_1b6ded6afe85a4 37
+packages/cli/src/tests/main.test.ts
+  s_054d6734c886f4::t_58ecd6625f42ce 76
+  s_054d6734c886f4::t_aa0261c6924dcd 22
+  s_054d6734c886f4::t_a52811c8b9129f 82-83
+  s_054d6734c886f4::t_f8e7087a0cf3e1 84
+docs/quickstart.md
+  s_054d6734c886f4::t_fc83f2b1d9d3c1 33,58,60
+  s_054d6734c886f4::t_3af924dbf857a4 124
+  s_054d6734c886f4::t_f8e7087a0cf3e1 82
+packages/runtime/src/action/commands.ts
+  s_054d6734c886f4::t_08df0709750955 494,503
+  s_054d6734c886f4::t_1bfac8b18aec65 487,489-491,495
+docs/github-action.md
+  s_054d6734c886f4::t_8ae02fe7e41b24 3,37,39,46
+  s_054d6734c886f4::t_bf2e200e381153 42
+  s_054d6734c886f4::t_f8e7087a0cf3e1 27
+docs/CONTEXT.md
+  s_054d6734c886f4::t_26585e8c6de31c 15-16
+docs/runtime.md
+  s_054d6734c886f4::t_26585e8c6de31c 51
+action.yml
+  s_054d6734c886f4::t_f8e7087a0cf3e1 3-5
+  s_054d6734c886f4::t_79ac140e65d0f4 34
+.github/workflows/release.yml
+  s_054d6734c886f4::t_79ac140e65d0f4 62
+README.md
+  s_054d6734c886f4::t_f8e7087a0cf3e1 47
+  s_054d6734c886f4::t_ab1e2f513d5307 11,25
+docs/adr/0002-docker-action-with-read-only-pi-workspace.md
+  s_054d6734c886f4::t_26585e8c6de31c 7
+packages/runtime/src/config/tests/init.test.ts
+  s_054d6734c886f4::t_b41829fa16e133 86
+  s_054d6734c886f4::t_c3306c929f5967 32-33
+  s_054d6734c886f4::t_dcceef44063e52 30,39-44,79-85,87-107,109-110
+  s_054d6734c886f4::t_c0af6505883a48 37-38
+  s_054d6734c886f4::t_722209680f0dbb 34-36
+  s_054d6734c886f4::t_39c12cba7e5b05 75
+  s_054d6734c886f4::t_f8e7087a0cf3e1 31,108
+docs/index.md
+  s_054d6734c886f4::t_3af924dbf857a4 85
+docs/architecture.md
+  s_054d6734c886f4::t_3af924dbf857a4 22
+packages/cli/src/main.ts
+  s_054d6734c886f4::t_14149cc69c7165 176
+docs/configuration.md
+  s_054d6734c886f4::t_3af924dbf857a4 101,114-158,196,211,215
+.github/workflows/docker-image.yml
+  s_054d6734c886f4::t_79ac140e65d0f4 48
+docs/development.md
+  s_054d6734c886f4::t_0a5959e98fbda3 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "da13cc3aa564db4cfd66c932bc2bd2a92cf169eb",
+  "prompts": {},
+  "sessions": {
+    "s_054d6734c886f4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef59d-d6a0-7402-90e7-d4cfe15d5988",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
