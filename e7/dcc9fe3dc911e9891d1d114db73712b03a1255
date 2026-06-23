@@ -1,0 +1,64 @@
+packages/sdk/src/index.ts
+  s_09ee4c023ef341::t_7ee6f79b3bc6fc 477-478,483,489-490,925-932
+  s_09ee4c023ef341::t_23d5ca6a073d81 49,935,937
+  s_09ee4c023ef341::t_2ed5091eb984f0 3-4,34-38,44,51,249-250,475-476,479-482,484-486,617-618,720,900-904,908,933-934,936,938-944
+packages/sdk/src/tests/index.test.ts
+  s_09ee4c023ef341::t_ded98767153a83 329-337
+  s_09ee4c023ef341::t_f8d13734f8e53c 321-326
+  s_09ee4c023ef341::t_f0308970cafe79 3-11,300-320,327-328,338-417,419-422,470-479,537-562
+  s_09ee4c023ef341::t_99a5a0bde68d95 481-487
+packages/runtime/src/config/project.ts
+  s_09ee4c023ef341::t_17215bc33f1ce6 78
+packages/runtime/src/config/init.ts
+  s_09ee4c023ef341::t_443ed0e24a86bd 140,144,150-157,246
+  s_09ee4c023ef341::t_35d1a719068a95 204
+  s_09ee4c023ef341::t_fd81d0148d8b15 203,214-226,230-238,244-245
+  s_09ee4c023ef341::t_84f3b597f29ecb 227-229,239-243
+packages/cli/build-release.ts
+  s_09ee4c023ef341::t_7f05699854804d 4-7
+  s_09ee4c023ef341::t_03f3a637c206b9 90
+.pipr/types/pipr-sdk.d.ts
+  s_09ee4c023ef341::t_7b8b787d7d5e18 15-17,27-31
+  s_09ee4c023ef341::t_1406c2849d5156 4-14,18-26,32-33,57-62,73,241-242,396-399,412,415
+  s_09ee4c023ef341::t_c773c6d03b4355 77
+packages/runtime/src/config/tests/init.test.ts
+  s_09ee4c023ef341::t_9b9107f72dd338 73-74
+  s_09ee4c023ef341::t_9226de79b6787a 30,32-34,46-72,75
+  s_09ee4c023ef341::t_c46dad70fb60ab 31,35
+packages/runtime/src/review/contract.ts
+  s_09ee4c023ef341::t_1e8c110c2ce197 19
+docs/sdk-reference.md
+  s_09ee4c023ef341::t_ce604cd2efcec2 99,109,124,261-290
+  s_09ee4c023ef341::t_22a65f3ee5aa24 291-292
+packages/runtime/src/review/tests/review.test.ts
+  s_09ee4c023ef341::t_69572b6619e96b 64-69
+docs/configuration.md
+  s_09ee4c023ef341::t_e77db6f5c8e087 101,118-151,203
+packages/cli/src/release/sdk-declaration.ts
+  s_09ee4c023ef341::t_f6df47a58e0ce7 1-14,16-20,24-48,50-61,64,71,75-83,89-91
+  s_09ee4c023ef341::t_71fd3d7a86de07 15
+  s_09ee4c023ef341::t_60cf19b5188042 49
+  s_09ee4c023ef341::t_472fc6002579d7 21-23
+  s_09ee4c023ef341::t_9749523104c83e 62-63,65-70
+  s_09ee4c023ef341::t_556dc05454b828 72-74,84-88
+packages/cli/src/tests/main.test.ts
+  s_09ee4c023ef341::t_a66c96120c01b3 6,169-175,177
+  s_09ee4c023ef341::t_83453d7afce21f 176,178
+  s_09ee4c023ef341::t_5ecf344b4403be 159-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "e7dcc9fe3dc911e9891d1d114db73712b03a1255",
+  "prompts": {},
+  "sessions": {
+    "s_09ee4c023ef341": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef5bb-7e86-7fa2-bcae-571580466264",
+        "model": "gpt-5.5"
+      },
+      "human_author": "pipr act fixture <pipr-act@example.invalid>"
+    }
+  }
+}
