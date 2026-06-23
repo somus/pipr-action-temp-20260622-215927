@@ -75,12 +75,7 @@ export function inspectRuntimePlan(plan: RuntimePlan, source: string): InspectRu
     })),
     locals: plan.locals.map((local) => ({ name: local.name, task: local.task.name })),
     tools: plan.tools.map((tool) => tool.name),
-    schemas: [
-      "core/pr-review",
-      "core/review-candidates",
-      "core/consolidated-review",
-      "core/summary",
-    ],
+    schemas: ["core/pr-review", "core/summary"],
   };
 }
 

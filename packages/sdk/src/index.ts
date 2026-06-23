@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export { z };
+
 const configFactoryBrand = Symbol.for("pipr.config.factory");
 const builtinReadOnlyToolBrand = Symbol.for("pipr.builtin.readOnlyTool");
 
@@ -29,20 +31,24 @@ export type ModelProfile = {
   readonly options?: Record<string, unknown>;
 };
 
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+export type JsonObject = { [key: string]: JsonValue };
+export type JsonSchema = JsonObject | boolean;
+
 export type SchemaParseResult<T> = { success: true; data: T } | { success: false; error: Error };
 
 export type Schema<T> = {
   readonly kind: "pipr.schema";
   readonly id: string;
+  readonly jsonSchema?: JsonSchema;
   parse(value: unknown): T;
   safeParse(value: unknown): SchemaParseResult<T>;
 };
 
-export const reviewOutputSchemaId = "core/pr-review";
+export type ZodSchema<T> = z.ZodType<T>;
 
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
-export type JsonObject = { [key: string]: JsonValue };
+export const reviewOutputSchemaId = "core/pr-review";
 
 export type ReviewSummary = {
   title?: string;
@@ -66,13 +72,6 @@ export type ReviewResult<TData extends JsonObject = JsonObject> = {
   metadata?: JsonObject;
 };
 
-export type ReviewCandidates<TData extends JsonObject = JsonObject> = {
-  summary?: ReviewSummary;
-  candidates: Array<ReviewFinding<TData> & { candidateId: string }>;
-};
-
-export type ConsolidatedReview<TData extends JsonObject = JsonObject> = ReviewResult<TData>;
-
 export type PromptSource = string | PromptText;
 export type PromptValue = unknown;
 
@@ -92,8 +91,6 @@ export type BuiltinToolCatalog = {
 
 export type BuiltinSchemaCatalog = {
   readonly review: Schema<ReviewResult>;
-  readonly reviewCandidates: Schema<ReviewCandidates>;
-  readonly consolidatedReview: Schema<ConsolidatedReview>;
   readonly summary: Schema<ReviewSummary>;
 };
 
@@ -249,10 +246,11 @@ export type PiprBuilder = {
   limits(options: RuntimeLimits): void;
   use<Handle>(plugin: PiprPlugin<Handle>): Handle;
   tool<Input, Output>(definition: PluginToolDefinition<Input, Output>): AgentTool<Input, Output>;
+  schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T>;
+  jsonSchema<T>(id: string, jsonSchema: JsonSchema): Schema<T>;
   prompt(strings: TemplateStringsArray, ...values: PromptValue[]): PromptText;
   section(title: string, value: PromptValue): PromptText;
   json(value: unknown, options?: JsonPromptOptions): PromptText;
-  compactManifest(manifest: DiffManifest): PromptText;
 };
 
 export type RuntimePlan = {
@@ -434,16 +432,6 @@ const reviewResultSchema = z.strictObject({
   metadata: jsonObjectSchema.optional(),
 });
 
-const reviewCandidatesSchema = z.strictObject({
-  summary: reviewSummarySchema.optional(),
-  candidates: z.array(
-    z.strictObject({
-      ...reviewFindingShape,
-      candidateId: nonEmptyStringSchema,
-    }),
-  ),
-});
-
 /** Defines a synchronous pipr configuration factory. */
 export function definePipr(configure: (pipr: PiprBuilder) => void): PiprConfigFactory {
   return {
@@ -484,14 +472,22 @@ export function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): P
   return { setup };
 }
 
+/** Defines a typed schema from a Zod schema. */
+export function schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T> {
+  assertUserSchemaId(id);
+  return createZodSchema(id, zodSchema);
+}
+
+/** Defines a typed schema from JSON Schema. The generic type is caller supplied. */
+export function jsonSchema<T>(id: string, schemaDefinition: JsonSchema): Schema<T> {
+  assertUserSchemaId(id);
+  const zodSchema = z.fromJSONSchema(schemaDefinition);
+  return createSchema(id, (value) => zodSchema.parse(value) as T, schemaDefinition);
+}
+
 export const schemas: BuiltinSchemaCatalog = {
-  review: createSchema<ReviewResult>(reviewOutputSchemaId, parseReviewResult),
-  reviewCandidates: createSchema<ReviewCandidates>("core/review-candidates", parseReviewCandidates),
-  consolidatedReview: createSchema<ConsolidatedReview>(
-    "core/consolidated-review",
-    parseReviewResult,
-  ),
-  summary: createSchema<ReviewSummary>("core/summary", parseReviewSummary),
+  review: createZodSchema<ReviewResult>(reviewOutputSchemaId, reviewResultSchema),
+  summary: createZodSchema<ReviewSummary>("core/summary", reviewSummarySchema),
 };
 
 function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
@@ -618,6 +614,8 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       tools.push(tool);
       return tool;
     },
+    schema,
+    jsonSchema,
     prompt(strings, ...values) {
       let text = "";
       for (let index = 0; index < strings.length; index += 1) {
@@ -644,12 +642,6 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         throw new Error(`JSON prompt value exceeded ${options.maxCharacters} characters`);
       }
       return { kind: "pipr.prompt", value: text };
-    },
-    compactManifest(manifest) {
-      return {
-        kind: "pipr.prompt",
-        value: JSON.stringify(compactManifest(manifest), null, 2),
-      };
     },
   };
 
@@ -725,11 +717,9 @@ function createReviewer(api: PiprBuilder, options: ReviewerOptions): Reviewer {
     timeout: options.timeout,
     prompt:
       options.prompt ??
-      ((input) =>
+      (() =>
         api.prompt`
           Review this change.
-
-          ${api.section("Changed files and valid comment locations", api.compactManifest(input.manifest))}
         `),
   });
 }
@@ -850,11 +840,6 @@ export function parseReviewResult(value: unknown): ReviewResult {
   return reviewResultSchema.parse(value) as ReviewResult;
 }
 
-/** Parses model output for pipr's candidate review schema. */
-export function parseReviewCandidates(value: unknown): ReviewCandidates {
-  return reviewCandidatesSchema.parse(value) as ReviewCandidates;
-}
-
 /** Parses a review summary value. */
 export function parseReviewSummary(value: unknown): ReviewSummary {
   return reviewSummarySchema.parse(value);
@@ -912,10 +897,15 @@ function createAgent<Input, Output>(
   };
 }
 
-function createSchema<T>(id: string, parseValue: (value: unknown) => T): Schema<T> {
+function createSchema<T>(
+  id: string,
+  parseValue: (value: unknown) => T,
+  schemaJson?: JsonSchema,
+): Schema<T> {
   return {
     kind: "pipr.schema",
     id,
+    jsonSchema: schemaJson,
     parse(value) {
       return parseValue(value);
     },
@@ -930,6 +920,27 @@ function createSchema<T>(id: string, parseValue: (value: unknown) => T): Schema<
       }
     },
   };
+}
+
+function createZodSchema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T> {
+  return createSchema(id, (value) => zodSchema.parse(value), jsonSchemaFromZod(id, zodSchema));
+}
+
+function assertUserSchemaId(id: string): void {
+  if (id.startsWith("core/")) {
+    throw new Error(`Schema id '${id}' uses the reserved core/ namespace`);
+  }
+}
+
+function jsonSchemaFromZod<T>(id: string, schemaDefinition: ZodSchema<T>): JsonSchema {
+  try {
+    return z.toJSONSchema(schemaDefinition) as JsonSchema;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Schema '${id}' could not be converted to JSON Schema. Use JSON-Schema-representable Zod or pipr.jsonSchema<T>(). ${detail}`,
+    );
+  }
 }
 
 /** Renders a prompt source/value into plain text for Pi prompts. */
@@ -954,23 +965,6 @@ function stripCommonIndent(value: string): string {
   const nonEmpty = lines.filter((line) => line.trim().length > 0);
   const indent = Math.min(...nonEmpty.map((line) => line.match(/^ */)?.[0].length ?? 0));
   return lines.map((line) => line.slice(indent)).join("\n");
-}
-
-function compactManifest(manifest: DiffManifest): object {
-  return {
-    baseSha: manifest.baseSha,
-    headSha: manifest.headSha,
-    mergeBaseSha: manifest.mergeBaseSha,
-    files: manifest.files.map((file) => ({
-      path: file.path,
-      previousPath: file.previousPath,
-      status: file.status,
-      additions: file.additions,
-      deletions: file.deletions,
-      ranges: file.commentableRanges ?? file.ranges ?? [],
-      preview: file.preview,
-    })),
-  };
 }
 
 function assertUnique(values: string[], label: string): void {

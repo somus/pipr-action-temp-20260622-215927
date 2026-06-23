@@ -96,7 +96,7 @@ pipr.review({
 
 ## Custom reviewer prompt
 
-The default reviewer prompt includes a compact Diff Manifest. Override it when the model needs a stricter review rubric:
+pipr injects the Diff Manifest and tool contract into the Pi prompt. Override the reviewer prompt when the model needs a stricter review rubric:
 
 ```ts
 const reviewer = pipr.reviewer({
@@ -106,7 +106,7 @@ const reviewer = pipr.reviewer({
     Repository: ${ctx.repository.owner}/${ctx.repository.name}
     Change: ${input.change.title}
 
-    ${pipr.section("Changed files and valid comment locations", pipr.compactManifest(input.manifest))}
+    Only report actionable defects.
   `,
 });
 ```
@@ -121,9 +121,8 @@ const security = pipr.agent({
   model,
   instructions: "Review only security issues.",
   output: pipr.schemas.review,
-  prompt: (input: { manifest: unknown }) => pipr.prompt`
+  prompt: () => pipr.prompt`
     Review this pull request for exploitable security issues.
-    ${pipr.json(input.manifest)}
   `,
   retry: {
     invalidOutput: 1,
@@ -257,9 +256,39 @@ Built-in schemas:
 | Schema | Use |
 | --- | --- |
 | `pipr.schemas.review` | Main review result with summary and inline findings. |
-| `pipr.schemas.reviewCandidates` | Candidate findings before consolidation. |
-| `pipr.schemas.consolidatedReview` | Final consolidated review result. |
 | `pipr.schemas.summary` | Main-comment summary block. |
+
+Custom schemas are useful for intermediate agents and workflows that map their final output into pipr publication calls:
+
+```ts
+import { definePipr, z } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const specialistOutput = pipr.schema(
+    "security/specialist-output",
+    z.strictObject({
+      summary: z.string(),
+      risks: z.array(z.string()),
+    }),
+  );
+
+  const summaryOutput = pipr.jsonSchema<{ summary: string }>("security/summary", {
+    type: "object",
+    additionalProperties: false,
+    required: ["summary"],
+    properties: {
+      summary: { type: "string" },
+    },
+  });
+
+  void specialistOutput;
+  void summaryOutput;
+});
+```
+
+Use `pipr.schemas.review` when an agent directly returns publishable Inline Review Comments.
+
+The `z` export is the recommended typed path for JSON-Schema-representable schemas. Generated `.pipr/types` include a standalone Zod authoring subset so `pipr init` projects type-check without installing `zod`; use `pipr.jsonSchema<T>()` for advanced JSON Schema shapes or when a Zod helper is outside that generated subset.
 
 Parsing helpers are exported from `@pipr/sdk/review`:
 
@@ -274,7 +303,6 @@ Use prompt helpers to keep prompts structured:
 ```ts
 pipr.prompt`
   ${pipr.section("Review policy", "Only report actionable defects.")}
-  ${pipr.section("Manifest", pipr.compactManifest(manifest))}
 `;
 ```
 
@@ -320,4 +348,3 @@ const ownerTools = pipr.use(owners);
 ```
 
 Plugin setup runs during config loading. Runtime effects still belong in tasks and tools.
-

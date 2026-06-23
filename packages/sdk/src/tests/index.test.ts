@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { ModelProfile, PiprBuilder, Reviewer } from "../index.js";
-import { buildPiprPlan, definePipr, definePlugin, schemas } from "../index.js";
+import {
+  buildPiprPlan,
+  definePipr,
+  definePlugin,
+  jsonSchema,
+  schema,
+  schemas,
+  z,
+} from "../index.js";
 
 describe("definePipr", () => {
   it("registers models, agents, tasks, events, commands, locals, and tools", () => {
@@ -289,8 +297,129 @@ describe("definePipr", () => {
     expect("modules" in plan).toBe(false);
   });
 
+  it("exports Zod and creates typed custom Zod schemas", () => {
+    const resultSchema = schema(
+      "custom/security-review",
+      z.strictObject({
+        verdict: z.enum(["pass", "fail"]),
+        findings: z.array(z.string()),
+      }),
+    );
+
+    const parsed = resultSchema.parse({ verdict: "pass", findings: ["ok"] });
+    const typed: { verdict: "pass" | "fail"; findings: string[] } = parsed;
+
+    expect(typed).toEqual({ verdict: "pass", findings: ["ok"] });
+    expect(resultSchema.jsonSchema).toMatchObject({
+      type: "object",
+      required: ["verdict", "findings"],
+    });
+    expect(() => resultSchema.parse({ verdict: "skip", findings: [] })).toThrow();
+  });
+
+  it("rejects custom Zod schemas that cannot be rendered as JSON Schema", () => {
+    expect(() =>
+      schema(
+        "custom/transformed",
+        z.string().transform((value) => value.trim()),
+      ),
+    ).toThrow("could not be converted to JSON Schema");
+  });
+
+  it("reserves core schema IDs for built-ins", () => {
+    expect(() => schema("core/pr-review", z.strictObject({ ok: z.boolean() }))).toThrow(
+      "reserved core/ namespace",
+    );
+    expect(() => jsonSchema("core/custom", true)).toThrow("reserved core/ namespace");
+    expect(schemas.review.id).toBe("core/pr-review");
+    expect(schemas.summary.id).toBe("core/summary");
+  });
+
+  it("creates typed custom JSON Schemas with caller-supplied output types", () => {
+    type SummaryRating = { summary: string; rating: "low" | "high" };
+    const resultSchema = jsonSchema<SummaryRating>("custom/summary-rating", {
+      type: "object",
+      additionalProperties: false,
+      required: ["summary", "rating"],
+      properties: {
+        summary: { type: "string" },
+        rating: { enum: ["low", "high"] },
+      },
+    });
+
+    const parsed = resultSchema.parse({ summary: "Looks good.", rating: "low" });
+    const typed: SummaryRating = parsed;
+
+    expect(typed.rating).toBe("low");
+    expect(resultSchema.safeParse({ summary: "Looks good.", rating: "medium" }).success).toBe(
+      false,
+    );
+    expect(resultSchema.jsonSchema).toMatchObject({ type: "object" });
+  });
+
+  it("uses custom schemas as agent outputs", async () => {
+    const factory = definePipr((pipr) => {
+      const model = pipr.model("deepseek/deepseek-v4-pro", {
+        name: "deepseek",
+        apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+      });
+      const output = pipr.schema(
+        "custom/security-summary",
+        z.strictObject({
+          summary: z.string(),
+          findings: z.array(z.string()),
+        }),
+      );
+      const agent = pipr.agent({
+        name: "security",
+        model,
+        instructions: "Review security.",
+        output,
+        prompt: () => "Review.",
+      });
+      const task = pipr.task("security", async (context) => {
+        const result = await context.pi.run(agent, {});
+        context.output.section("security", result, { title: "Security" });
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const plan = buildPiprPlan(factory);
+    const task = plan.tasks[0];
+    let sectionValue: unknown;
+
+    await task?.handler(
+      {
+        run: { id: "test-run" },
+        repository: { root: "/tmp/repo", name: "repo" },
+        platform: { id: "local" },
+        change: fakeChange(),
+        pi: {
+          async run(agent) {
+            return agent.definition.output.parse({ summary: "Done.", findings: ["A"] }) as never;
+          },
+        },
+        output: {
+          summary() {},
+          findings() {},
+          section(_id, value) {
+            sectionValue = value;
+          },
+          metadata() {},
+        },
+        log: fakeLog(),
+      },
+      undefined,
+    );
+
+    expect(sectionValue).toEqual({ summary: "Done.", findings: ["A"] });
+  });
+
   it("validates builtin schema values", () => {
-    expect("jsonSchema" in schemas.review).toBe(false);
+    expect(schemas.review.jsonSchema).toMatchObject({
+      type: "object",
+      required: ["summary", "inlineFindings"],
+    });
     expect(() => schemas.summary.parse({ body: "Looks good." })).not.toThrow();
     expect(() => schemas.summary.parse({ body: 123 })).toThrow("expected string");
     expect(() => schemas.summary.parse({ body: "Looks good.", risk: "low" })).toThrow("risk");
@@ -337,6 +466,24 @@ describe("definePipr", () => {
     ).toThrow("Invalid input");
   });
 });
+
+function expectRemovedPublicApis(pipr: PiprBuilder): void {
+  // @ts-expect-error compactManifest is not part of the TS-first SDK.
+  pipr.compactManifest({ baseSha: "base", headSha: "head", mergeBaseSha: "base", files: [] });
+  // @ts-expect-error reviewCandidates is not part of the MVP schema catalog.
+  pipr.schemas.reviewCandidates;
+  // @ts-expect-error consolidatedReview is not part of the MVP schema catalog.
+  pipr.schemas.consolidatedReview;
+}
+
+void expectRemovedPublicApis;
+
+function expectSchemaRequiresZod(pipr: PiprBuilder): void {
+  // @ts-expect-error schema() requires real Zod, not a parse-only validator.
+  pipr.schema("custom/parse-only", { parse: (value: unknown) => String(value) });
+}
+
+void expectSchemaRequiresZod;
 
 function expectExplicitReviewerRejectsConstructionFields(
   pipr: PiprBuilder,
@@ -385,5 +532,31 @@ function validReviewFinding(overrides: Record<string, unknown> = {}): Record<str
     startLine: 1,
     endLine: 1,
     ...overrides,
+  };
+}
+
+function fakeChange() {
+  return {
+    title: "Local change",
+    description: "",
+    base: { sha: "base" },
+    head: { sha: "head" },
+    async diffManifest() {
+      return { baseSha: "base", headSha: "head", mergeBaseSha: "base", files: [] };
+    },
+    async changedFiles() {
+      return [];
+    },
+    async currentHeadSha() {
+      return "head";
+    },
+  };
+}
+
+function fakeLog() {
+  return {
+    info() {},
+    warn() {},
+    error() {},
   };
 }

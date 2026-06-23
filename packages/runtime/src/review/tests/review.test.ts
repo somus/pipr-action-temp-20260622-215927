@@ -61,6 +61,12 @@ describe("validatePrReview", () => {
         extra: true,
       }),
     ).toThrow();
+    expect(() =>
+      parsePrReview({
+        summary: { body: "Looks fine." },
+        inlineFindings: [{ ...baseFinding, suggestedFix: "" }],
+      }),
+    ).toThrow();
   });
 
   it("rejects non-inline findings in the MVP", () => {

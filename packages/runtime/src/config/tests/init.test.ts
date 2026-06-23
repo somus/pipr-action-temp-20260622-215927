@@ -27,6 +27,12 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).toContain("readonly id: symbol;");
     expect(sdkTypes).toContain("readonly apiKey?: SecretRef;");
     expect(sdkTypes).toContain("readonly options?: Record<string, unknown>;");
+    expect(sdkTypes).toContain("const z:");
+    expect(sdkTypes).toContain("type ZodSchema<T>");
+    expect(sdkTypes).toContain("schema<T>");
+    expect(sdkTypes).toContain("jsonSchema<T>");
+    expect(sdkTypes).not.toContain('from "zod"');
+    expect(sdkTypes).not.toContain("z.ZodType");
     const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
     expect(workflow).toContain("uses: somus/pipr@main");
     expect(workflow).not.toContain("config-dir:");
@@ -50,6 +56,37 @@ describe("initOfficialMinimalProject", () => {
     expect(validation.kind).toBe("typescript");
     expect(validation.settings.config.defaultProvider).toBe("deepseek");
     expect(validation.settings.config.publication.maxInlineComments).toBe(5);
+  });
+
+  it("generates SDK types that preserve optional Zod object fields", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+    await initOfficialMinimalProject({ rootDir });
+    await Bun.write(
+      path.join(rootDir, ".pipr", "config.ts"),
+      `import { definePipr, z } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  pipr.model("deepseek/deepseek-v4-pro", {
+    name: "deepseek",
+    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  });
+
+  const summary = pipr.schema(
+    "custom/summary",
+    z.strictObject({
+      title: z.string().optional(),
+      body: z.string(),
+    }),
+  );
+
+  const validSummary: ReturnType<typeof summary.parse> = { body: "ok" };
+  void validSummary;
+});
+`,
+    );
+
+    const validation = await validateProject({ rootDir });
+    expect(validation.kind).toBe("typescript");
   });
 
   it("refuses to overwrite existing pipr files without force", async () => {

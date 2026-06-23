@@ -1,4 +1,4 @@
-import type { Agent, AgentTool, DurationInput, RuntimePlan, TaskContext } from "@pipr/sdk";
+import type { Agent, AgentTool, DurationInput, RuntimePlan, Schema, TaskContext } from "@pipr/sdk";
 import { isBuiltinReadOnlyTool, renderPromptValue } from "@pipr/sdk";
 import { compact, uniqBy } from "lodash-es";
 import { z } from "zod";
@@ -73,6 +73,13 @@ type AgentRunContext = {
   tools: PluginToolExecutionContext;
 };
 
+type PreparedAgentContext = {
+  agentTools: AgentToolResolution;
+  agentRunContext: AgentRunContext;
+  manifest?: DiffManifest;
+  manifestPrompt?: PreparedDiffManifestPrompt;
+};
+
 type RetrySettings = {
   invalidOutput: number;
   transientFailure: number;
@@ -92,7 +99,12 @@ export async function runReviewAgent(
 ): Promise<RunReviewAgentResult> {
   const agentTools = resolveAgentTools(options.agent, options.runtime.plan);
   const agentRunContext = createAgentRunContext(options.runtime);
-  const prompt = await renderAgentPrompt({ ...options, agentTools, agentRunContext });
+  const manifest = readInputManifest(options.input);
+  const manifestPrompt = manifest
+    ? prepareDiffManifestPrompt(manifest, options.runtime.config.limits?.diffManifest)
+    : undefined;
+  const prepared: PreparedAgentContext = { agentTools, agentRunContext, manifest, manifestPrompt };
+  const prompt = await renderAgentPrompt({ ...options, ...prepared });
   const providers = selectProviders(options.runtime, options.agent, options.runOptions);
   const retry = retrySettings(options.agent);
   const errors: string[] = [];
@@ -102,7 +114,7 @@ export async function runReviewAgent(
   for (const provider of providers) {
     providerModels.push(provider.model);
     const attempt = await runAgentWithProvider(
-      { ...options, agentTools, agentRunContext },
+      { ...options, ...prepared },
       provider,
       prompt,
       retry,
@@ -146,10 +158,7 @@ function createAgentRunContext(runtime: RunReviewAgentOptions["runtime"]): Agent
 }
 
 async function runAgentWithProvider(
-  options: RunReviewAgentOptions & {
-    agentTools: AgentToolResolution;
-    agentRunContext: AgentRunContext;
-  },
+  options: RunReviewAgentOptions & PreparedAgentContext,
   provider: ProviderConfig,
   prompt: string,
   retry: RetrySettings,
@@ -202,10 +211,7 @@ async function runAgentWithProvider(
 }
 
 async function runPiWithTransientRetries(
-  options: RunReviewAgentOptions & {
-    agentTools: AgentToolResolution;
-    agentRunContext: AgentRunContext;
-  },
+  options: RunReviewAgentOptions & PreparedAgentContext,
   provider: ProviderConfig,
   prompt: string,
   retry: RetrySettings,
@@ -268,31 +274,54 @@ function selectProviders(
 }
 
 async function renderAgentPrompt(
-  options: RunReviewAgentOptions & {
-    agentTools: AgentToolResolution;
-    agentRunContext: AgentRunContext;
-  },
+  options: RunReviewAgentOptions & PreparedAgentContext,
 ): Promise<string> {
   const prompt = await options.agent.definition.prompt(options.input as never, {
     ...options.agentRunContext.prompt,
   });
-  const availableTools = [...piReadOnlyToolNames];
   return compact([
-    "You are pipr's agent for a change request.",
-    `Available Pi tools: ${availableTools.join(", ")}.`,
-    "Do not use bash, write, edit, platform APIs, or comment publishing tools.",
+    promptSection("Role", "You are pipr's read-only change request agent."),
+    promptSection("Tools", toolsPrompt(options.manifestPrompt)),
     customToolPrompt(options.agentTools),
-    "Return only valid JSON. Do not include Markdown fences or prose outside JSON.",
-    `Output Schema ID: ${options.agent.definition.output.id}`,
-    options.agent.definition.output.id === prReviewSchemaId
-      ? `The JSON must match this schema shape:\n${JSON.stringify(reviewSchemaExample(), null, 2)}`
-      : undefined,
-    `Instructions:\n${renderPromptValue(options.agent.definition.instructions)}`,
+    promptSection("Output", outputPrompt(options.agent.definition.output)),
+    promptSection("Diff Manifest", diffManifestPrompt(options.manifestPrompt)),
+    promptSection("Instructions", renderPromptValue(options.agent.definition.instructions)),
     options.runOptions?.instructions
-      ? `Run Instructions:\n${renderPromptValue(options.runOptions.instructions)}`
+      ? promptSection("Run Instructions", renderPromptValue(options.runOptions.instructions))
       : undefined,
     priorFindingsPrompt(options.runtime.priorReviewState),
-    `Prompt:\n${renderPromptValue(prompt)}`,
+    promptSection("Prompt", renderPromptValue(prompt)),
+  ]).join("\n\n");
+}
+
+function promptSection(title: string, body: string | undefined): string | undefined {
+  if (!body?.trim()) {
+    return undefined;
+  }
+  return `${title}:\n${body}`;
+}
+
+function toolsPrompt(manifestPrompt: PreparedDiffManifestPrompt | undefined): string {
+  const toolNames =
+    manifestPrompt?.mode === "condensed"
+      ? [...piReadOnlyToolNames, ...piRuntimeReadToolNames]
+      : [...piReadOnlyToolNames];
+  return [
+    `Available tools: ${toolNames.join(", ")}.`,
+    "Use tools only to inspect repository content and pipr-provided review context.",
+    "Do not write files, edit code, run shell commands, call platform APIs, or publish comments.",
+  ].join("\n");
+}
+
+function outputPrompt(schema: Schema<unknown>): string {
+  return compact([
+    `Schema ID: ${schema.id}.`,
+    schema.jsonSchema ? `JSON Schema:\n${JSON.stringify(schema.jsonSchema, null, 2)}` : undefined,
+    schema.id === prReviewSchemaId
+      ? `Example:\n${JSON.stringify(reviewSchemaExample(), null, 2)}`
+      : undefined,
+    "Return exactly one JSON value matching the schema.",
+    "Do not include Markdown, prose, explanations, or leading/trailing text.",
   ]).join("\n\n");
 }
 
@@ -335,24 +364,17 @@ function customToolPrompt(agentTools: AgentToolResolution): string | undefined {
 }
 
 async function runPiForPrompt(
-  options: RunReviewAgentOptions & {
-    agentTools: AgentToolResolution;
-    agentRunContext: AgentRunContext;
-  },
+  options: RunReviewAgentOptions & PreparedAgentContext,
   provider: ProviderConfig,
   prompt: string,
 ): Promise<PiRunResult> {
-  const manifest = readInputManifest(options.input);
-  const manifestPrompt = manifest
-    ? prepareDiffManifestPrompt(manifest, options.runtime.config.limits?.diffManifest)
-    : undefined;
   const result = await (options.runtime.piRunner ?? runPi)({
     workspace: options.runtime.workspace,
     provider,
-    prompt: withManifestToolContext(prompt, manifestPrompt),
+    prompt,
     env: options.runtime.env,
     piExecutable: options.runtime.piExecutable,
-    runtimeTools: runtimeToolsForPrompt(manifest, manifestPrompt),
+    runtimeTools: runtimeToolsForPrompt(options.manifest, options.manifestPrompt),
     timeoutSeconds: effectiveTimeoutSeconds(
       options.runOptions?.timeout ?? options.agent.definition.timeout,
       options.runtime.config.limits?.timeoutSeconds,
@@ -401,28 +423,18 @@ function runtimeToolsForPrompt(
   };
 }
 
-function assertSuccessfulPiResult(result: PiRunResult): void {
-  if (result.exitCode === 0) {
-    return;
-  }
-  const detail = result.stderr.trim() || result.stdout.trim() || "no output";
-  throw new Error(`Pi agent failed with exit ${result.exitCode}: ${detail}`);
-}
-
-function withManifestToolContext(
-  prompt: string,
+function diffManifestPrompt(
   manifestPrompt: PreparedDiffManifestPrompt | undefined,
-): string {
+): string | undefined {
   if (!manifestPrompt) {
-    return prompt;
+    return undefined;
   }
-  const availableTools =
-    manifestPrompt.mode === "condensed"
-      ? [...piReadOnlyToolNames, ...piRuntimeReadToolNames]
-      : [...piReadOnlyToolNames];
   return compact([
-    prompt,
-    "Diff Manifest Payload:",
+    "Use this as the authoritative changed-code context for this run.",
+    "If your output includes publishable inline findings, each finding's path, rangeId, side, startLine, and endLine must come from a Diff Manifest commentable range.",
+    "Do not invent publishable inline locations outside the Diff Manifest.",
+    "",
+    "Payload:",
     JSON.stringify(
       {
         mode: manifestPrompt.mode,
@@ -432,27 +444,29 @@ function withManifestToolContext(
       null,
       2,
     ),
-    "Diff Manifest:",
+    "",
+    "Manifest:",
     JSON.stringify(manifestPrompt.manifest, null, 2),
-    "Diff Manifest Runtime Context:",
-    JSON.stringify(
-      {
-        mode: manifestPrompt.mode,
-        availableTools,
-        runtimeReadTools:
-          manifestPrompt.mode === "condensed" ? ["pipr_read_diff", "pipr_read_at_ref"] : [],
-      },
-      null,
-      2,
-    ),
-    manifestPrompt.mode === "condensed"
-      ? [
-          "Condensed manifest helper tools:",
-          "pipr_read_diff(path?, rangeId?) returns bounded full Diff Manifest data.",
-          "pipr_read_at_ref(path, ref, rangeId) reads bounded base or head file content.",
-        ].join("\n")
-      : undefined,
-  ]).join("\n\n");
+    manifestPrompt.mode === "condensed" ? condensedManifestToolsPrompt() : undefined,
+  ]).join("\n");
+}
+
+function condensedManifestToolsPrompt(): string {
+  return [
+    "",
+    "Condensed manifest helper tools:",
+    "pipr_read_diff(path?, rangeId?) returns bounded full Diff Manifest slices.",
+    "pipr_read_at_ref(path, ref, rangeId?) reads bounded base or head file content.",
+    "Use these tools only when the condensed manifest lacks enough detail.",
+  ].join("\n");
+}
+
+function assertSuccessfulPiResult(result: PiRunResult): void {
+  if (result.exitCode === 0) {
+    return;
+  }
+  const detail = result.stderr.trim() || result.stdout.trim() || "no output";
+  throw new Error(`Pi agent failed with exit ${result.exitCode}: ${detail}`);
 }
 
 function readInputManifest(input: unknown): DiffManifest | undefined {

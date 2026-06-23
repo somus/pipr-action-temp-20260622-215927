@@ -98,7 +98,9 @@ const security = pipr.agent({
   model,
   instructions: "Review only security issues.",
   output: pipr.schemas.review,
-  prompt: () => "Review this pull request for security issues.",
+  prompt: () => pipr.prompt`
+    Review this pull request for security issues.
+  `,
 });
 
 const task = pipr.task("security-review", async (ctx) => {
@@ -117,45 +119,41 @@ Inline findings passed to `ctx.output.findings(...)` must target valid Diff Mani
 
 ## Custom schemas
 
+Use custom schemas for intermediate agents and custom workflows. Use `pipr.schemas.review` only for output that should publish Inline Review Comments.
+
 Use SDK-owned Zod for typed agent outputs:
 
 ```ts
 import { definePipr, z } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const securityOutput = pipr.schema(
-    "security-output",
+  const specialistOutput = pipr.schema(
+    "security/specialist-output",
     z.strictObject({
       summary: z.string(),
-      issues: z.array(
-        z.strictObject({
-          body: z.string(),
-          path: z.string(),
-          rangeId: z.string(),
-          side: z.enum(["RIGHT", "LEFT"]),
-          startLine: z.number().int().positive(),
-          endLine: z.number().int().positive(),
-        }),
-      ),
+      risks: z.array(z.string()),
     }),
   );
-});
-```
 
-JSON Schema is available when you want a data-defined schema. The TypeScript type is caller-supplied:
-
-```ts
-export default definePipr((pipr) => {
-  const ownerOutput = pipr.jsonSchema<{ owner: string }>("owner-output", {
+  const jsonBacked = pipr.jsonSchema<{ summary: string }>("security/summary", {
     type: "object",
-    properties: { owner: { type: "string" } },
-    required: ["owner"],
     additionalProperties: false,
+    required: ["summary"],
+    properties: {
+      summary: { type: "string" },
+    },
   });
+
+  void specialistOutput;
+  void jsonBacked;
 });
 ```
 
-Agents can return any schema. To publish inline comments, map custom output into `ReviewFinding[]` and call `ctx.output.findings(...)`.
+The runtime includes schema details in the Pi prompt when they are available. Tasks can map custom outputs into `ctx.output.summary(...)`, `ctx.output.findings(...)`, or `ctx.output.section(...)`.
+
+To publish inline comments from a custom schema, map the custom output into `ReviewFinding[]` and call `ctx.output.findings(...)`.
+
+Schema metadata is model-visible prompt content. Do not put secrets, private data, or sensitive internal notes in JSON Schema fields such as `description`, `examples`, `default`, or `$comment`.
 
 ## Commands and local entrypoints
 

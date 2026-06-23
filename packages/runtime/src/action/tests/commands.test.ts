@@ -414,7 +414,7 @@ function reviewConfigTs(
     "    model,",
     '    instructions: "Review this change.",',
     "    output: pipr.schemas.review,",
-    `    prompt: (input) => pipr.prompt\`Review scope: ${template}{input.scope}\\n${template}{pipr.compactManifest(input.manifest)}\`,`,
+    `    prompt: (input) => pipr.prompt\`Review scope: ${template}{input.scope}\`,`,
     "  });",
     "  const task = pipr.task('review', async (ctx, input = {}) => {",
     "    const manifest = await ctx.change.diffManifest({ compressed: true });",

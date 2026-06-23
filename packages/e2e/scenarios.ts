@@ -58,7 +58,7 @@ export default definePipr((pipr) => {
     instructions: "Review the act fixture change.",
     output: pipr.schemas.review,
     tools: pipr.tools.readOnly,
-    prompt: (input) => pipr.prompt\`Review this change.\\n\${pipr.compactManifest(input.manifest)}\`,
+    prompt: () => "Review this change.",
   });
   const addReviewTask = (name, priority, secondary = false) => {
     const task = pipr.task(name, async (ctx) => {
@@ -110,7 +110,7 @@ export default definePipr((pipr) => {
 });
 `;
 
-const orchestratorConfig = `import { definePipr } from "@pipr/sdk";
+const orchestratorConfig = `import { definePipr, z } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
   const model = pipr.model("deepseek/deepseek-v4-pro", {
@@ -118,18 +118,43 @@ export default definePipr((pipr) => {
     apiKey: pipr.secret("DEEPSEEK_API_KEY"),
     options: { thinking: "high" },
   });
+  const specialistOutput = pipr.schema(
+    "fixture/specialist-output",
+    z.strictObject({
+      focus: z.enum(["correctness", "security", "tests"]),
+      summary: z.string(),
+    }),
+  );
+  const findingSchema = z.strictObject({
+    body: z.string(),
+    path: z.string(),
+    rangeId: z.string(),
+    side: z.enum(["RIGHT", "LEFT"]),
+    startLine: z.number().int().positive(),
+    endLine: z.number().int().positive(),
+  });
+  const orchestratorOutput = pipr.schema(
+    "fixture/orchestrator-output",
+    z.strictObject({
+      summary: z.strictObject({
+        title: z.string().optional(),
+        body: z.string(),
+      }),
+      findings: z.array(findingSchema),
+    }),
+  );
   const specialist = pipr.agent({
     name: "specialist-reviewer",
     model,
     instructions: "Return a focused specialist review.",
-    output: pipr.schemas.review,
-    prompt: (input) => pipr.prompt\`Focus: \${input.focus}\\n\${pipr.compactManifest(input.manifest)}\`,
+    output: specialistOutput,
+    prompt: (input) => pipr.prompt\`Focus: \${input.focus}\`,
   });
   const orchestrator = pipr.agent({
     name: "review-orchestrator",
     model,
     instructions: "Merge specialist reviews into one final review.",
-    output: pipr.schemas.review,
+    output: orchestratorOutput,
     prompt: (input) => pipr.prompt\`Specialist reviews:\\n\${pipr.json(input.reviews)}\`,
   });
   const task = pipr.task("review", async (ctx) => {
@@ -144,7 +169,7 @@ export default definePipr((pipr) => {
       reviews: { correctness, security, tests },
     });
     ctx.output.summary(result.summary);
-    ctx.output.findings(result.inlineFindings);
+    ctx.output.findings(result.findings);
   });
   pipr.on.changeRequest(["opened"], task);
 });

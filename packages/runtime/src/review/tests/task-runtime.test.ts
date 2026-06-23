@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { type Agent, buildPiprPlan, definePipr, type ReviewResult } from "@pipr/sdk";
+import { type Agent, buildPiprPlan, definePipr, type ReviewResult, z } from "@pipr/sdk";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest, PiprConfig, ProviderConfig, ReviewFinding } from "../../types.js";
 import { type PiRunner, type RunTaskRuntimeOptions, runTaskRuntime } from "../task-runtime.js";
@@ -320,7 +320,153 @@ describe("runTaskRuntime", () => {
       },
     });
 
-    expect(observedPrompt).not.toContain("Diff Manifest Payload:");
+    expect(observedPrompt).not.toContain("Diff Manifest:");
+  });
+
+  it("renders one full-mode agent prompt contract with authoritative manifest wording", async () => {
+    let observedPrompt = "";
+
+    await runRuntime({
+      plan: defaultReviewPlan(),
+      piRunner: async (options) => {
+        observedPrompt = options.prompt;
+        expect(options.runtimeTools).toBeUndefined();
+        return noFindingsPiResult();
+      },
+    });
+
+    expect(countOccurrences(observedPrompt, "Available tools:")).toBe(1);
+    expect(observedPrompt).toContain("Role:\nYou are pipr's read-only change request agent.");
+    expect(observedPrompt).toContain("Available tools: read, grep, find, ls.");
+    expect(observedPrompt).not.toContain("pipr_read_diff");
+    expect(observedPrompt).toContain("Use tools only to inspect repository content");
+    expect(observedPrompt).toContain("Do not write files, edit code, run shell commands");
+    expect(observedPrompt).toContain("Output:\nSchema ID: core/pr-review.");
+    expect(observedPrompt).toContain("JSON Schema:");
+    expect(observedPrompt).toContain("Example:");
+    expect(observedPrompt).toContain(
+      "Diff Manifest:\nUse this as the authoritative changed-code context",
+    );
+    expect(observedPrompt).toContain(
+      "If your output includes publishable inline findings, each finding's path, rangeId, side, startLine, and endLine must come from a Diff Manifest commentable range.",
+    );
+    expect(observedPrompt).toContain("Manifest:");
+    expect(observedPrompt).not.toContain("Diff Manifest Runtime Context");
+  });
+
+  it("renders condensed-mode runtime tool instructions once", async () => {
+    let observedPrompt = "";
+
+    await runRuntime({
+      config: {
+        ...config,
+        limits: {
+          diffManifest: {
+            fullMaxBytes: 1,
+            fullMaxEstimatedTokens: 1,
+            condensedMaxBytes: 262_144,
+            condensedMaxEstimatedTokens: 65_536,
+            toolResponseMaxBytes: 4096,
+          },
+        },
+      },
+      plan: defaultReviewPlan(),
+      piRunner: async (options) => {
+        observedPrompt = options.prompt;
+        expect(options.runtimeTools?.toolResponseMaxBytes).toBe(4096);
+        return noFindingsPiResult();
+      },
+    });
+
+    expect(countOccurrences(observedPrompt, "Available tools:")).toBe(1);
+    expect(observedPrompt).toContain(
+      "Available tools: read, grep, find, ls, pipr_read_diff, pipr_read_at_ref.",
+    );
+    expect(observedPrompt).toContain("Condensed manifest helper tools:");
+    expect(observedPrompt).toContain(
+      "pipr_read_diff(path?, rangeId?) returns bounded full Diff Manifest slices.",
+    );
+    expect(observedPrompt).toContain(
+      "pipr_read_at_ref(path, ref, rangeId?) reads bounded base or head file content.",
+    );
+  });
+
+  it("includes custom schema details in agent prompts", async () => {
+    let observedPrompt = "";
+    const plan = testPlan((pipr) => {
+      const output = pipr.schema(
+        "custom/release-notes",
+        z.strictObject({
+          ok: z.boolean(),
+        }),
+      );
+      const agent = pipr.agent({
+        name: "release-notes",
+        model: deepseekModel(pipr),
+        instructions: "Summarize.",
+        output,
+        prompt: () => "Summarize.",
+      });
+      const task = pipr.task("notes", async (ctx) => {
+        const result = await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
+        ctx.output.metadata(result);
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({
+      plan,
+      piRunner: async (options) => {
+        observedPrompt = options.prompt;
+        return { exitCode: 0, stdout: JSON.stringify({ ok: true }), stderr: "", durationMs: 1 };
+      },
+    });
+
+    expect(observedPrompt).toContain("Schema ID: custom/release-notes.");
+    expect(observedPrompt).toContain("JSON Schema:");
+    expect(observedPrompt).not.toContain("Example:");
+    expect(result.publicationPlan.metadata.taskMetadata).toEqual({ ok: true });
+  });
+
+  it("uses repair prompts with the same contract and validation error for custom schemas", async () => {
+    const prompts: string[] = [];
+    const plan = testPlan((pipr) => {
+      const output = pipr.jsonSchema<{ ok: boolean }>("custom/json-output", {
+        type: "object",
+        additionalProperties: false,
+        required: ["ok"],
+        properties: { ok: { type: "boolean" } },
+      });
+      const agent = pipr.agent({
+        name: "custom-json",
+        model: deepseekModel(pipr),
+        instructions: "Return custom JSON.",
+        output,
+        prompt: () => "Return ok.",
+      });
+      const task = pipr.task("custom", async (ctx) => {
+        const result = await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
+        ctx.output.metadata(result);
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({
+      plan,
+      piRunner: async (options) => {
+        prompts.push(options.prompt);
+        return prompts.length === 1
+          ? { exitCode: 0, stdout: JSON.stringify({ ok: "yes" }), stderr: "", durationMs: 1 }
+          : { exitCode: 0, stdout: JSON.stringify({ ok: true }), stderr: "", durationMs: 1 };
+      },
+    });
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("Schema validation error:");
+    expect(prompts[1]).toContain("Role:\nYou are pipr's read-only change request agent.");
+    expect(prompts[1]).toContain("Schema ID: custom/json-output.");
+    expect(result.repairAttempted).toBe(true);
+    expect(result.publicationPlan.metadata.taskMetadata).toEqual({ ok: true });
   });
 
   it("uses agent timeout when running Pi", async () => {
@@ -753,4 +899,8 @@ function noFindingsPiResult() {
     stderr: "",
     durationMs: 1,
   };
+}
+
+function countOccurrences(value: string, needle: string): number {
+  return value.split(needle).length - 1;
 }
