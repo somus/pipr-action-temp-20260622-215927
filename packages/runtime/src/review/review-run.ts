@@ -1,4 +1,12 @@
-import type { Agent, AgentTool, DurationInput, RuntimePlan, Schema, TaskContext } from "@pipr/sdk";
+import type {
+  Agent,
+  AgentTool,
+  DurationInput,
+  PathFilter,
+  RuntimePlan,
+  Schema,
+  TaskContext,
+} from "@pipr/sdk";
 import { isBuiltinReadOnlyTool, renderPromptValue } from "@pipr/sdk";
 import { compact, uniqBy } from "lodash-es";
 import { z } from "zod";
@@ -283,6 +291,7 @@ async function renderAgentPrompt(
     promptSection("Role", "You are pipr's read-only change request agent."),
     promptSection("Tools", toolsPrompt(options.manifestPrompt)),
     customToolPrompt(options.agentTools),
+    pathScopePrompt(options.runOptions?.paths),
     promptSection("Output", outputPrompt(options.agent.definition.output)),
     promptSection("Diff Manifest", diffManifestPrompt(options.manifestPrompt)),
     promptSection("Instructions", renderPromptValue(options.agent.definition.instructions)),
@@ -323,6 +332,19 @@ function outputPrompt(schema: Schema<unknown>): string {
     "Return exactly one JSON value matching the schema.",
     "Do not include Markdown, prose, explanations, or leading/trailing text.",
   ]).join("\n\n");
+}
+
+function pathScopePrompt(paths: PathFilter | undefined): string | undefined {
+  if (!paths) {
+    return undefined;
+  }
+  return [
+    "Path scope:",
+    "This run is scoped to repository paths matching this filter:",
+    JSON.stringify(paths, null, 2),
+    "Publishable inline findings must target only files matching this filter.",
+    "Read tools may access the whole repository. Prefer matching files, and read non-matching files only when needed to understand or review matching files.",
+  ].join("\n");
 }
 
 function priorFindingsPrompt(state: PriorReviewState | undefined): string | undefined {

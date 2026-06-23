@@ -37,7 +37,13 @@ type TaskContext = {
     base: { ref?: string; sha: string };
     head: { ref?: string; sha: string };
     isFork?: boolean;
-    diffManifest(options?: { compressed?: boolean }): Promise<DiffManifest>;
+    diffManifest(options?: {
+      compressed?: boolean;
+      paths?: {
+        include?: string[];
+        exclude?: string[];
+      };
+    }): Promise<DiffManifest>;
   };
 };
 ```
@@ -81,6 +87,10 @@ The Diff Manifest is the source of truth for changed files and commentable range
 const manifest = await ctx.change.diffManifest({
   compressed: true,
   includePreviews: true,
+  paths: {
+    include: ["packages/runtime/**"],
+    exclude: ["**/*.test.ts"],
+  },
 });
 ```
 
@@ -98,6 +108,8 @@ Each file carries changed-line ranges that can receive inline comments. Review F
 ```
 
 When the full manifest is too large, pipr sends a condensed manifest and attaches bounded Diff Read Tools. The model can ask for more range-scoped context without receiving shell or arbitrary filesystem access.
+
+`paths` filters Diff Manifest files by include and exclude globs. For renamed files, current and previous paths are considered. Path scope also drops publishable findings outside the filter, but it does not restrict Pi read-only access to the rest of the repository.
 
 ## Pi execution
 

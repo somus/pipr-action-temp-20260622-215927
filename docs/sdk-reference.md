@@ -55,6 +55,10 @@ const reviewer = pipr.reviewer({
 pipr.review({
   name: "review",
   reviewer,
+  paths: {
+    include: ["packages/runtime/**"],
+    exclude: ["**/*.test.ts"],
+  },
   entrypoints: {
     changeRequest: ["opened", "updated", "reopened", "ready"],
     command: {
@@ -93,6 +97,8 @@ pipr.review({
   },
 });
 ```
+
+`paths` scopes the Diff Manifest and publishable Inline Review Comments for that review recipe. It is not a filesystem sandbox: Pi read-only tools can still inspect the repository, and pipr prompts the agent to read nonmatching files only when needed to review matching files.
 
 ## Custom reviewer prompt
 
@@ -146,11 +152,12 @@ Tasks are the executable review units. They receive a `TaskContext` and optional
 
 ```ts
 const task = pipr.task("security-review", async (ctx) => {
-  const manifest = await ctx.change.diffManifest({ compressed: true });
-  const result = await ctx.pi.run(security, { manifest });
+  const paths = { include: ["packages/runtime/**"] };
+  const manifest = await ctx.change.diffManifest({ compressed: true, paths });
+  const result = await ctx.pi.run(security, { manifest }, { paths });
 
   ctx.output.summary(result.summary, { key: "security", merge: "append" });
-  ctx.output.findings(result.inlineFindings);
+  ctx.output.findings(result.inlineFindings, { paths });
 });
 
 pipr.on.changeRequest(["opened", "updated"], task);
@@ -171,6 +178,8 @@ pipr.local("security", task);
 | `ctx.log` | Write runtime logs. |
 
 `ctx.change.diffManifest(...)` returns commentable file ranges. Findings must reference those ranges by `rangeId`.
+
+When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)`, `ctx.pi.run(...)`, and `ctx.output.findings(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops publishable findings outside the scope.
 
 ## Output collection
 

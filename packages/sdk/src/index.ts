@@ -72,6 +72,10 @@ export type ReviewResult<TData extends JsonObject = JsonObject> = {
   metadata?: JsonObject;
 };
 
+export type PathFilter = {
+  include?: string[];
+  exclude?: string[];
+};
 export type PromptSource = string | PromptText;
 export type PromptValue = unknown;
 
@@ -198,6 +202,7 @@ type ReviewRecipeEntrypointOptions = {
       };
   summary?: boolean;
   timeout?: DurationInput;
+  paths?: PathFilter;
 };
 
 export type ReviewRecipeOptions =
@@ -323,6 +328,7 @@ export type DiffManifestOptions = {
   compressed?: boolean;
   includePreviews?: boolean;
   maxPreviewLines?: number;
+  paths?: PathFilter;
 };
 
 export type DiffManifestLimits = {
@@ -346,7 +352,7 @@ export type ChangeRequestContext = ChangeRequestInfo & {
 
 export type OutputCollector = {
   summary(value: ReviewSummary | string, options?: SummaryContributionOptions): void;
-  findings(value: ReviewFinding[]): void;
+  findings(value: ReviewFinding[], options?: FindingContributionOptions): void;
   section<T>(id: string, value: T, options: SectionContributionOptions<T>): void;
   metadata(value: Record<string, unknown>): void;
 };
@@ -366,6 +372,10 @@ export type SectionContributionOptions<T> = {
   render?: (value: T) => string;
 };
 
+export type FindingContributionOptions = {
+  paths?: PathFilter;
+};
+
 export type PiRunner = {
   run<Input, Output>(
     agent: Agent<Input, Output>,
@@ -375,6 +385,7 @@ export type PiRunner = {
       fallbacks?: ModelProfile[];
       instructions?: PromptSource;
       timeout?: DurationInput;
+      paths?: PathFilter;
     },
   ): Promise<Output>;
 };
@@ -731,19 +742,23 @@ function createReviewRecipeTask(
   options: ReviewRecipeOptions,
 ): Task {
   return api.task(name, async (context) => {
-    const manifest = await context.change.diffManifest({ compressed: true });
+    const manifest = await context.change.diffManifest({ compressed: true, paths: options.paths });
+    if (options.paths && manifest.files.length === 0) {
+      return;
+    }
     const result = await context.pi.run(
       agent,
       { manifest, change: context.change },
       {
         timeout: options.timeout,
+        paths: options.paths,
       },
     );
     if (options.summary !== false) {
       context.output.summary(result.summary, { key: name, merge: "append" });
     }
     if (options.inlineComments !== false) {
-      context.output.findings(result.inlineFindings);
+      context.output.findings(result.inlineFindings, { paths: options.paths });
     }
   });
 }

@@ -34,21 +34,30 @@ describe("definePipr", () => {
         tools: [tool],
         prompt: () => "Prompt.",
       });
+      const paths = { include: ["src/**"], exclude: ["**/*.test.ts"] };
       const task = pipr.task("review", async (context) => {
-        const manifest = await context.change.diffManifest();
-        const result = await context.pi.run(agent, { manifest });
+        const manifest = await context.change.diffManifest({ paths });
+        const result = await context.pi.run(agent, { manifest }, { paths });
         context.output.summary(result.summary);
+        context.output.findings(result.inlineFindings, { paths });
       });
       expect(pipr.on.changeRequest(["opened"], task)).toBeUndefined();
       expect(pipr.command("@pipr review", { permission: "write" }, task)).toBeUndefined();
       expect(pipr.local("review", task)).toBeUndefined();
+      pipr.review({
+        name: "scoped",
+        model,
+        instructions: "Review scoped files.",
+        paths: { include: ["docs/**"] },
+        entrypoints: { changeRequest: false, command: false, local: false },
+      });
     });
 
     const plan = buildPiprPlan(factory);
 
     expect(plan.models.map((model) => model.name)).toEqual(["deepseek"]);
-    expect(plan.agents.map((agent) => agent.name)).toEqual(["reviewer"]);
-    expect(plan.tasks.map((task) => task.name)).toEqual(["review"]);
+    expect(plan.agents.map((agent) => agent.name)).toEqual(["reviewer", "scoped"]);
+    expect(plan.tasks.map((task) => task.name)).toEqual(["review", "scoped"]);
     expect(plan.changeRequestTriggers[0]).toMatchObject({ actions: ["opened"] });
     expect(plan.commands[0]).toMatchObject({ pattern: "@pipr review", permission: "write" });
     expect(plan.locals[0]).toMatchObject({ name: "review" });

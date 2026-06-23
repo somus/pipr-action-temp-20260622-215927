@@ -2,6 +2,7 @@ export type {
   AgentPromptContext,
   ChangeRequestAction,
   DefaultReviewInput,
+  PathFilter,
   ReviewEntrypoints,
   Reviewer,
   ReviewerOptions,

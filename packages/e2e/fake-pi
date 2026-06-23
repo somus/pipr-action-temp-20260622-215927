@@ -48,7 +48,8 @@ async function readPrompt(value) {
 }
 
 async function fullFixtureReview() {
-  const manifest = parsePromptJson("\nManifest:");
+  assertPathScopePrompt();
+  const manifest = parsePromptJson("Diff Manifest:");
   const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
   const range =
     ranges.find(
@@ -83,8 +84,40 @@ async function fullFixtureReview() {
         endLine: range.startLine,
         data: { category: "maintainability" },
       },
+      ...outOfScopeFindings(range),
     ],
   };
+}
+
+function outOfScopeFindings(range) {
+  if (!prompt.includes("Path scope:")) {
+    return [];
+  }
+  return [
+    {
+      body: "Out-of-scope act path should not publish.",
+      path: "docs/out-of-scope.md",
+      rangeId: range.id,
+      side: range.side,
+      startLine: range.startLine,
+      endLine: range.startLine,
+    },
+  ];
+}
+
+function assertPathScopePrompt() {
+  if (!prompt.includes("Path scope:")) {
+    return;
+  }
+  assert(
+    prompt.includes('"packages/e2e/fixtures/act/project/**"'),
+    "path-scoped prompt missing include glob",
+  );
+  assert(prompt.includes('"**/*.test.ts"'), "path-scoped prompt missing exclude glob");
+  assert(
+    prompt.includes("Read tools may access the whole repository."),
+    "path-scoped prompt did not preserve whole-repo read access",
+  );
 }
 
 function orchestratorReview() {

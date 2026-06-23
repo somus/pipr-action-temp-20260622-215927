@@ -35,7 +35,11 @@ const actionResultHandlers: ActionResultHandlers = {
 async function main(): Promise<void> {
   assertActionCommand(process.argv[2] ?? "action");
   const context = actionFixtureContext();
-  await handleActionResult(await runActionCommandWithDependencies(context.options));
+  const result = await runActionCommandWithDependencies(context.options);
+  await handleActionResult(result);
+  if (result.kind === "review") {
+    await recordDroppedFindings(context.fixturePath, result.review.validated.droppedFindings);
+  }
   await assertConfiguredFixture(context.fixturePath);
 }
 
@@ -237,10 +241,20 @@ type GitHubPublicationFixture = {
   reviewComments: FixtureReviewComment[];
   reviewThreads?: FixtureReviewThread[];
   reviewCommentPayloads: unknown[];
+  droppedFindings?: unknown[];
   reviewReplies?: Array<{ commentId: number; body: string }>;
   resolvedThreadIds?: string[];
   failReviewComment?: boolean;
 };
+
+async function recordDroppedFindings(
+  fixturePath: string,
+  droppedFindings: unknown[],
+): Promise<void> {
+  const fixture = await readFixture(fixturePath);
+  fixture.droppedFindings = droppedFindings;
+  await writeFixture(fixturePath, fixture);
+}
 
 async function readFixture(fixturePath: string): Promise<GitHubPublicationFixture> {
   return (await Bun.file(fixturePath).json()) as GitHubPublicationFixture;

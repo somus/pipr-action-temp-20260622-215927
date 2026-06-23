@@ -1,5 +1,6 @@
 import type {
   DiffManifestOptions,
+  PathFilter,
   ReviewFinding,
   ReviewSummary,
   RuntimePlan,
@@ -9,6 +10,7 @@ import { renderPromptValue } from "@pipr/sdk";
 import { uniq } from "lodash-es";
 import { selectRuntimeTasks } from "../config/task-selection.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "../diff/diff.js";
+import { filterDiffManifestByPaths } from "../diff/path-filter.js";
 import type {
   ChangeRequestEventContext,
   DiffManifest,
@@ -69,10 +71,16 @@ type OutputState = {
   summaries: MainSectionContribution[];
   sections: MainSectionContribution[];
   sectionTemplates: Map<string, { title: string; order: number; collapsed?: boolean }>;
-  findings: ReviewFinding[];
+  findings: FindingContribution[];
+  findingScopes: WeakMap<ReviewFinding[], PathFilter>;
   metadata: Record<string, unknown>;
   providerModels: string[];
   repairAttempted: boolean;
+};
+
+type FindingContribution = {
+  finding: ReviewFinding;
+  paths?: PathFilter;
 };
 
 type TaskRunResult = {
@@ -139,6 +147,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   const review = collectedReview(output);
   const validated = validatePrReview(review, diffManifest, {
     expectedHeadSha: options.event.change.head.sha,
+    pathScopeForFinding: (_finding, index) => output.findings[index]?.paths,
   });
   const publishing = buildCommentPublishingPlan({
     event: options.event,
@@ -242,6 +251,7 @@ function createTaskContext(
         if (result.repairAttempted) {
           options.output.repairAttempted = true;
         }
+        trackResultFindingScope(options.output, result.value, runOptions?.paths);
         return result.value as never;
       },
     },
@@ -270,17 +280,14 @@ function manifestForOptions(
   manifest: DiffManifest,
   options: DiffManifestOptions | undefined,
 ): DiffManifest {
-  if (
-    !options?.compressed &&
-    options?.includePreviews !== false &&
-    options?.maxPreviewLines === undefined
-  ) {
+  if (!manifestOptionsHaveEffect(options)) {
     return manifest;
   }
   const manifestOptions = options ?? {};
+  const scopedManifest = filterDiffManifestByPaths(manifest, manifestOptions.paths);
   return parseDiffManifest({
-    ...manifest,
-    files: manifest.files.map((file) => ({
+    ...scopedManifest,
+    files: scopedManifest.files.map((file) => ({
       ...withoutCompressedFileFields(file, manifestOptions.compressed === true),
       commentableRanges: file.commentableRanges.map((range) => ({
         ...rangeFieldsForOptions(range, manifestOptions),
@@ -290,6 +297,15 @@ function manifestForOptions(
       })),
     })),
   });
+}
+
+function manifestOptionsHaveEffect(options: DiffManifestOptions | undefined): boolean {
+  return Boolean(
+    options?.compressed ||
+      options?.includePreviews === false ||
+      options?.maxPreviewLines !== undefined ||
+      options?.paths,
+  );
 }
 
 function cloneDiffManifest(manifest: DiffManifest): DiffManifest {
@@ -321,7 +337,7 @@ function withoutCompressedRangeFields(
 function rangeFieldsForOptions(
   range: DiffManifest["files"][number]["commentableRanges"][number],
   options: DiffManifestOptions,
-): Record<string, unknown> {
+): DiffManifest["files"][number]["commentableRanges"][number] {
   const fields = withoutCompressedRangeFields(range, options.compressed === true);
   if (options.includePreviews === false) {
     const { preview: _preview, ...rest } = fields;
@@ -350,6 +366,7 @@ function createOutputState(): OutputState {
       ["metadata", { title: "Review metadata", order: 100, collapsed: true }],
     ]),
     findings: [],
+    findingScopes: new WeakMap(),
     metadata: {},
     providerModels: [],
     repairAttempted: false,
@@ -370,8 +387,9 @@ function createOutputCollector(state: OutputState): TaskContext["output"] {
         }),
       );
     },
-    findings(value) {
-      state.findings.push(...value);
+    findings(value, options) {
+      const paths = options?.paths ?? state.findingScopes.get(value);
+      state.findings.push(...value.map((finding) => ({ finding, paths })));
     },
     section(id, value, options) {
       state.sectionTemplates.set(id, {
@@ -393,6 +411,25 @@ function createOutputCollector(state: OutputState): TaskContext["output"] {
       Object.assign(state.metadata, value);
     },
   };
+}
+
+function trackResultFindingScope(
+  state: OutputState,
+  value: unknown,
+  paths: PathFilter | undefined,
+): void {
+  if (!paths || !hasInlineFindings(value)) {
+    return;
+  }
+  state.findingScopes.set(value.inlineFindings, paths);
+}
+
+function hasInlineFindings(value: unknown): value is { inlineFindings: ReviewFinding[] } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { inlineFindings?: unknown }).inlineFindings)
+  );
 }
 
 function renderSummary(summary: ReviewSummary): string {
@@ -417,7 +454,7 @@ function renderSectionValue<T>(value: T, render?: (value: T) => string): unknown
 function collectedReview(output: OutputState): PrReview {
   return {
     summary: { body: output.summaries.length > 0 ? "Review completed." : "No summary produced." },
-    inlineFindings: output.findings,
+    inlineFindings: output.findings.map((item) => item.finding),
   };
 }
 

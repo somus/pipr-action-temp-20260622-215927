@@ -3,7 +3,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { type Agent, buildPiprPlan, definePipr, type ReviewResult, z } from "@pipr/sdk";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest, PiprConfig, ProviderConfig, ReviewFinding } from "../../types.js";
-import { type PiRunner, type RunTaskRuntimeOptions, runTaskRuntime } from "../task-runtime.js";
+import {
+  type PiRunner,
+  type ReviewRuntimeResult,
+  type RunTaskRuntimeOptions,
+  runTaskRuntime,
+} from "../task-runtime.js";
 
 const provider: ProviderConfig = {
   id: "deepseek",
@@ -157,6 +162,69 @@ describe("runTaskRuntime", () => {
     });
   });
 
+  it("filters Diff Manifest files by configured paths", async () => {
+    const plan = testPlan((pipr) => {
+      const task = pipr.task("review", async (ctx) => {
+        const manifest = await ctx.change.diffManifest({ paths: { include: ["docs/**"] } });
+        ctx.output.metadata({ paths: manifest.files.map((file) => file.path) });
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({
+      plan,
+      diffManifestBuilder: manifestBuilder(reviewTestManifestWithDocs()),
+    });
+
+    expect(result.publicationPlan.metadata.taskMetadata).toEqual({
+      paths: ["docs/readme.md"],
+    });
+  });
+
+  it("drops findings outside configured output paths", async () => {
+    const plan = testPlan((pipr) => {
+      const task = pipr.task("review", (ctx) => {
+        ctx.output.findings(
+          [finding("inside", "range-1", 10), finding("outside", "range-1", 10, "docs/readme.md")],
+          { paths: { include: ["src/**"] } },
+        );
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({ plan });
+
+    expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
+    expectDroppedOutsideConfiguredPaths(result);
+  });
+
+  it("uses scoped Pi result findings as the default output path scope", async () => {
+    const plan = testPlan((pipr) => {
+      const agent = defaultReviewAgent(pipr);
+      const task = pipr.task("review", async (ctx) => {
+        const result = await ctx.pi.run(
+          agent,
+          { manifest: await ctx.change.diffManifest() },
+          { paths: { include: ["src/**"] } },
+        );
+        ctx.output.findings(result.inlineFindings);
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({
+      plan,
+      piRunner: async () =>
+        reviewPiResult([
+          finding("inside", "range-1", 10),
+          finding("outside", "range-1", 10, "docs/readme.md"),
+        ]),
+    });
+
+    expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
+    expectDroppedOutsideConfiguredPaths(result);
+  });
+
   it("keeps the internal Diff Manifest immutable from task handlers", async () => {
     const plan = testPlan((pipr) => {
       const task = pipr.task("review", async (ctx) => {
@@ -217,25 +285,7 @@ describe("runTaskRuntime", () => {
 
     await runRuntime({
       plan,
-      priorReviewState: {
-        version: 1,
-        reviewedHeadSha: "head",
-        selectedTasks: ["review"],
-        findings: [
-          {
-            id: "fnd_existing",
-            status: "open",
-            path: "src/a.ts",
-            rangeId: "range-1",
-            side: "RIGHT",
-            startLine: 10,
-            endLine: 10,
-            firstSeenHeadSha: "head",
-            lastSeenHeadSha: "head",
-            lastCommentedHeadSha: "head",
-          },
-        ],
-      },
+      priorReviewState: priorReviewStateForTasks(["review"]),
       piRunner: async (options) => {
         observedPrompt = options.prompt;
         return noFindingsPiResult();
@@ -257,25 +307,7 @@ describe("runTaskRuntime", () => {
 
     await runRuntime({
       plan,
-      priorReviewState: {
-        version: 1,
-        reviewedHeadSha: "head",
-        selectedTasks: ["security"],
-        findings: [
-          {
-            id: "fnd_existing",
-            status: "open",
-            path: "src/a.ts",
-            rangeId: "range-1",
-            side: "RIGHT",
-            startLine: 10,
-            endLine: 10,
-            firstSeenHeadSha: "head",
-            lastSeenHeadSha: "head",
-            lastCommentedHeadSha: "head",
-          },
-        ],
-      },
+      priorReviewState: priorReviewStateForTasks(["security"]),
       piRunner: async (options) => {
         observedPrompt = options.prompt;
         return noFindingsPiResult();
@@ -284,6 +316,32 @@ describe("runTaskRuntime", () => {
 
     expect(observedPrompt).not.toContain("Prior pipr findings");
     expect(observedPrompt).not.toContain("fnd_existing");
+  });
+
+  it("adds path scope instructions to Pi prompts without restricting read tools", async () => {
+    let observedPrompt = "";
+    const plan = testPlan((pipr) => {
+      const agent = defaultReviewAgent(pipr);
+      registerPiReviewTask(pipr, agent, {
+        paths: { include: ["src/**"], exclude: ["**/*.test.ts"] },
+      });
+    });
+
+    await runRuntime({
+      plan,
+      piRunner: async (options) => {
+        observedPrompt = options.prompt;
+        return noFindingsPiResult();
+      },
+    });
+
+    expect(observedPrompt).toContain("Path scope:");
+    expect(observedPrompt).toContain('"src/**"');
+    expect(observedPrompt).toContain('"**/*.test.ts"');
+    expect(observedPrompt).toContain(
+      "Publishable inline findings must target only files matching this filter.",
+    );
+    expect(observedPrompt).toContain("Read tools may access the whole repository.");
   });
 
   it("does not treat arbitrary agent input manifest fields as Diff Manifests", async () => {
@@ -719,6 +777,52 @@ describe("runTaskRuntime", () => {
     expect(result.mainComment).toContain("No findings.");
     expect(result.publicationPlan.metadata.selectedTasks).toEqual(["correctness", "security"]);
   });
+
+  it("skips scoped pipr.review Pi calls when no changed files match", async () => {
+    const plan = testPlan((pipr) => {
+      pipr.review({
+        model: deepseekModel(pipr),
+        instructions: "Review docs.",
+        paths: { include: ["docs/**"] },
+        command: false,
+        localName: false,
+      });
+    });
+
+    const result = await runRuntime({
+      plan,
+      piRunner: async () => {
+        throw new Error("Pi should not run when the scoped manifest is empty");
+      },
+    });
+
+    expect(result.review.inlineFindings).toEqual([]);
+    expect(result.publicationPlan.metadata.providerModels).toEqual([provider.model]);
+  });
+
+  it("enforces pipr.review paths against model findings", async () => {
+    const plan = testPlan((pipr) => {
+      pipr.review({
+        model: deepseekModel(pipr),
+        instructions: "Review source.",
+        paths: { include: ["src/**"] },
+        command: false,
+        localName: false,
+      });
+    });
+
+    const result = await runRuntime({
+      plan,
+      piRunner: async () =>
+        reviewPiResult([
+          finding("inside", "range-1", 10),
+          finding("outside", "range-1", 10, "docs/readme.md"),
+        ]),
+    });
+
+    expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
+    expectDroppedOutsideConfiguredPaths(result);
+  });
 });
 
 function eventContext(options: { action?: string; title?: string; description?: string } = {}) {
@@ -868,15 +972,94 @@ function reviewTestManifestWithContext(): DiffManifest {
   };
 }
 
-function finding(title: string, rangeId: string, startLine: number): ReviewFinding {
+function reviewTestManifestWithDocs(): DiffManifest {
+  const manifest = reviewTestManifest();
+  return {
+    ...manifest,
+    files: [
+      ...manifest.files,
+      {
+        path: "docs/readme.md",
+        status: "modified",
+        additions: 1,
+        deletions: 0,
+        hunks: [
+          {
+            hunkIndex: 1,
+            header: "@@ -1,1 +1,1 @@",
+            oldStart: 1,
+            oldLines: 1,
+            newStart: 1,
+            newLines: 1,
+            contentHash: "feedfacecafe",
+          },
+        ],
+        commentableRanges: [
+          {
+            id: "docs-range-1",
+            path: "docs/readme.md",
+            side: "RIGHT",
+            startLine: 1,
+            endLine: 1,
+            kind: "added",
+            hunkIndex: 1,
+            hunkHeader: "@@ -1,1 +1,1 @@",
+            hunkContentHash: "feedfacecafe",
+            preview: "Docs.",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function priorReviewStateForTasks(
+  selectedTasks: string[],
+): NonNullable<RunTaskRuntimeOptions["priorReviewState"]> {
+  return {
+    version: 1,
+    reviewedHeadSha: "head",
+    selectedTasks,
+    findings: [
+      {
+        id: "fnd_existing",
+        status: "open",
+        path: "src/a.ts",
+        rangeId: "range-1",
+        side: "RIGHT",
+        startLine: 10,
+        endLine: 10,
+        firstSeenHeadSha: "head",
+        lastSeenHeadSha: "head",
+        lastCommentedHeadSha: "head",
+      },
+    ],
+  };
+}
+
+function finding(
+  title: string,
+  rangeId: string,
+  startLine: number,
+  filePath = "src/a.ts",
+): ReviewFinding {
   return {
     body: `${title} body`,
-    path: "src/a.ts",
+    path: filePath,
     rangeId,
     side: "RIGHT",
     startLine,
     endLine: startLine,
   };
+}
+
+function expectDroppedOutsideConfiguredPaths(result: ReviewRuntimeResult): void {
+  expect(result.validated.droppedFindings).toEqual([
+    {
+      finding: expect.objectContaining({ body: "outside body" }),
+      reason: "finding path is outside configured paths",
+    },
+  ]);
 }
 
 function noFindingsPiRunner(): PiRunner {
@@ -893,9 +1076,13 @@ function providerFailurePiRunner(calls: string[]): PiRunner {
 }
 
 function noFindingsPiResult() {
+  return reviewPiResult([]);
+}
+
+function reviewPiResult(findings: ReviewFinding[]) {
   return {
     exitCode: 0,
-    stdout: JSON.stringify({ summary: { body: "No findings." }, inlineFindings: [] }),
+    stdout: JSON.stringify({ summary: { body: "No findings." }, inlineFindings: findings }),
     stderr: "",
     durationMs: 1,
   };
