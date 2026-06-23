@@ -8,7 +8,7 @@ GitHub is the first delivery target. Internally, GitHub is a code host adapter, 
 
 ## Quickstart
 
-Create the TypeScript config:
+Create the TypeScript config and GitHub Action workflow:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/somus/pipr/main/install.sh | sh
@@ -22,7 +22,7 @@ Set the provider secret used by the default config:
 DEEPSEEK_API_KEY=...
 ```
 
-Add the GitHub Action:
+`pipr init` creates `.github/workflows/pipr.yml`:
 
 ```yaml
 name: pipr
@@ -44,13 +44,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: somus/pipr@v1
+      - uses: somus/pipr@main
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          config-dir: .pipr
-          provider-id: deepseek
           provider: deepseek
           model: deepseek-v4-pro
           api-key-env: DEEPSEEK_API_KEY

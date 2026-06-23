@@ -19,7 +19,6 @@ type CliOptions = {
   configDir: string;
   event?: string;
   force?: boolean;
-  providerId?: string;
   provider?: string;
   model?: string;
   apiKeyEnv?: string;
@@ -53,7 +52,6 @@ function createProgram(): Command {
     .command("action")
     .description("Run inside GitHub Docker Action")
     .option("--config-dir <dir>", "Config directory", ".pipr")
-    .option("--provider-id <id>", "Trusted provider id")
     .option("--provider <name>", "Trusted provider name")
     .option("--model <model>", "Trusted provider model")
     .option("--api-key-env <env>", "Trusted provider API key env var")
@@ -117,7 +115,6 @@ function actionOptions(options: CliOptions): ActionOptions {
     eventPath,
     dryRun: process.env.PIPR_DRY_RUN === "1",
     trustedProvider: {
-      providerId: options.providerId,
       provider: options.provider,
       model: options.model,
       apiKeyEnv: options.apiKeyEnv,
@@ -176,7 +173,7 @@ async function runInit(options: CliOptions): Promise<void> {
     force: options.force === true,
   });
   console.log(
-    `created ${result.created.length} file(s) in ${result.configDir}` +
+    `created ${result.created.length} file(s)` +
       (result.overwritten.length > 0 ? `; overwrote ${result.overwritten.length}` : ""),
   );
 }

@@ -1,6 +1,6 @@
 # GitHub Action
 
-The GitHub Action runs `pipr action` inside the Docker Action image. GitHub is the first code host adapter; `.pipr/config.ts` remains provider-neutral.
+The GitHub workflow runs `pipr action` inside the prebuilt pipr image. GitHub is the first code host adapter; `.pipr/config.ts` remains provider-neutral.
 
 ## Workflow
 
@@ -24,29 +24,26 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: somus/pipr@v1
+      - uses: somus/pipr@main
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          config-dir: .pipr
-          provider-id: deepseek
           provider: deepseek
           model: deepseek-v4-pro
           api-key-env: DEEPSEEK_API_KEY
 ```
 
-## Inputs
+## Trusted options
 
-| Input | Default | Purpose |
+| Option | Default | Purpose |
 | --- | --- | --- |
 | `config-dir` | `.pipr` | Directory containing `config.ts` and `tsconfig.json`. |
-| `provider-id` | `deepseek` | Trusted pipr provider profile id used by the Action runtime. |
-| `provider` | `deepseek` | Trusted Pi provider backend. |
+| `provider` | `deepseek` | Trusted Pi provider backend and provider profile id. |
 | `model` | `deepseek-v4-pro` | Trusted model for the Action run. |
 | `api-key-env` | `DEEPSEEK_API_KEY` | Trusted environment variable name containing the provider key. |
 
-Trusted provider inputs come from workflow YAML, not from pull request code. The provider profile's `thinking` option stays in the base-commit `.pipr/config.ts`.
+Trusted provider options come from workflow YAML, not from pull request code. The provider profile's `thinking` option stays in the base-commit `.pipr/config.ts`.
 
 `pull-requests: write` publishes Inline Review Comments and enables best-effort stale inline thread resolution after a finding disappears. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
 

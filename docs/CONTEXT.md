@@ -12,8 +12,8 @@ _Avoid_: legacy product names
 The repository-local TypeScript config under `.pipr/config.ts`.
 _Avoid_: legacy configuration roots, `.pi/`
 
-**Trusted Action Inputs**:
-GitHub Action inputs controlled by workflow YAML, used for trusted provider selection.
+**Trusted Workflow Options**:
+GitHub workflow options controlled by workflow YAML, used for trusted provider selection.
 _Avoid_: PR-authored provider settings
 
 **Code Host Adapter**:

@@ -48,7 +48,7 @@ type TaskContext = {
 
 For GitHub Action pull request runs:
 
-1. The workflow chooses trusted provider inputs.
+1. The workflow chooses trusted provider options.
 2. pipr checks out the pull request for review.
 3. pipr loads `.pipr/config.ts` and local imports from the base commit.
 4. Pull request changes to `.pipr/config.ts` are reviewed as code, but do not affect the current run.

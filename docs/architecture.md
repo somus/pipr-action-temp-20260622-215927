@@ -19,7 +19,7 @@ For a broader introduction, see [pipr Docs](index.md). For the public TypeScript
 
 For GitHub Action pull request runs, pipr loads `.pipr/config.ts` and local imports from the base commit. The pull request head is reviewed, but PR-authored config changes cannot change the current run's executable review settings.
 
-Provider backend, model, and API-key env can be overridden only by trusted Action inputs. Provider options such as `thinking` come from the trusted config.
+Provider backend, model, and API-key env can be overridden only by trusted workflow options. Provider options such as `thinking` come from the trusted config.
 
 Pi receives a read-only workspace copy. It can use only read-only built-in tools and pipr-owned Diff Read Tools for condensed manifest runs.
 

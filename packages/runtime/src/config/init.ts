@@ -23,22 +23,28 @@ type StarterFile = {
 };
 
 export function listOfficialMinimalFiles(): string[] {
-  return ["config.ts", "tsconfig.json", path.join("types", "pipr-sdk.d.ts")];
+  return [
+    path.join(".pipr", "config.ts"),
+    path.join(".pipr", "tsconfig.json"),
+    path.join(".pipr", "types", "pipr-sdk.d.ts"),
+    path.join(".github", "workflows", "pipr.yml"),
+  ];
 }
 
 export async function initOfficialMinimalProject(
   options: InitOfficialMinimalProjectOptions,
 ): Promise<InitOfficialMinimalProjectResult> {
-  const { configDir, projectDir } = resolveContainedConfigDir(options);
-  const targets = (await starterFiles()).map((file) => ({
+  const { configDir, relativeConfigDir } = resolveContainedConfigDir(options);
+  const rootDir = path.resolve(options.rootDir);
+  const targets = (await starterFiles(relativeConfigDir)).map((file) => ({
     ...file,
-    absolutePath: path.join(projectDir, file.relativePath),
+    absolutePath: path.join(rootDir, file.relativePath),
   }));
-  await assertSafeTargetAncestors(targets, projectDir);
+  await assertSafeTargetAncestors(targets, rootDir);
   const existing = await findExistingTargets(targets);
   if (existing.length > 0 && !options.force) {
     throw new Error(
-      `${configDir} already contains pipr files: ${existing.join(", ")}. ` +
+      `Project already contains pipr files: ${existing.join(", ")}. ` +
         "Use --force to replace existing .pipr files.",
     );
   }
@@ -60,11 +66,18 @@ export async function initOfficialMinimalProject(
   return { configDir, created, overwritten };
 }
 
-async function starterFiles(): Promise<StarterFile[]> {
+async function starterFiles(relativeConfigDir: string): Promise<StarterFile[]> {
   return [
-    { relativePath: "config.ts", contents: starterConfigTs },
-    { relativePath: "tsconfig.json", contents: starterTsconfig },
-    { relativePath: path.join("types", "pipr-sdk.d.ts"), contents: await sdkDeclaration() },
+    { relativePath: path.join(relativeConfigDir, "config.ts"), contents: starterConfigTs },
+    { relativePath: path.join(relativeConfigDir, "tsconfig.json"), contents: starterTsconfig },
+    {
+      relativePath: path.join(relativeConfigDir, "types", "pipr-sdk.d.ts"),
+      contents: await sdkDeclaration(),
+    },
+    {
+      relativePath: path.join(".github", "workflows", "pipr.yml"),
+      contents: starterWorkflow(relativeConfigDir.split(path.sep).join("/")),
+    },
   ];
 }
 
@@ -191,6 +204,7 @@ function declarationModuleBlock(module: SdkDeclarationModule & { source: string 
 function declarationSource(module: SdkDeclarationModule & { source: string }): string {
   const source = module.source
     .replace(/^declare /gm, "")
+    .replace(/^import \{ z \} from "zod";$/gm, zodShimDeclaration())
     .replaceAll('from "./index.js"', 'from "@pipr/sdk"')
     .replaceAll('from "./index.mjs"', 'from "@pipr/sdk"')
     .replace(/^import .* from "@pipr\/sdk";$/gm, "")
@@ -198,6 +212,39 @@ function declarationSource(module: SdkDeclarationModule & { source: string }): s
   return module.moduleName === "@pipr/sdk"
     ? source
     : source.replace(/^export \{(?<exports>.*)\};$/gm, 'export {$<exports>} from "@pipr/sdk";');
+}
+
+function zodShimDeclaration(): string {
+  return [
+    "type ZodInfer<T> = T extends { parse(value: unknown): infer Output } ? Output : never;",
+    "type ZodType<T = unknown> = {",
+    "  parse(value: unknown): T;",
+    "  optional(): ZodType<T | undefined>;",
+    "  min(value: number): ZodType<T>;",
+    "  max(value: number): ZodType<T>;",
+    "  int(): ZodType<T>;",
+    "  positive(): ZodType<T>;",
+    "  finite(): ZodType<T>;",
+    "};",
+    "const z: {",
+    "  string(): ZodType<string>;",
+    "  number(): ZodType<number>;",
+    "  boolean(): ZodType<boolean>;",
+    "  null(): ZodType<null>;",
+    "  unknown(): ZodType<unknown>;",
+    "  literal<const T extends string | number | boolean | null>(value: T): ZodType<T>;",
+    "  enum<const T extends readonly [string, ...string[]]>(values: T): ZodType<T[number]>;",
+    "  array<T extends ZodType>(schema: T): ZodType<Array<ZodInfer<T>>>;",
+    "  strictObject<T extends Record<string, ZodType>>(shape: T): ZodType<{ [K in keyof T]: ZodInfer<T[K]> }>;",
+    "  object<T extends Record<string, ZodType>>(shape: T): ZodType<{ [K in keyof T]: ZodInfer<T[K]> }>;",
+    "  looseObject<T extends Record<string, ZodType>>(shape: T): ZodType<{ [K in keyof T]: ZodInfer<T[K]> } & Record<string, unknown>>;",
+    "  record<T extends ZodType>(key: ZodType<string>, value: T): ZodType<Record<string, ZodInfer<T>>>;",
+    "  union<const T extends readonly ZodType[]>(schemas: T): ZodType<ZodInfer<T[number]>>;",
+    "  json(): ZodType<JsonValue>;",
+    "  fromJSONSchema(schema: JsonSchema): ZodType<unknown>;",
+    "  toJSONSchema(schema: ZodType): JsonSchema;",
+    "};",
+  ].join("\n");
 }
 
 async function sdkDeclarationPath(fileName: string): Promise<string | undefined> {
@@ -248,3 +295,40 @@ const starterTsconfig = `{
   "include": ["./**/*.ts"]
 }
 `;
+
+function starterWorkflow(relativeConfigDir: string): string {
+  const lines = [
+    "name: pipr",
+    "",
+    "on:",
+    "  pull_request:",
+    "  issue_comment:",
+    "    types: [created]",
+    "",
+    "permissions:",
+    "  contents: read",
+    "  pull-requests: write",
+    "  issues: write",
+    "",
+    "jobs:",
+    "  review:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - uses: actions/checkout@v6",
+    "        with:",
+    "          fetch-depth: 0",
+    "      - uses: somus/pipr@main",
+    "        env:",
+    `          DEEPSEEK_API_KEY: $${["{{ ", "secrets.DEEPSEEK_API_KEY", " }}"].join("")}`,
+    `          GITHUB_TOKEN: $${["{{ ", "github.token", " }}"].join("")}`,
+    "        with:",
+    "          provider: deepseek",
+    "          model: deepseek-v4-pro",
+    "          api-key-env: DEEPSEEK_API_KEY",
+  ];
+  if (relativeConfigDir !== ".pipr") {
+    lines.push(`          config-dir: ${relativeConfigDir}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}

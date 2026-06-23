@@ -27,6 +27,21 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).toContain("readonly id: symbol;");
     expect(sdkTypes).toContain("readonly apiKey?: SecretRef;");
     expect(sdkTypes).toContain("readonly options?: Record<string, unknown>;");
+    const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
+    expect(workflow).toContain("uses: somus/pipr@main");
+    expect(workflow).not.toContain("config-dir:");
+    expect(workflow).not.toContain("provider-id:");
+    expect(workflow).toContain("provider: deepseek");
+    expect(workflow).toContain("model: deepseek-v4-pro");
+    expect(workflow).toContain("api-key-env: DEEPSEEK_API_KEY");
+    expect(workflow).toContain("DEEPSEEK_API_KEY:");
+    expect(workflow).toContain("secrets.DEEPSEEK_API_KEY");
+    expect(await listFiles(rootDir)).toEqual([
+      ".github/workflows/pipr.yml",
+      ".pipr/config.ts",
+      ".pipr/tsconfig.json",
+      ".pipr/types/pipr-sdk.d.ts",
+    ]);
     expect(await listFiles(path.join(rootDir, ".pipr"))).toEqual([
       "config.ts",
       "tsconfig.json",
@@ -57,8 +72,41 @@ describe("initOfficialMinimalProject", () => {
 
     const result = await initOfficialMinimalProject({ rootDir, force: true });
 
-    expect(result.overwritten).toEqual(["config.ts"]);
+    expect(result.overwritten).toEqual([path.join(".pipr", "config.ts")]);
     expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toContain("definePipr");
+  });
+
+  it("creates the GitHub workflow with the selected config directory", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+
+    const result = await initOfficialMinimalProject({ rootDir, configDir: "config/pipr" });
+    const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
+
+    expect(result.created).toContain(path.join(".github", "workflows", "pipr.yml"));
+    expect(workflow).toContain("config-dir: config/pipr");
+    expect(await Bun.file(path.join(rootDir, "config", "pipr", "config.ts")).text()).toContain(
+      "pipr.review",
+    );
+  });
+
+  it("refuses and force-overwrites an existing GitHub workflow", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+    await mkdir(path.join(rootDir, ".github", "workflows"), { recursive: true });
+    await Bun.write(path.join(rootDir, ".github", "workflows", "pipr.yml"), "custom: true\n");
+
+    await expect(initOfficialMinimalProject({ rootDir })).rejects.toThrow(
+      "Use --force to replace existing .pipr files",
+    );
+    await expect(
+      Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text(),
+    ).resolves.toBe("custom: true\n");
+
+    const result = await initOfficialMinimalProject({ rootDir, force: true });
+
+    expect(result.overwritten).toEqual([path.join(".github", "workflows", "pipr.yml")]);
+    expect(await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text()).toContain(
+      "uses: somus/pipr@main",
+    );
   });
 
   it("rejects symlinked target parent directories", async () => {

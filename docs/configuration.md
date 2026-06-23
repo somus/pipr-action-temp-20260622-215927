@@ -98,10 +98,7 @@ const security = pipr.agent({
   model,
   instructions: "Review only security issues.",
   output: pipr.schemas.review,
-  prompt: (input) => pipr.prompt`
-    Review this pull request for security issues.
-    ${pipr.compactManifest(input.manifest)}
-  `,
+  prompt: () => "Review this pull request for security issues.",
 });
 
 const task = pipr.task("security-review", async (ctx) => {
@@ -114,7 +111,51 @@ const task = pipr.task("security-review", async (ctx) => {
 pipr.on.changeRequest(["opened", "updated"], task);
 ```
 
-Inline findings must use `pipr.schemas.review` and must target valid Diff Manifest ranges.
+Pass `manifest` to `ctx.pi.run(...)`. pipr injects the full or condensed Diff Manifest into the Pi prompt and attaches read-only diff tools when needed.
+
+Inline findings passed to `ctx.output.findings(...)` must target valid Diff Manifest ranges.
+
+## Custom schemas
+
+Use SDK-owned Zod for typed agent outputs:
+
+```ts
+import { definePipr, z } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const securityOutput = pipr.schema(
+    "security-output",
+    z.strictObject({
+      summary: z.string(),
+      issues: z.array(
+        z.strictObject({
+          body: z.string(),
+          path: z.string(),
+          rangeId: z.string(),
+          side: z.enum(["RIGHT", "LEFT"]),
+          startLine: z.number().int().positive(),
+          endLine: z.number().int().positive(),
+        }),
+      ),
+    }),
+  );
+});
+```
+
+JSON Schema is available when you want a data-defined schema. The TypeScript type is caller-supplied:
+
+```ts
+export default definePipr((pipr) => {
+  const ownerOutput = pipr.jsonSchema<{ owner: string }>("owner-output", {
+    type: "object",
+    properties: { owner: { type: "string" } },
+    required: ["owner"],
+    additionalProperties: false,
+  });
+});
+```
+
+Agents can return any schema. To publish inline comments, map custom output into `ReviewFinding[]` and call `ctx.output.findings(...)`.
 
 ## Commands and local entrypoints
 
@@ -152,7 +193,7 @@ pipr run security --base origin/main --head HEAD
 1. the call override
 2. `agent.model`
 3. `agent.fallbacks`
-4. the runtime provider selected from trusted Action inputs or the config default provider
+4. the runtime provider selected from trusted workflow options or the config default provider
 
 Invalid structured output gets one repair attempt by default. Transient Pi execution retries default to zero.
 
@@ -167,11 +208,11 @@ const reviewer = pipr.agent({
     invalidOutput: 1,
     transientFailure: 1,
   },
-  prompt: (input) => pipr.prompt`${pipr.compactManifest(input.manifest)}`,
+  prompt: () => "Review the pull request.",
 });
 ```
 
-When GitHub Action trusted provider inputs are present, pipr uses only that trusted provider and does not run agent or task fallbacks.
+When GitHub workflow trusted provider options are present, pipr uses only that trusted provider and does not run agent or task fallbacks.
 
 ## Inspect
 

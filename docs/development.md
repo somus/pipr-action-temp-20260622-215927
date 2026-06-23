@@ -62,7 +62,7 @@ PIPR_ACTION_IMAGE=pipr-action:e2e bun run --cwd packages/e2e check:container
 The checked-in Action metadata uses the published image directly:
 
 ```text
-docker://ghcr.io/somus/pipr-action:main
+docker://ghcr.io/somus/pipr-action:latest
 ```
 
 Local `act` fixtures rewrite that metadata to the `PIPR_ACTION_IMAGE` value so Action checks still exercise the freshly built local image.

@@ -30,6 +30,7 @@ pipr check
 - `.pipr/config.ts`
 - `.pipr/tsconfig.json`
 - `.pipr/types/pipr-sdk.d.ts`
+- `.github/workflows/pipr.yml`
 
 Existing pipr files are not overwritten unless `pipr init --force` is used.
 
@@ -54,9 +55,9 @@ apiKey: pipr.secret("DEEPSEEK_API_KEY");
 
 Create a GitHub Actions secret named `DEEPSEEK_API_KEY`.
 
-## 3. Add the workflow
+## 3. Review the workflow
 
-Create `.github/workflows/pipr.yml`:
+`pipr init` creates `.github/workflows/pipr.yml`:
 
 ```yaml
 name: pipr
@@ -78,13 +79,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: somus/pipr@v1
+      - uses: somus/pipr@main
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          config-dir: .pipr
-          provider-id: deepseek
           provider: deepseek
           model: deepseek-v4-pro
           api-key-env: DEEPSEEK_API_KEY
@@ -122,4 +121,4 @@ pipr review --base origin/main
 - Read [Configuration](configuration.md) for common config patterns.
 - Read [PIPR SDK Reference](sdk-reference.md) for the public builder API.
 - Read [Runtime Guide](runtime.md) for Diff Manifest, Pi execution, validation, and publication behavior.
-- Read [GitHub Action](github-action.md) for Action inputs, outputs, dry runs, and permissions.
+- Read [GitHub Action](github-action.md) for trusted options, outputs, dry runs, and permissions.

@@ -1,14 +1,13 @@
 name: pipr
 description: Pi-powered pull request automation runtime
+branding:
+  icon: git-pull-request
+  color: purple
 inputs:
   config-dir:
     description: pipr configuration directory
     required: false
     default: .pipr
-  provider-id:
-    description: Trusted pipr provider profile id used by the Action runtime
-    required: false
-    default: deepseek
   provider:
     description: Trusted Pi provider backend used by the Action runtime
     required: false
@@ -32,13 +31,11 @@ outputs:
     description: JSON publication result for main and inline comments
 runs:
   using: docker
-  image: docker://ghcr.io/somus/pipr-action:main
+  image: docker://ghcr.io/somus/pipr-action:latest
   args:
     - action
     - --config-dir
     - ${{ inputs.config-dir }}
-    - --provider-id
-    - ${{ inputs.provider-id }}
     - --provider
     - ${{ inputs.provider }}
     - --model

@@ -19,7 +19,7 @@ describe("pipr CLI", () => {
     expect(result.stdout).toContain("review [options]");
     expect(result.stdout).toContain("run [options] <name>");
     expect(action.stdout).toContain("--config-dir <dir>");
-    expect(action.stdout).toContain("--provider-id <id>");
+    expect(action.stdout).toContain("--provider <name>");
   });
 
   it("requires an explicit base SHA for local review runs", async () => {
@@ -73,12 +73,15 @@ describe("pipr CLI", () => {
       const check = await runCli(["check"], {}, workspace);
 
       expect(init.exitCode).toBe(0);
-      expect(init.stdout).toContain("created 3 file(s) in .pipr");
+      expect(init.stdout).toContain("created 4 file(s)");
       expect(check.exitCode).toBe(0);
       expect(check.stdout).toContain("valid:");
       expect(await Bun.file(path.join(workspace, ".pipr", "config.ts")).text()).toContain(
         "pipr.review",
       );
+      expect(
+        await Bun.file(path.join(workspace, ".github", "workflows", "pipr.yml")).text(),
+      ).toContain("uses: somus/pipr@main");
     } finally {
       await removeWorkspace(workspace);
     }

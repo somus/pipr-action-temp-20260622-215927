@@ -82,7 +82,7 @@ Pi executes the agent. pipr owns orchestration, validation, and publication poli
 | [Configuration](configuration.md) | Common config recipes and examples. |
 | [PIPR SDK Reference](sdk-reference.md) | Public SDK imports, builder methods, task context, schemas, tools, and entrypoints. |
 | [Runtime Guide](runtime.md) | Run modes, trust model, Diff Manifest, Pi execution, validation, publication. |
-| [GitHub Action](github-action.md) | Workflow YAML, Action inputs, outputs, permissions, dry run. |
+| [GitHub Action](github-action.md) | Workflow YAML, trusted options, outputs, permissions, dry run. |
 | [Code Host Adapters](code-host-adapters.md) | Internal adapter seam for GitHub now, with GitLab, Bitbucket, and Azure DevOps support coming soon. |
 | [Architecture](architecture.md) | Short architecture summary and ADR links. |
 | [Development](development.md) | Repo setup, checks, Action e2e, release checks. |

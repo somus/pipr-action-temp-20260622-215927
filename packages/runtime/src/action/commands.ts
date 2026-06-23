@@ -61,7 +61,6 @@ export type ActionCommandOptions = RuntimeCommandOptions & {
   eventPath: string;
   dryRun: boolean;
   trustedProvider?: {
-    providerId?: string;
     provider?: string;
     model?: string;
     apiKeyEnv?: string;
@@ -485,20 +484,15 @@ function trustedActionProvider(
   options: ActionCommandDependencyOptions,
   trustedConfig: PiprConfig,
 ): ProviderConfig {
-  const providerId = readTrustedProviderOption(
+  const provider = readTrustedProviderOption(
     options,
-    "providerId",
-    "provider-id",
-    defaultActionProvider.id,
+    "provider",
+    "provider",
+    defaultActionProvider.provider,
   );
   return parseProviderConfig({
-    id: providerId,
-    provider: readTrustedProviderOption(
-      options,
-      "provider",
-      "provider",
-      defaultActionProvider.provider,
-    ),
+    id: provider,
+    provider,
     model: readTrustedProviderOption(options, "model", "model", defaultActionProvider.model),
     apiKeyEnv: readTrustedProviderOption(
       options,
@@ -506,7 +500,7 @@ function trustedActionProvider(
       "api-key-env",
       defaultActionProvider.apiKeyEnv,
     ),
-    thinking: trustedConfig.providers.find((provider) => provider.id === providerId)?.thinking,
+    thinking: trustedConfig.providers.find((item) => item.id === provider)?.thinking,
   });
 }
 
