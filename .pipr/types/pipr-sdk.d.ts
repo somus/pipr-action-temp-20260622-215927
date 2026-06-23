@@ -1,6 +1,36 @@
 // biome-ignore-all format: generated from @pipr/sdk declarations
 // biome-ignore-all assist/source/organizeImports: generated from @pipr/sdk declarations
 declare module "@pipr/sdk" {
+type ZodInfer<T> = T extends { parse(value: unknown): infer Output } ? Output : never;
+type ZodType<T = unknown, Optional extends boolean = false> = {
+  readonly _piprOptional: Optional;
+  parse(value: unknown): T;
+  optional(): ZodType<T | undefined, true>;
+  min(value: number): ZodType<T, Optional>;
+  max(value: number): ZodType<T, Optional>;
+  int(): ZodType<T, Optional>;
+  positive(): ZodType<T, Optional>;
+  finite(): ZodType<T, Optional>;
+};
+type ZodAny = ZodType<unknown, boolean>;
+type ZodOptionalKeys<T extends Record<string, ZodAny>> = { [K in keyof T]: T[K] extends ZodType<unknown, true> ? K : never }[keyof T];
+type ZodObjectOutput<T extends Record<string, ZodAny>> = { [K in Exclude<keyof T, ZodOptionalKeys<T>>]: ZodInfer<T[K]> } & { [K in ZodOptionalKeys<T>]?: ZodInfer<T[K]> };
+const z: {
+  string(): ZodType<string>;
+  number(): ZodType<number>;
+  boolean(): ZodType<boolean>;
+  null(): ZodType<null>;
+  unknown(): ZodType<unknown>;
+  any(): ZodType<unknown>;
+  literal<T extends string | number | boolean | null>(value: T): ZodType<T>;
+  enum<const T extends readonly [string, ...string[]]>(values: T): ZodType<T[number]>;
+  array<T extends ZodAny>(schema: T): ZodType<Array<ZodInfer<T>>>;
+  record<T extends ZodAny>(key: ZodType<string>, value: T): ZodType<Record<string, ZodInfer<T>>>;
+  strictObject<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T>>;
+  object<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T>>;
+  union<const T extends readonly [ZodAny, ZodAny, ...ZodAny[]]>(schemas: T): ZodType<ZodInfer<T[number]>>;
+};
+
 //#region src/index.d.ts
 const configFactoryBrand: unique symbol;
 type RepositoryPermission = "read" | "triage" | "write" | "maintain" | "admin";
@@ -24,6 +54,12 @@ type ModelProfile = {
   readonly apiKey?: SecretRef;
   readonly options?: Record<string, unknown>;
 };
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+type JsonObject = {
+  [key: string]: JsonValue;
+};
+type JsonSchema = JsonObject | boolean;
 type SchemaParseResult<T> = {
   success: true;
   data: T;
@@ -34,15 +70,12 @@ type SchemaParseResult<T> = {
 type Schema<T> = {
   readonly kind: "pipr.schema";
   readonly id: string;
+  readonly jsonSchema?: JsonSchema;
   parse(value: unknown): T;
   safeParse(value: unknown): SchemaParseResult<T>;
 };
+type ZodSchema<T> = ZodType<T>;
 const reviewOutputSchemaId = "core/pr-review";
-type JsonPrimitive = string | number | boolean | null;
-type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
-type JsonObject = {
-  [key: string]: JsonValue;
-};
 type ReviewSummary = {
   title?: string;
   body: string;
@@ -62,13 +95,6 @@ type ReviewResult<TData extends JsonObject = JsonObject> = {
   inlineFindings: ReviewFinding<TData>[];
   metadata?: JsonObject;
 };
-type ReviewCandidates<TData extends JsonObject = JsonObject> = {
-  summary?: ReviewSummary;
-  candidates: Array<ReviewFinding<TData> & {
-    candidateId: string;
-  }>;
-};
-type ConsolidatedReview<TData extends JsonObject = JsonObject> = ReviewResult<TData>;
 type PromptSource = string | PromptText;
 type PromptValue = unknown;
 type PromptText = {
@@ -84,8 +110,6 @@ type BuiltinToolCatalog = {
 };
 type BuiltinSchemaCatalog = {
   readonly review: Schema<ReviewResult>;
-  readonly reviewCandidates: Schema<ReviewCandidates>;
-  readonly consolidatedReview: Schema<ConsolidatedReview>;
   readonly summary: Schema<ReviewSummary>;
 };
 type AgentTool<Input = unknown, Output = unknown> = {
@@ -214,10 +238,11 @@ type PiprBuilder = {
   limits(options: RuntimeLimits): void;
   use<Handle>(plugin: PiprPlugin<Handle>): Handle;
   tool<Input, Output>(definition: PluginToolDefinition<Input, Output>): AgentTool<Input, Output>;
+  schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T>;
+  jsonSchema<T>(id: string, jsonSchema: JsonSchema): Schema<T>;
   prompt(strings: TemplateStringsArray, ...values: PromptValue[]): PromptText;
   section(title: string, value: PromptValue): PromptText;
   json(value: unknown, options?: JsonPromptOptions): PromptText;
-  compactManifest(manifest: DiffManifest): PromptText;
 };
 type RuntimePlan = {
   models: ModelProfile[];
@@ -368,11 +393,13 @@ function isPiprConfigFactory(value: unknown): value is PiprConfigFactory;
 function buildPiprPlan(factory: PiprConfigFactory): RuntimePlan;
 /** Defines a typed pipr plugin installer. */
 function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle>;
+/** Defines a typed schema from a Zod schema. */
+function schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T>;
+/** Defines a typed schema from JSON Schema. The generic type is caller supplied. */
+function jsonSchema<T>(id: string, schemaDefinition: JsonSchema): Schema<T>;
 const schemas: BuiltinSchemaCatalog;
 /** Parses model output for pipr's main pull request review schema. */
 function parseReviewResult(value: unknown): ReviewResult;
-/** Parses model output for pipr's candidate review schema. */
-function parseReviewCandidates(value: unknown): ReviewCandidates;
 /** Parses a review summary value. */
 function parseReviewSummary(value: unknown): ReviewSummary;
 /** Parses one inline review finding. */
@@ -382,10 +409,10 @@ function reviewSchemaExample(): ReviewResult;
 /** Renders a prompt source/value into plain text for Pi prompts. */
 function renderPromptValue(value: PromptValue): string;
 //#endregion
-export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommandOptions, ConsolidatedReview, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonValue, ModelOptions, ModelProfile, OutputCollector, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCandidates, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, SectionContributionOptions, SummaryContributionOptions, Task, TaskContext, TaskHandler, ToolRunOptions, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, parseReviewCandidates, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schemas };
+export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommandOptions, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonValue, ModelOptions, ModelProfile, OutputCollector, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, SectionContributionOptions, SummaryContributionOptions, Task, TaskContext, TaskHandler, ToolRunOptions, ZodSchema, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, jsonSchema, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schema, schemas, z };
 }
 declare module "@pipr/sdk/review" {
-export { type AgentPromptContext, type ChangeRequestAction, type DefaultReviewInput, type ReviewCandidates, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, parseReviewCandidates, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewSchemaExample, schemas } from "@pipr/sdk";
+export { type AgentPromptContext, type ChangeRequestAction, type DefaultReviewInput, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewSchemaExample, schemas } from "@pipr/sdk";
 }
 declare module "@pipr/sdk/tools" {
 export { type AgentTool, type BuiltinSchemaCatalog, type BuiltinToolCatalog, type JsonObject, type JsonValue, type PluginToolDefinition, type PromptSource, type PromptText, type PromptValue, type Schema, type SchemaParseResult, type ToolRunOptions, isBuiltinReadOnlyTool, renderPromptValue, schemas } from "@pipr/sdk";

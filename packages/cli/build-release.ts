@@ -1,6 +1,10 @@
 #!/usr/bin/env bun
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import {
+  embeddedSdkDeclaration,
+  readSdkDeclarationModules,
+} from "./src/release/sdk-declaration.js";
 
 type ReleaseTarget = {
   target: string;
@@ -83,43 +87,7 @@ async function bundledSdkModule(): Promise<string> {
 }
 
 async function bundledSdkDeclaration(): Promise<string> {
-  const modules = [
-    { moduleName: "@pipr/sdk", fileName: "index.d.mts" },
-    { moduleName: "@pipr/sdk/review", fileName: "review.d.mts" },
-    { moduleName: "@pipr/sdk/tools", fileName: "tools.d.mts" },
-  ];
-  const blocks = await Promise.all(
-    modules.map(async (module) => {
-      const source = await Bun.file(
-        path.join(sourceRoot, "packages", "sdk", "dist", module.fileName),
-      ).text();
-      return declarationModuleBlock({ ...module, source });
-    }),
-  );
-  return [
-    "// biome-ignore-all format: generated from @pipr/sdk declarations",
-    "// biome-ignore-all assist/source/organizeImports: generated from @pipr/sdk declarations",
-    ...blocks,
-    "",
-  ].join("\n");
-}
-
-function declarationModuleBlock(options: { moduleName: string; source: string }): string {
-  return [`declare module "${options.moduleName}" {`, declarationSource(options).trim(), "}"].join(
-    "\n",
-  );
-}
-
-function declarationSource(options: { moduleName: string; source: string }): string {
-  const source = options.source
-    .replace(/^declare /gm, "")
-    .replaceAll('from "./index.js"', 'from "@pipr/sdk"')
-    .replaceAll('from "./index.mjs"', 'from "@pipr/sdk"')
-    .replace(/^import .* from "@pipr\/sdk";$/gm, "")
-    .replace(/^\/\/# sourceMappingURL=.*$/gm, "");
-  return options.moduleName === "@pipr/sdk"
-    ? source
-    : source.replace(/^export \{(?<exports>.*)\};$/gm, 'export {$<exports>} from "@pipr/sdk";');
+  return embeddedSdkDeclaration(await readSdkDeclarationModules(sourceRoot));
 }
 
 async function buildTarget(item: ReleaseTarget, define: Record<string, string>): Promise<void> {

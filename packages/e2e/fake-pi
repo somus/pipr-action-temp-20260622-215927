@@ -25,13 +25,13 @@ async function buildReview() {
     return orchestratorReview();
   }
   if (prompt.includes("Focus: correctness")) {
-    return review("Orchestrator fixture review", "Correctness specialist review");
+    return specialistReview("correctness", "Correctness specialist review");
   }
   if (prompt.includes("Focus: security")) {
-    return review("Orchestrator fixture review", "Security specialist review");
+    return specialistReview("security", "Security specialist review");
   }
   if (prompt.includes("Focus: tests")) {
-    return review("Orchestrator fixture review", "Tests specialist review");
+    return specialistReview("tests", "Tests specialist review");
   }
   if (prompt.includes('"mode": "condensed"')) {
     await assertCondensedRuntimeTools();
@@ -48,7 +48,7 @@ async function readPrompt(value) {
 }
 
 async function fullFixtureReview() {
-  const manifest = parsePromptJson("Diff Manifest:");
+  const manifest = parsePromptJson("\nManifest:");
   const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
   const range =
     ranges.find(
@@ -91,10 +91,17 @@ function orchestratorReview() {
   assertPromptContains("Correctness specialist review");
   assertPromptContains("Security specialist review");
   assertPromptContains("Tests specialist review");
-  return review(
-    "Orchestrator fixture review",
-    "Orchestrated review combined correctness, security, and tests specialist outputs.",
-  );
+  return {
+    summary: {
+      title: "Orchestrator fixture review",
+      body: "Orchestrated review combined correctness, security, and tests specialist outputs.",
+    },
+    findings: [],
+  };
+}
+
+function specialistReview(focus, summary) {
+  return { focus, summary };
 }
 
 async function assertCondensedRuntimeTools() {
@@ -116,15 +123,15 @@ async function assertCondensedRuntimeTools() {
   assert(await Bun.file(dataPath).exists(), "runtime tool data path missing");
   assertEqual(path.basename(dataPath), "data.json", "runtime tool data file name mismatch");
 
-  const payload = parsePromptJson("Diff Manifest Payload:", "Diff Manifest:");
+  const payload = parsePromptJson("\nPayload:", "\nManifest:");
   assertEqual(payload.mode, "condensed", "expected condensed manifest payload");
   assert(prompt.includes("pipr_read_diff(path?, rangeId?)"), "prompt did not describe pipr_read_diff");
   assert(
-    prompt.includes("pipr_read_at_ref(path, ref, rangeId)"),
+    prompt.includes("pipr_read_at_ref(path, ref, rangeId?)"),
     "prompt did not describe pipr_read_at_ref",
   );
 
-  const manifest = parsePromptJson("Diff Manifest:");
+  const manifest = parsePromptJson("\nManifest:");
   const file = manifest.files.find((item) => item.path === "packages/e2e/fixtures/act/project/sample.ts");
   assert(file, "condensed manifest missing sample file");
   assert(file.commentableRanges.length > 0, "condensed manifest missing commentable ranges");
@@ -239,7 +246,13 @@ function parsePromptJson(startLabel, endLabel) {
 }
 
 function readNextPromptSectionIndex(contentStart) {
-  const markers = ["\n\nDiff Manifest Runtime Context:", "\n\nCondensed manifest helper tools:"]
+  const markers = [
+    "\n\nCondensed manifest helper tools:",
+    "\n\nInstructions:",
+    "\n\nRun Instructions:",
+    "\n\nPrior pipr findings:",
+    "\n\nPrompt:",
+  ]
     .map((marker) => prompt.indexOf(marker, contentStart))
     .filter((index) => index !== -1);
   return markers.length > 0 ? Math.min(...markers) : prompt.length;

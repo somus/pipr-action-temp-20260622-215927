@@ -2,7 +2,6 @@ export type {
   AgentPromptContext,
   ChangeRequestAction,
   DefaultReviewInput,
-  ReviewCandidates,
   ReviewEntrypoints,
   Reviewer,
   ReviewerOptions,
@@ -12,7 +11,6 @@ export type {
   ReviewSummary,
 } from "./index.js";
 export {
-  parseReviewCandidates,
   parseReviewFinding,
   parseReviewResult,
   parseReviewSummary,

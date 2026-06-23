@@ -3,6 +3,7 @@ import { access, chmod, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { embeddedSdkDeclaration, readSdkDeclarationModules } from "../release/sdk-declaration.js";
 
 const cliPath = path.resolve("src/main.ts");
 
@@ -155,11 +156,26 @@ describe("pipr CLI", () => {
       expect(inspect.stdout).toContain("locals");
       expect(inspect.stdout).toContain("tools");
       expect(inspect.stdout).toContain("schemas");
+      expect(inspect.stdout).toContain("core/pr-review");
+      expect(inspect.stdout).toContain("core/summary");
+      expect(inspect.stdout).not.toContain("core/review-candidates");
+      expect(inspect.stdout).not.toContain("core/consolidated-review");
       expect(inspect.stdout).toContain("deepseek");
       expect(inspect.stdout).toContain("@pipr review");
     } finally {
       await removeWorkspace(workspace);
     }
+  });
+
+  it("embeds standalone SDK declarations for release init", async () => {
+    const repoRoot = path.resolve("../..");
+    const declaration = embeddedSdkDeclaration(await readSdkDeclarationModules(repoRoot));
+
+    expect(declaration).toContain('declare module "@pipr/sdk"');
+    expect(declaration).toContain("const z: {");
+    expect(declaration).toContain("type ZodSchema<T> = ZodType<T>;");
+    expect(declaration).not.toContain('from "zod"');
+    expect(declaration).not.toContain("z.ZodType");
   });
 });
 

@@ -16,7 +16,7 @@ export const reviewFindingSchema = z.strictObject({
   side: z.enum(["RIGHT", "LEFT"]),
   startLine: z.number().int().positive(),
   endLine: z.number().int().positive(),
-  suggestedFix: z.string().optional(),
+  suggestedFix: z.string().min(1).optional(),
   data: z.record(z.string(), z.json()).optional(),
 });
 

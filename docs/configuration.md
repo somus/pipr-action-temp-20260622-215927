@@ -98,9 +98,8 @@ const security = pipr.agent({
   model,
   instructions: "Review only security issues.",
   output: pipr.schemas.review,
-  prompt: (input) => pipr.prompt`
+  prompt: () => pipr.prompt`
     Review this pull request for security issues.
-    ${pipr.compactManifest(input.manifest)}
   `,
 });
 
@@ -115,6 +114,40 @@ pipr.on.changeRequest(["opened", "updated"], task);
 ```
 
 Inline findings must use `pipr.schemas.review` and must target valid Diff Manifest ranges.
+
+## Custom schemas
+
+Use custom schemas for intermediate agents and custom workflows. Use `pipr.schemas.review` only for output that should publish Inline Review Comments.
+
+```ts
+import { definePipr, z } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const specialistOutput = pipr.schema(
+    "security/specialist-output",
+    z.strictObject({
+      summary: z.string(),
+      risks: z.array(z.string()),
+    }),
+  );
+
+  const jsonBacked = pipr.jsonSchema<{ summary: string }>("security/summary", {
+    type: "object",
+    additionalProperties: false,
+    required: ["summary"],
+    properties: {
+      summary: { type: "string" },
+    },
+  });
+
+  void specialistOutput;
+  void jsonBacked;
+});
+```
+
+The runtime includes schema details in the Pi prompt when they are available. Tasks can map custom outputs into `ctx.output.summary(...)`, `ctx.output.findings(...)`, or `ctx.output.section(...)`.
+
+Schema metadata is model-visible prompt content. Do not put secrets, private data, or sensitive internal notes in JSON Schema fields such as `description`, `examples`, `default`, or `$comment`.
 
 ## Commands and local entrypoints
 
@@ -167,7 +200,7 @@ const reviewer = pipr.agent({
     invalidOutput: 1,
     transientFailure: 1,
   },
-  prompt: (input) => pipr.prompt`${pipr.compactManifest(input.manifest)}`,
+  prompt: () => "Review this change.",
 });
 ```
 
