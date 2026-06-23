@@ -9,10 +9,20 @@ import type {
 } from "../types.js";
 import { commentableRangeSchema, reviewSideSchema } from "../types.js";
 import { reviewFindingSchema } from "./contract.js";
+import {
+  buildPriorReviewState,
+  findingIdFor,
+  findingIdSchema,
+  inlineFindingMarker,
+  mainCommentMarker,
+  matchFindingRecord,
+  type PriorReviewState,
+  priorReviewStateSchema,
+  renderInlineFindingMarker,
+  renderMainCommentMarker,
+} from "./prior-state.js";
 import { findingFingerprint } from "./review.js";
 
-const mainCommentMarker = "pipr:main-comment";
-const findingMarkerPrefix = "pipr:finding";
 export const runtimeVersion = "0.0.0";
 
 const mainSectionMergePolicySchema = z.enum(["exclusive", "replace", "append", "list"]);
@@ -48,7 +58,7 @@ const inlinePublicationItemSchema = z
     endLine: z.number().int().positive(),
     body: z.string().min(1),
     marker: z.string().min(1),
-    fingerprint: z.string().regex(/^[a-f0-9]{16}$/),
+    findingId: findingIdSchema,
     reviewedHeadSha: z.string().min(1),
   })
   .superRefine((item, context) => {
@@ -110,6 +120,7 @@ const publicationPlanSchema = z.strictObject({
   changeNumber: z.number().int().positive(),
   inlineItems: inlinePublicationItemsSchema,
   metadata: publicationMetadataSchema,
+  reviewState: priorReviewStateSchema,
 });
 
 export type PublicationPlan = z.infer<typeof publicationPlanSchema>;
@@ -133,10 +144,18 @@ export type BuildPublicationPlanOptions = {
   inlineItems: InlinePublicationItem[];
   metadata: Omit<PublicationMetadata, "cappedInlineFindings">;
   maxInlineComments?: number;
+  reviewState?: PriorReviewState;
 };
 
 export function buildPublicationPlan(options: BuildPublicationPlanOptions): PublicationPlan {
   const layout = options.layout ?? defaultMainCommentLayout();
+  const reviewState =
+    options.reviewState ??
+    buildPriorReviewState({
+      findings: options.inlineItems.map((item) => item.finding),
+      reviewedHeadSha: options.metadata.reviewedHeadSha,
+      selectedTasks: options.metadata.selectedTasks,
+    }).state;
   const cappedInlineItems =
     options.maxInlineComments === undefined
       ? options.inlineItems
@@ -154,11 +173,13 @@ export function buildPublicationPlan(options: BuildPublicationPlanOptions): Publ
       event: options.event,
       layout,
       reducedSections,
+      reviewState,
     }),
     mainMarker: layout.marker,
     changeNumber: options.event.change.number,
     inlineItems: cappedInlineItems,
     metadata,
+    reviewState,
   });
 }
 
@@ -218,10 +239,10 @@ export function prepareInlinePublicationItems(options: {
   validated: ValidatedReview;
   manifest: DiffManifest;
   reviewedHeadSha: string;
-  existingMarkers?: Set<string>;
+  reviewState?: PriorReviewState;
 }): InlinePublicationItem[] {
   const ranges = createDiffRangeIndex(options.manifest);
-  const seenMarkers = new Set(options.existingMarkers);
+  const seenFindingIds = new Set<string>();
   return inlinePublicationItemsSchema.parse(
     options.validated.validFindings.flatMap((finding) => {
       const range = ranges.rangeById(finding.rangeId);
@@ -230,12 +251,18 @@ export function prepareInlinePublicationItems(options: {
           `Validated finding range '${finding.rangeId}' is missing from Diff Manifest`,
         );
       }
-      const fingerprint = findingFingerprint(finding);
-      const marker = findingMarker(fingerprint, options.reviewedHeadSha);
-      if (seenMarkers.has(marker)) {
+      const findingId = findingIdFor(finding, options.reviewState);
+      const stateRecord = options.reviewState
+        ? matchFindingRecord(options.reviewState, finding)
+        : undefined;
+      if (
+        seenFindingIds.has(findingId) ||
+        stateRecord?.lastCommentedHeadSha === options.reviewedHeadSha
+      ) {
         return [];
       }
-      seenMarkers.add(marker);
+      seenFindingIds.add(findingId);
+      const marker = inlineFindingMarker(findingId, options.reviewedHeadSha);
       return [
         inlinePublicationItemSchema.parse({
           finding,
@@ -245,29 +272,13 @@ export function prepareInlinePublicationItems(options: {
           startLine: finding.startLine,
           endLine: finding.endLine,
           marker,
-          fingerprint,
+          findingId,
           reviewedHeadSha: options.reviewedHeadSha,
-          body: renderInlineBody(finding, marker),
+          body: renderInlineBody(finding, findingId, options.reviewedHeadSha),
         }),
       ];
     }),
   );
-}
-
-export function extractFindingMarkers(commentBodies: string[]): Set<string> {
-  const markers = new Set<string>();
-  const pattern =
-    /<!--\s*pipr:finding\s+fingerprint=(?<fingerprint>[a-f0-9]{16})\s+head=(?<head>[^\s]+)\s*-->/g;
-  for (const body of commentBodies) {
-    for (const match of body.matchAll(pattern)) {
-      const fingerprint = match.groups?.fingerprint;
-      const head = match.groups?.head;
-      if (fingerprint && head) {
-        markers.add(findingMarker(fingerprint, head));
-      }
-    }
-  }
-  return markers;
 }
 
 function defaultMainCommentLayout(): MainCommentLayout {
@@ -286,9 +297,14 @@ function renderMainCommentFromSections(options: {
   event: Pick<ChangeRequestEventContext, "change">;
   layout: MainCommentLayout;
   reducedSections: Map<string, string>;
+  reviewState: PriorReviewState;
 }): string {
   return [
-    `<!-- ${options.layout.marker} change=${options.event.change.number} -->`,
+    renderMainCommentMarker({
+      marker: options.layout.marker,
+      changeNumber: options.event.change.number,
+      reviewState: options.reviewState,
+    }),
     "",
     `# ${options.layout.heading}`,
     "",
@@ -444,14 +460,13 @@ function metadataContribution(metadata: PublicationMetadata): MainSectionContrib
   };
 }
 
-function findingMarker(fingerprint: string, reviewedHeadSha: string): string {
-  return `${findingMarkerPrefix}:${fingerprint}:${reviewedHeadSha}`;
-}
-
-function renderInlineBody(finding: ReviewFinding, marker: string): string {
-  const [, fingerprint = "", reviewedHeadSha = ""] = marker.split(":").slice(1);
+function renderInlineBody(
+  finding: ReviewFinding,
+  findingId: string,
+  reviewedHeadSha: string,
+): string {
   return [
-    `<!-- ${findingMarkerPrefix} fingerprint=${fingerprint} head=${reviewedHeadSha} -->`,
+    renderInlineFindingMarker(findingId, reviewedHeadSha),
     finding.body,
     finding.suggestedFix ? `\nSuggested fix:\n\n${finding.suggestedFix}` : "",
   ]

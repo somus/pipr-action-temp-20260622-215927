@@ -570,9 +570,16 @@ function fakeGitHubPublicationClient(workspace: CommandWorkspace): GitHubPublica
     async listReviewComments() {
       return [];
     },
+    async listReviewThreads() {
+      return [];
+    },
     async createReviewComment() {
       return { id: 2 };
     },
+    async createReviewCommentReply() {
+      return { id: 3 };
+    },
+    async resolveReviewThread() {},
   };
 }
 
@@ -596,7 +603,16 @@ function failingGitHubPublishingClient(): GitHubPublicationClient {
     async listReviewComments() {
       throw new Error("GitHub publishing should not be called");
     },
+    async listReviewThreads() {
+      throw new Error("GitHub publishing should not be called");
+    },
     async createReviewComment() {
+      throw new Error("GitHub publishing should not be called");
+    },
+    async createReviewCommentReply() {
+      throw new Error("GitHub publishing should not be called");
+    },
+    async resolveReviewThread() {
       throw new Error("GitHub publishing should not be called");
     },
   };

@@ -58,7 +58,7 @@ await expectFailure("duplicate findings were not deduped in main comment", {
 });
 expectCondensedFailure("condensed summary missing", {
   ...validCondensedFixture(),
-  issueComments: [{ body: "<!-- pipr:main-comment change=1 -->" }],
+  issueComments: [{ body: mainMarker() }],
 });
 expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
   ...validCondensedFixture(),
@@ -66,7 +66,7 @@ expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
 });
 expectOrchestratorFailure("orchestrated summary missing", {
   ...validOrchestratorFixture(),
-  issueComments: [{ body: "<!-- pipr:main-comment change=1 -->" }],
+  issueComments: [{ body: mainMarker() }],
 });
 
 console.log("act fixture assertion tests ok");
@@ -85,14 +85,17 @@ async function assertActionMetadataRendering(): Promise<void> {
   const source = await Bun.file(new URL("../../action.yml", import.meta.url)).text();
   const image = "pipr-action:test";
   const rendered = renderActActionMetadata(source, image);
-  const expected = source.replace(/^(\s*)image:\s*Dockerfile\s*$/m, `$1image: docker://${image}`);
+  const expected = source.replace(
+    /^(\s*)image:\s*docker:\/\/\S+\s*$/m,
+    `$1image: docker://${image}`,
+  );
   const fixtureRendered = renderActActionMetadata(source, image, {
     entrypointScript: "/opt/pipr/packages/e2e/action-fixture.ts",
   });
 
   expect(rendered).toBe(expected);
   expect(rendered).toContain("image: docker://pipr-action:test");
-  expect(rendered).not.toContain("image: Dockerfile");
+  expect(rendered).not.toContain("image: docker://ghcr.io/somus/pipr-action:main");
   expect(rendered).toContain("inputs:");
   expect(rendered).toContain("outputs:");
   expect(rendered).toContain("args:");
@@ -143,7 +146,7 @@ function validFullFixture(): PublicationFixture {
 
 function fullMainCommentBody(): string {
   return [
-    "<!-- pipr:main-comment change=1 -->",
+    mainMarker(),
     "",
     "# pipr Review",
     "",
@@ -159,7 +162,7 @@ function validCondensedFixture(): PublicationFixture {
   return {
     issueComments: [
       {
-        body: "<!-- pipr:main-comment change=1 -->\n\nCondensed act fixture reached Pi after runtime tools passed.",
+        body: `${mainMarker()}\n\nCondensed act fixture reached Pi after runtime tools passed.`,
       },
     ],
     reviewCommentPayloads: [],
@@ -171,7 +174,7 @@ function validOrchestratorFixture(): PublicationFixture {
   return {
     issueComments: [
       {
-        body: "<!-- pipr:main-comment change=1 -->\n\nOrchestrated review combined correctness, security, and tests specialist outputs.",
+        body: `${mainMarker()}\n\nOrchestrated review combined correctness, security, and tests specialist outputs.`,
       },
     ],
     reviewCommentPayloads: [],
@@ -184,6 +187,10 @@ function validInlinePayload(): NonNullable<PublicationFixture["reviewCommentPayl
     commit_id: headSha,
     line: 2,
     side: "RIGHT",
-    body: "<!-- pipr:finding fingerprint=0123456789abcdef head=head-sha -->",
+    body: "<!-- pipr:finding id=fnd_fixture head=head-sha -->",
   };
+}
+
+function mainMarker(): string {
+  return "<!-- pipr:main-comment change=1 version=1 state=eyJ2ZXJzaW9uIjoxLCJyZXZpZXdlZEhlYWRTaGEiOiJoZWFkLXNoYSIsImZpbmRpbmdzIjpbXX0 -->";
 }

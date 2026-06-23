@@ -1,6 +1,6 @@
 {
   "name": "@pipr/runtime",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
   "main": "./dist/index.mjs",
@@ -24,9 +24,9 @@
     }
   },
   "scripts": {
-    "build": "bun run --cwd ../sdk build && tsdown src/index.ts src/e2e/action-fixture.ts src/e2e/pi-contract.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
+    "build": "tsdown src/index.ts src/e2e/action-fixture.ts src/e2e/pi-contract.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
     "typecheck": "tsc --noEmit",
-    "test": "bun run --cwd ../sdk build && bun test",
+    "test": "bun test --timeout 30000",
     "lint": "biome check src",
     "format:check": "biome check src",
     "check": "bun run lint && bun run typecheck && bun run test"

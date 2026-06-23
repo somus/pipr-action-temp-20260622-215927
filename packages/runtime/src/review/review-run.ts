@@ -13,6 +13,7 @@ import type {
 } from "../types.js";
 import { parseDiffManifest } from "../types.js";
 import { type PreparedDiffManifestPrompt, prepareDiffManifestPrompt } from "./manifest-payload.js";
+import type { PriorReviewState } from "./prior-state.js";
 import { parsePrReview, prReviewSchemaId, reviewSchemaExample } from "./review.js";
 
 export type PiRunner = (options: PiRunOptions) => Promise<PiRunResult>;
@@ -31,6 +32,7 @@ export type RunReviewAgentOptions = {
     env?: NodeJS.ProcessEnv;
     piExecutable?: string;
     piRunner?: PiRunner;
+    priorReviewState?: PriorReviewState;
   };
 };
 
@@ -156,7 +158,11 @@ async function runAgentWithProvider(
   try {
     output = (await runPiWithTransientRetries(options, provider, prompt, retry)).stdout;
   } catch (error) {
-    return { ok: false, error: errorMessage(error), repairAttempted: false };
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      repairAttempted: false,
+    };
   }
 
   let parsed = parseAgentOutput(output, options.agent);
@@ -175,7 +181,11 @@ async function runAgentWithProvider(
     try {
       lastOutput = (await runPiWithTransientRetries(options, provider, repairPrompt, retry)).stdout;
     } catch (error) {
-      return { ok: false, error: errorMessage(error), repairAttempted: true };
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        repairAttempted: true,
+      };
     }
     parsed = parseAgentOutput(lastOutput, options.agent);
     if (parsed.ok) {
@@ -257,10 +267,6 @@ function selectProviders(
   return uniqBy(providers, (provider) => provider.id);
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 async function renderAgentPrompt(
   options: RunReviewAgentOptions & {
     agentTools: AgentToolResolution;
@@ -285,8 +291,35 @@ async function renderAgentPrompt(
     options.runOptions?.instructions
       ? `Run Instructions:\n${renderPromptValue(options.runOptions.instructions)}`
       : undefined,
+    priorFindingsPrompt(options.runtime.priorReviewState),
     `Prompt:\n${renderPromptValue(prompt)}`,
   ]).join("\n\n");
+}
+
+function priorFindingsPrompt(state: PriorReviewState | undefined): string | undefined {
+  const openFindings = state?.findings.filter((finding) => finding.status === "open") ?? [];
+  if (openFindings.length === 0) {
+    return undefined;
+  }
+  return [
+    "Prior pipr findings:",
+    JSON.stringify(
+      {
+        reviewedHeadSha: state?.reviewedHeadSha,
+        findings: openFindings.map((finding) => ({
+          id: finding.id,
+          path: finding.path,
+          rangeId: finding.rangeId,
+          side: finding.side,
+          startLine: finding.startLine,
+          endLine: finding.endLine,
+        })),
+      },
+      null,
+      2,
+    ),
+    "Re-check these findings against the current diff. If a prior finding still applies, emit one current inline finding and set data.pipr.priorFindingId to that id. If it no longer applies, omit it.",
+  ].join("\n");
 }
 
 function customToolPrompt(agentTools: AgentToolResolution): string | undefined {
@@ -434,20 +467,28 @@ function readInputManifest(input: unknown): DiffManifest | undefined {
 }
 
 function parseAgentOutput(output: string, agent: Agent): ParseAgentResult {
-  try {
-    const json = JSON.parse(jsonPayload(output)) as unknown;
-    if (agent.definition.output.id === prReviewSchemaId) {
-      return { ok: true, value: parsePrReview(json), repairAttempted: false };
+  let lastError = "";
+  for (const payload of jsonPayloadCandidates(output)) {
+    try {
+      const json = JSON.parse(payload) as unknown;
+      if (agent.definition.output.id === prReviewSchemaId) {
+        return { ok: true, value: parsePrReview(json), repairAttempted: false };
+      }
+      return { ok: true, value: agent.definition.output.parse(json), repairAttempted: false };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
     }
-    return { ok: true, value: agent.definition.output.parse(json), repairAttempted: false };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+  return { ok: false, error: lastError };
 }
 
-function jsonPayload(output: string): string {
+function jsonPayloadCandidates(output: string): string[] {
+  const trimmed = output.trim();
   const match = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(output.trim());
-  return match?.[1]?.trim() ?? output;
+  if (match?.[1]) {
+    return [match[1].trim()];
+  }
+  return [trimmed];
 }
 
 function buildRepairPrompt(options: {
@@ -457,7 +498,8 @@ function buildRepairPrompt(options: {
 }): string {
   return [
     "Repair the previous output so it is valid JSON matching the requested schema.",
-    "Return only the repaired JSON.",
+    "Return exactly one JSON value.",
+    "Do not include Markdown, prose, explanations, or leading/trailing text.",
     "Schema validation error:",
     options.error,
     "Invalid output:",

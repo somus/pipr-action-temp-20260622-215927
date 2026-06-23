@@ -451,6 +451,9 @@ async function runTrustedReviewAndPublish(options: {
     trustedConfigSha: options.trustedRuntime.trustedConfigSha,
     trustedConfigHash: options.trustedRuntime.trustedConfigHash,
     piExecutable: options.options.piExecutable,
+    loadPriorReviewState: () =>
+      options.adapter.loadPriorReviewState?.({ change: options.event }) ??
+      Promise.resolve(undefined),
   });
   if (review.kind === "skipped") {
     return { kind: "skipped", reason: review.skipReason ?? "review skipped" };

@@ -2,11 +2,16 @@ import { describe, expect, it } from "bun:test";
 import type { ValidatedReview } from "../../types.js";
 import {
   buildPublicationPlan,
-  extractFindingMarkers,
   prepareInlinePublicationItems,
   reduceMainSectionContributions,
   reviewToMainSectionContributions,
 } from "../comment.js";
+import {
+  applyInlineFindingMarkers,
+  buildPriorReviewState,
+  extractInlineFindingMarkers,
+  extractPriorReviewState,
+} from "../prior-state.js";
 
 const validated: ValidatedReview = {
   review: {
@@ -84,6 +89,11 @@ describe("comments", () => {
         validated,
       }),
       inlineItems: [],
+      reviewState: buildPriorReviewState({
+        findings: validated.validFindings,
+        reviewedHeadSha: "abc123",
+        selectedTasks: ["review"],
+      }).state,
       metadata: {
         runtimeVersion: "0.0.0",
         reviewedHeadSha: "abc123",
@@ -95,8 +105,22 @@ describe("comments", () => {
       },
     }).mainComment;
 
-    expect(body).toContain("<!-- pipr:main-comment change=1 -->");
+    expect(body).toContain("<!-- pipr:main-comment change=1 version=1 state=");
     expect(body).toContain("# pipr Review");
+    const state = extractPriorReviewState(body, 1);
+    expect(state).toMatchObject({
+      version: 1,
+      reviewedHeadSha: "abc123",
+      findings: [
+        {
+          status: "open",
+          path: "src/a.ts",
+          rangeId: "range-1",
+        },
+      ],
+    });
+    expect(state?.findings[0]).not.toHaveProperty("body");
+    expect(state?.findings[0]).not.toHaveProperty("suggestedFix");
   });
 
   it("renders the Main Review Comment from a MainCommentLayout", () => {
@@ -127,7 +151,7 @@ describe("comments", () => {
       },
     }).mainComment;
 
-    expect(body).toContain("<!-- pipr:custom-main change=1 -->");
+    expect(body).toContain("<!-- pipr:custom-main change=1 version=1 state=");
     expect(body).toContain("# Custom Review");
     expect(body.indexOf("## Digest")).toBeLessThan(body.indexOf("## Issues"));
     expect(body).toContain("Nothing actionable.");
@@ -136,21 +160,84 @@ describe("comments", () => {
 
   it("dedupes inline drafts with hidden markers", () => {
     const first = prepareInlinePublicationItems({ validated, manifest, reviewedHeadSha: "head" });
-    const markers = extractFindingMarkers(first.map((draft) => draft.body));
+    const existingFinding = first[0];
+    if (!existingFinding) {
+      throw new Error("test fixture missing inline item");
+    }
     const second = prepareInlinePublicationItems({
       validated,
       manifest,
       reviewedHeadSha: "head",
-      existingMarkers: markers,
+      reviewState: {
+        version: 1,
+        reviewedHeadSha: "head",
+        selectedTasks: ["review"],
+        findings: [
+          {
+            id: existingFinding.findingId,
+            status: "open",
+            path: existingFinding.path,
+            rangeId: existingFinding.finding.rangeId,
+            side: existingFinding.side,
+            startLine: existingFinding.startLine,
+            endLine: existingFinding.endLine,
+            firstSeenHeadSha: "head",
+            lastSeenHeadSha: "head",
+            lastCommentedHeadSha: "head",
+          },
+        ],
+      },
     });
+    const markers = extractInlineFindingMarkers(first.map((draft) => draft.body));
 
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(0);
-    expect(first[0]?.body).toContain("<!-- pipr:finding fingerprint=");
+    expect(markers).toEqual(new Set([`pipr:finding:${existingFinding.findingId}:head`]));
+    expect(first[0]?.body).toContain("<!-- pipr:finding id=");
     expect(first[0]?.body).toContain(" head=head -->");
     expect(first[0]?.body).toContain("This can fail.");
     expect(first[0]?.body).toContain("Suggested fix:");
     expect(first[0]?.body).toContain("Use a safe call.");
+  });
+
+  it("republishes inline drafts when the same-head inline comment was deleted", () => {
+    const first = prepareInlinePublicationItems({ validated, manifest, reviewedHeadSha: "head" });
+    const existingFinding = first[0];
+    if (!existingFinding) {
+      throw new Error("test fixture missing inline item");
+    }
+    const state = applyInlineFindingMarkers(
+      {
+        version: 1,
+        reviewedHeadSha: "head",
+        selectedTasks: ["review"],
+        findings: [
+          {
+            id: existingFinding.findingId,
+            status: "open",
+            path: existingFinding.path,
+            rangeId: existingFinding.finding.rangeId,
+            side: existingFinding.side,
+            startLine: existingFinding.startLine,
+            endLine: existingFinding.endLine,
+            firstSeenHeadSha: "head",
+            lastSeenHeadSha: "head",
+            lastCommentedHeadSha: "head",
+          },
+        ],
+      },
+      [],
+    );
+
+    const republished = prepareInlinePublicationItems({
+      validated,
+      manifest,
+      reviewedHeadSha: "head",
+      reviewState: state,
+    });
+
+    expect(state.findings[0]?.lastCommentedHeadSha).toBeUndefined();
+    expect(republished).toHaveLength(1);
   });
 
   it("dedupes duplicate findings in the same draft batch", () => {
@@ -170,6 +257,75 @@ describe("comments", () => {
     expect(drafts).toHaveLength(1);
   });
 
+  it("keeps distinct same-range findings in the same draft batch", () => {
+    const finding = validated.validFindings[0];
+    if (!finding) {
+      throw new Error("test fixture missing finding");
+    }
+    const reviewState = buildPriorReviewState({
+      findings: [finding, { ...finding, body: "This belongs in another module." }],
+      reviewedHeadSha: "head",
+      selectedTasks: ["review"],
+    }).state;
+    const drafts = prepareInlinePublicationItems({
+      validated: {
+        ...validated,
+        validFindings: [finding, { ...finding, body: "This belongs in another module." }],
+      },
+      manifest,
+      reviewedHeadSha: "head",
+      reviewState,
+    });
+
+    expect(drafts).toHaveLength(2);
+    expect(new Set(drafts.map((draft) => draft.findingId)).size).toBe(2);
+  });
+
+  it("does not collapse duplicate explicit prior finding ids", () => {
+    const priorFinding = validated.validFindings[0];
+    if (!priorFinding) {
+      throw new Error("test fixture missing finding");
+    }
+    const priorState = buildPriorReviewState({
+      findings: [priorFinding],
+      reviewedHeadSha: "old-head",
+      selectedTasks: ["review"],
+    }).state;
+    const currentFindings = [
+      { ...priorFinding, data: { pipr: { priorFindingId: priorState.findings[0]?.id } } },
+      {
+        ...priorFinding,
+        body: "This belongs in another module.",
+        data: { pipr: { priorFindingId: priorState.findings[0]?.id } },
+      },
+    ];
+    const reviewState = buildPriorReviewState({
+      priorState,
+      findings: currentFindings,
+      reviewedHeadSha: "head",
+      selectedTasks: ["review"],
+    }).state;
+
+    const drafts = prepareInlinePublicationItems({
+      validated: { ...validated, validFindings: currentFindings },
+      manifest,
+      reviewedHeadSha: "head",
+      reviewState,
+    });
+
+    expect(reviewState.findings).toHaveLength(2);
+    expect(new Set(reviewState.findings.map((finding) => finding.id)).size).toBe(2);
+    expect(drafts).toHaveLength(2);
+  });
+
+  it("ignores malformed inline finding ids", () => {
+    const markers = extractInlineFindingMarkers([
+      "<!-- pipr:finding id=bad:id head=head -->\nThis marker is malformed.",
+    ]);
+
+    expect(markers).toEqual(new Set());
+  });
+
   it("rejects malformed inline comment drafts", () => {
     expect(() =>
       buildPublicationPlan({
@@ -183,7 +339,7 @@ describe("comments", () => {
             endLine: 10,
             body: "",
             marker: "pipr:finding:abc:head",
-            fingerprint: "0123456789abcdef",
+            findingId: "abc",
             reviewedHeadSha: "head",
             finding: validated.validFindings[0],
             range: manifest.files[0]?.commentableRanges[0],

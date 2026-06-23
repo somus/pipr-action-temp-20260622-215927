@@ -27,6 +27,7 @@ import {
   runtimeVersion,
 } from "./comment.js";
 import { buildCommentPublishingPlan } from "./comment-publishing.js";
+import { type PriorReviewState, priorReviewStateForSelectedTasks } from "./prior-state.js";
 import { validatePrReview } from "./review.js";
 import { type PiRunner, resolveProvider, runReviewAgent } from "./review-run.js";
 
@@ -47,6 +48,8 @@ export type RunTaskRuntimeOptions = {
   piExecutable?: string;
   piRunner?: PiRunner;
   diffManifestBuilder?: DiffManifestBuilder;
+  priorReviewState?: PriorReviewState;
+  loadPriorReviewState?: () => Promise<PriorReviewState | undefined>;
 };
 
 export type ReviewRuntimeResult = {
@@ -81,7 +84,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   const config = parsePiprConfig(options.config);
   const provider = options.providerOverride
     ? parseProviderConfig(options.providerOverride)
-    : resolveDefaultProvider(config);
+    : resolveProvider(config, config.defaultProvider);
   const diffManifest = parseDiffManifest(
     (options.diffManifestBuilder ?? buildDiffManifest)({
       cwd: options.workspace,
@@ -107,6 +110,11 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       trustedConfigHash: options.trustedConfigHash,
     });
   }
+  const selectedTasks = tasks.map((task) => task.name);
+  const loadedPriorReviewState =
+    options.priorReviewState ?? (await options.loadPriorReviewState?.());
+  const priorReviewState = priorReviewStateForSelectedTasks(loadedPriorReviewState, selectedTasks);
+  const runtimeOptions = { ...options, priorReviewState };
 
   const manifestCache = new Map<string, DiffManifest>();
   const taskResults = await Promise.all(
@@ -114,7 +122,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       const output = createOutputState();
       await task.handler(
         createTaskContext({
-          ...options,
+          ...runtimeOptions,
           config,
           provider,
           diffManifest,
@@ -140,6 +148,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     validated,
     manifest: diffManifest,
     maxInlineComments: config.publication.maxInlineComments,
+    priorReviewState,
     metadata: {
       runtimeVersion,
       trustedConfigSha: options.trustedConfigSha,
@@ -148,7 +157,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       providerModels:
         output.providerModels.length > 0 ? uniq(output.providerModels) : [provider.model],
       taskMetadata: taskMetadata(output),
-      selectedTasks: tasks.map((task) => task.name),
+      selectedTasks,
       failedTasks: [],
       validFindings: validated.validFindings.length,
       droppedFindings: validated.droppedFindings.length,
@@ -456,8 +465,4 @@ function skippedTaskRuntimeResult(options: {
     inlineCommentDrafts: [],
     repairAttempted: false,
   };
-}
-
-function resolveDefaultProvider(config: PiprConfig): ProviderConfig {
-  return resolveProvider(config, config.defaultProvider);
 }

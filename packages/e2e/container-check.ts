@@ -56,6 +56,18 @@ async function runContainerScenario(scenario: Scenario): Promise<void> {
 }
 
 function runDryRunContainer(prepared: PreparedScenario): void {
+  const env = {
+    DEEPSEEK_API_KEY: "local-fixture-key",
+    GITHUB_EVENT_NAME: "pull_request",
+    GITHUB_EVENT_PATH: `/workspace/${prepared.scenario.eventFile}`,
+    GITHUB_REPOSITORY: "local/pipr",
+    GITHUB_TOKEN: "local-fixture-token",
+    GITHUB_WORKSPACE: "/workspace",
+    PIPR_DRY_RUN: "1",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "safe.directory",
+    GIT_CONFIG_VALUE_0: "/workspace",
+  };
   const output = runOutput(
     "docker",
     [
@@ -65,18 +77,7 @@ function runDryRunContainer(prepared: PreparedScenario): void {
       `type=bind,source=${prepared.worktree},target=/workspace`,
       "--workdir",
       "/workspace",
-      ...dockerEnv({
-        DEEPSEEK_API_KEY: "local-fixture-key",
-        GITHUB_EVENT_NAME: "pull_request",
-        GITHUB_EVENT_PATH: `/workspace/${prepared.scenario.eventFile}`,
-        GITHUB_REPOSITORY: "local/pipr",
-        GITHUB_TOKEN: "local-fixture-token",
-        GITHUB_WORKSPACE: "/workspace",
-        PIPR_DRY_RUN: "1",
-        GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0: "safe.directory",
-        GIT_CONFIG_VALUE_0: "/workspace",
-      }),
+      ...Object.entries(env).flatMap(([key, value]) => ["--env", `${key}=${value}`]),
       actionImage,
       "action",
       "--config-dir",
@@ -97,6 +98,7 @@ function runDryRunContainer(prepared: PreparedScenario): void {
 async function runFixtureContainer(prepared: PreparedScenario): Promise<void> {
   const scenario = publicationScenario(prepared.scenario);
   await prepareFixtureFiles(prepared, scenario);
+  const env = fixtureEnv(scenario);
   run(
     "docker",
     [
@@ -108,7 +110,7 @@ async function runFixtureContainer(prepared: PreparedScenario): Promise<void> {
       `type=bind,source=${prepared.worktree},target=/workspace`,
       "--workdir",
       "/workspace",
-      ...dockerEnv(fixtureEnv(scenario)),
+      ...Object.entries(env).flatMap(([key, value]) => ["--env", `${key}=${value}`]),
       actionImage,
       `/opt/pipr/${actionFixtureScript}`,
       "action",
@@ -131,6 +133,7 @@ async function prepareFixtureFiles(
         headSha: prepared.headSha,
         issueComments: [],
         reviewComments: [],
+        reviewThreads: [],
         reviewCommentPayloads: [],
       },
       null,
@@ -155,7 +158,9 @@ function publicationScenario(scenario: Scenario): PublicationScenario {
 }
 
 function fixtureEnv(scenario: PublicationScenario): Record<string, string> {
-  const telemetryPath = scenarioTelemetryPath(scenario);
+  const telemetryPath = scenario.telemetryDir
+    ? `/workspace/${fixtureRootPath}/${scenario.telemetryDir}`
+    : undefined;
   return {
     DEEPSEEK_API_KEY: telemetryPath ?? "local-fixture-key",
     GITHUB_EVENT_NAME: "pull_request",
@@ -174,12 +179,6 @@ function fixtureEnv(scenario: PublicationScenario): Record<string, string> {
   };
 }
 
-function scenarioTelemetryPath(scenario: PublicationScenario): string | undefined {
-  return scenario.telemetryDir
-    ? `/workspace/${fixtureRootPath}/${scenario.telemetryDir}`
-    : undefined;
-}
-
 function assertDockerImageExists(image: string): void {
   const result = Bun.spawnSync(["docker", "image", "inspect", image], {
     stderr: "pipe",
@@ -188,10 +187,6 @@ function assertDockerImageExists(image: string): void {
   if (result.exitCode !== 0) {
     throw new Error(`Docker image '${image}' not found; build it before check:container`);
   }
-}
-
-function dockerEnv(env: Record<string, string>): string[] {
-  return Object.entries(env).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
 }
 
 function assertContains(output: string, expected: string): void {

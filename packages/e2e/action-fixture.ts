@@ -8,6 +8,12 @@ import {
 import { type ActAssertionMode, assertActFixture } from "./assertions.ts";
 
 type LoadedActionResult = Exclude<ActionCommandResult, { kind: "ignored" }>;
+type FixtureReviewComment = Awaited<
+  ReturnType<GitHubPublicationClient["listReviewComments"]>
+>[number];
+type FixtureReviewThread = Awaited<
+  ReturnType<GitHubPublicationClient["listReviewThreads"]>
+>[number];
 type ActionResultHandlers = {
   [Kind in ActionCommandResult["kind"]]: (
     result: Extract<ActionCommandResult, { kind: Kind }>,
@@ -164,6 +170,9 @@ function fixturePublicationClient(fixturePath: string): GitHubPublicationClient 
     async listReviewComments() {
       return (await readFixture(fixturePath)).reviewComments;
     },
+    async listReviewThreads() {
+      return (await readFixture(fixturePath)).reviewThreads ?? [];
+    },
     async createReviewComment(options) {
       const fixture = await readFixture(fixturePath);
       if (fixture.failReviewComment) {
@@ -173,11 +182,50 @@ function fixturePublicationClient(fixturePath: string): GitHubPublicationClient 
         id: fixture.reviewComments.length + 1,
         body: options.body,
         authorLogin: fixture.ownerLogin,
+        path: options.path,
+        commitId: options.commit_id,
+        line: options.line,
+        startLine: options.start_line,
+        side: options.side,
+        startSide: options.start_side,
       };
       fixture.reviewComments.push(comment);
       fixture.reviewCommentPayloads.push(options);
       await writeFixture(fixturePath, fixture);
       return { id: comment.id };
+    },
+    async createReviewCommentReply(options) {
+      const fixture = await readFixture(fixturePath);
+      const comment = {
+        id: fixture.reviewComments.length + 1,
+        body: options.body,
+        authorLogin: fixture.ownerLogin,
+        path: undefined,
+        commitId: undefined,
+        line: undefined,
+        startLine: undefined,
+        side: undefined,
+        startSide: undefined,
+      };
+      fixture.reviewComments.push(comment);
+      fixture.reviewReplies ??= [];
+      fixture.reviewReplies.push({
+        commentId: options.commentId,
+        body: options.body,
+      });
+      await writeFixture(fixturePath, fixture);
+      return { id: comment.id };
+    },
+    async resolveReviewThread(options) {
+      const fixture = await readFixture(fixturePath);
+      const thread = fixture.reviewThreads?.find((item) => item.id === options.threadId);
+      if (!thread) {
+        throw new Error(`Fixture review thread ${options.threadId} not found`);
+      }
+      thread.isResolved = true;
+      fixture.resolvedThreadIds ??= [];
+      fixture.resolvedThreadIds.push(options.threadId);
+      await writeFixture(fixturePath, fixture);
     },
   };
 }
@@ -186,8 +234,11 @@ type GitHubPublicationFixture = {
   ownerLogin: string;
   headSha: string;
   issueComments: Array<{ id: number; body: string; authorLogin: string | undefined }>;
-  reviewComments: Array<{ id: number; body: string; authorLogin: string | undefined }>;
+  reviewComments: FixtureReviewComment[];
+  reviewThreads?: FixtureReviewThread[];
   reviewCommentPayloads: unknown[];
+  reviewReplies?: Array<{ commentId: number; body: string }>;
+  resolvedThreadIds?: string[];
   failReviewComment?: boolean;
 };
 

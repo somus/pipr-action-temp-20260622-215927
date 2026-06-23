@@ -12,6 +12,7 @@ export type PublicationResult = {
   };
   metadata: PublicationMetadata & {
     inlinePublicationErrors: string[];
+    inlineResolutionErrors: string[];
   };
 };
 

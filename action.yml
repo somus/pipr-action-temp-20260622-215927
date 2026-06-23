@@ -32,7 +32,7 @@ outputs:
     description: JSON publication result for main and inline comments
 runs:
   using: docker
-  image: Dockerfile
+  image: docker://ghcr.io/somus/pipr-action:main
   args:
     - action
     - --config-dir

@@ -145,14 +145,24 @@ function fixtureWorkflow(item: Scenario): string {
     `            "headSha": "${githubHeadSha}",`,
     '            "issueComments": [],',
     '            "reviewComments": [],',
+    '            "reviewThreads": [],',
     '            "reviewCommentPayloads": []',
     "          }",
     "          JSON",
     `          chmod 666 ${fixtureRootPath}/${item.publicationFixture}`,
-    ...telemetrySetupLines(item),
+    ...(item.telemetryDir
+      ? [
+          `          mkdir -p ${fixtureRootPath}/${item.telemetryDir}`,
+          `          chmod 777 ${fixtureRootPath}/${item.telemetryDir}`,
+        ]
+      : []),
     "      - uses: ./.github/act",
     "        env:",
-    `          DEEPSEEK_API_KEY: ${apiKeyFor(item)}`,
+    `          DEEPSEEK_API_KEY: ${
+      item.telemetryDir
+        ? `${githubWorkspace}/${fixtureRootPath}/${item.telemetryDir}`
+        : "local-fixture-key"
+    }`,
     "          GITHUB_TOKEN: local-fixture-token",
     '          GIT_CONFIG_COUNT: "1"',
     "          GIT_CONFIG_KEY_0: safe.directory",
@@ -160,34 +170,15 @@ function fixtureWorkflow(item: Scenario): string {
     `          PIPR_ACT_GITHUB_FIXTURE_PATH: ${githubWorkspace}/${fixtureRootPath}/${item.publicationFixture}`,
     `          PIPR_ACT_PI_EXECUTABLE: ${githubWorkspace}/${fakePiScript}`,
     `          PIPR_ACT_ASSERTION: ${item.assertion}`,
-    ...fixtureAssertionEnvLines(item),
+    ...(item.telemetryDir
+      ? [
+          `          PIPR_ACT_TELEMETRY_PATH: ${githubWorkspace}/${fixtureRootPath}/${item.telemetryDir}`,
+        ]
+      : []),
     "        with:",
     "          config-dir: .pipr",
     "",
   ].join("\n");
-}
-
-function telemetrySetupLines(item: Scenario): string[] {
-  return item.telemetryDir
-    ? [
-        `          mkdir -p ${fixtureRootPath}/${item.telemetryDir}`,
-        `          chmod 777 ${fixtureRootPath}/${item.telemetryDir}`,
-      ]
-    : [];
-}
-
-function apiKeyFor(item: Scenario): string {
-  return item.telemetryDir
-    ? `${githubWorkspace}/${fixtureRootPath}/${item.telemetryDir}`
-    : "local-fixture-key";
-}
-
-function fixtureAssertionEnvLines(item: Scenario): string[] {
-  return item.telemetryDir
-    ? [
-        `          PIPR_ACT_TELEMETRY_PATH: ${githubWorkspace}/${fixtureRootPath}/${item.telemetryDir}`,
-      ]
-    : [];
 }
 
 function ensureActRunnerImage(): void {

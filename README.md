@@ -128,7 +128,7 @@ When a review runs, pipr may send the configured model provider:
 
 Provider API keys are read from environment variables such as `DEEPSEEK_API_KEY`. `pipr.secret(...)` stores the variable name in the runtime plan, not the secret value.
 
-On GitHub, pipr uses `GITHUB_TOKEN` to read pull request metadata and publish the Main Review Comment and Inline Review Comments. Published comments become part of the repository's normal GitHub pull request record. Local runs do not publish comments.
+On GitHub, pipr uses `GITHUB_TOKEN` to read pull request metadata, publish the Main Review Comment and Inline Review Comments, and resolve review threads for fixed findings. Published comments become part of the repository's normal GitHub pull request record. Local runs do not publish comments.
 
 Do not run pipr on code you are not permitted to send to the configured model provider.
 

@@ -6,6 +6,7 @@ export const piReadOnlyToolNames = ["read", "grep", "find", "ls"] as const;
 export const piRequiredCliFlags = [
   "--provider",
   "--model",
+  "--system-prompt",
   "--mode",
   "--print",
   "--no-session",

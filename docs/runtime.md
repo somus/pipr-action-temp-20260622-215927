@@ -139,7 +139,7 @@ pipr reduces those contributions into a provider-neutral `PublicationPlan`:
 - dropped finding metadata
 - run metadata
 
-Before publishing, pipr checks the current head SHA. It upserts the Main Review Comment by hidden marker and dedupes Inline Review Comments by finding marker and reviewed head SHA.
+Before publishing, pipr checks the current head SHA. It upserts the Main Review Comment by hidden marker. That marker also carries pipr-owned review state for prior finding IDs, locations, statuses, task scope, and head metadata. Reruns pass matching open prior finding locations back to the reviewer, keep same-head open findings visible if the reviewer omits them, and mark omitted prior findings resolved in hidden state when the reviewed head changes. GitHub publication replies to the stale Inline Review Comment with the resolving commit link and resolves that review thread when permissions allow; cleanup failures are recorded in publication metadata without failing the review. Inline Review Comments are deduped by stable finding id, reviewed head SHA, and pipr-owned same-head location overlap.
 
 ## Failure behavior
 
@@ -152,6 +152,7 @@ Before publishing, pipr checks the current head SHA. It upserts the Main Review 
 | Finding targets invalid range | Finding is dropped, run continues. |
 | Stale head before publication | Publication stops before writes. |
 | Comment API failure | Publication metadata is emitted and the Action fails. |
+| Stale review-thread cleanup failure | Publication metadata records the cleanup error and the Action continues. |
 
 ## Local checks
 

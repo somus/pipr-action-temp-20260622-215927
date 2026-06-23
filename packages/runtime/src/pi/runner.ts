@@ -50,6 +50,20 @@ export type PreparedPiTools = {
   toolNames: readonly string[];
 };
 
+const piprJsonSystemPrompt = [
+  "You are a strict JSON API for pipr.",
+  "Return exactly one JSON value matching the requested schema.",
+  "Do not include Markdown, prose, explanations, or leading/trailing text.",
+].join(" ");
+const ignoredWorkspacePaths = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  ".turbo",
+  ".fallow",
+  "coverage",
+]);
+
 export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
   const started = Date.now();
   const sandbox = await createPiRunSandbox(options.workspace);
@@ -75,7 +89,9 @@ export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
       started,
       timeoutSeconds: options.timeoutSeconds,
     });
-    return result.exitCode === 0 ? { ...result, stdout: normalizePiStdout(result.stdout) } : result;
+    return result.exitCode === 0
+      ? { ...result, stdout: extractAssistantTextFromJsonEvents(result.stdout) ?? result.stdout }
+      : result;
   } finally {
     await preparedTools?.custom?.close();
     await chmodRecursive(sandbox.root, 0o755);
@@ -96,6 +112,8 @@ export function buildPiArgs(
     invocation.provider,
     "--model",
     invocation.model,
+    "--system-prompt",
+    piprJsonSystemPrompt,
     "--mode",
     "json",
     "--print",
@@ -203,7 +221,7 @@ async function copyWorkspace(sourceWorkspace: string, destination: string): Prom
         return true;
       }
       const first = relative.split(path.sep)[0];
-      return !isIgnoredWorkspacePath(first) && !(await lstat(source)).isSymbolicLink();
+      return !ignoredWorkspacePaths.has(first ?? "") && !(await lstat(source)).isSymbolicLink();
     },
   });
 }
@@ -213,10 +231,6 @@ function copyEnvValue(target: NodeJS.ProcessEnv, source: NodeJS.ProcessEnv, key:
   if (value !== undefined) {
     target[key] = value;
   }
-}
-
-function isIgnoredWorkspacePath(first: string | undefined): boolean {
-  return [".git", "node_modules", "dist", ".turbo", ".fallow", "coverage"].includes(first ?? "");
 }
 
 async function chmodRecursive(target: string, mode: number): Promise<void> {
@@ -232,10 +246,6 @@ async function chmodRecursive(target: string, mode: number): Promise<void> {
   for (const entry of entries) {
     await chmodRecursive(path.join(target, entry.name), mode);
   }
-}
-
-function normalizePiStdout(stdout: string): string {
-  return extractAssistantTextFromJsonEvents(stdout) ?? stdout;
 }
 
 function extractAssistantTextFromJsonEvents(stdout: string): string | undefined {

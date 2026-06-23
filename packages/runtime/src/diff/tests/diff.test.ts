@@ -276,42 +276,11 @@ describe("diff manifest parsing", () => {
   });
 
   it("keeps sparse context diffs below the expanded manifest cap", async () => {
-    await withGitRepo(async (repo) => {
-      const baseSha = await commitFile(repo, "sparse.ts", makeNumberedLines("base", 400), "base");
-      const headSha = await commitFile(repo, "sparse.ts", makeSparseChangedLines(400), "head");
-
-      const file = changedFile(buildDiffManifest({ cwd: repo, baseSha, headSha }), "sparse.ts");
-
-      expect(file?.excludedReason).toBeUndefined();
-      expect(file?.hunks.length).toBeGreaterThan(0);
-      expect(file?.commentableRanges.length).toBeGreaterThan(0);
-    });
+    await expectSparseDiffIncluded({ filePath: "sparse.ts", lineCount: 400 });
   });
 
   it("keeps large sparse diffs when changed lines stay below the manifest cap", async () => {
-    await withGitRepo(async (repo) => {
-      const baseSha = await commitFile(
-        repo,
-        "huge-sparse.ts",
-        makeNumberedLines("base", 7000),
-        "base",
-      );
-      const headSha = await commitFile(
-        repo,
-        "huge-sparse.ts",
-        makeSparseChangedLines(7000),
-        "head",
-      );
-
-      const file = changedFile(
-        buildDiffManifest({ cwd: repo, baseSha, headSha }),
-        "huge-sparse.ts",
-      );
-
-      expect(file?.excludedReason).toBeUndefined();
-      expect(file?.hunks.length).toBeGreaterThan(0);
-      expect(file?.commentableRanges.length).toBeGreaterThan(0);
-    });
+    await expectSparseDiffIncluded({ filePath: "huge-sparse.ts", lineCount: 7000 });
   });
 
   it("keeps additions and deletions for renamed files", async () => {
@@ -435,6 +404,31 @@ async function commitFile(
 
 function changedFile(manifest: ReturnType<typeof buildDiffManifest>, filePath: string) {
   return manifest.files.find((entry) => entry.path === filePath);
+}
+
+async function expectSparseDiffIncluded(options: {
+  filePath: string;
+  lineCount: number;
+}): Promise<void> {
+  await withGitRepo(async (repo) => {
+    const baseSha = await commitFile(
+      repo,
+      options.filePath,
+      makeNumberedLines("base", options.lineCount),
+      "base",
+    );
+    const headSha = await commitFile(
+      repo,
+      options.filePath,
+      makeSparseChangedLines(options.lineCount),
+      "head",
+    );
+    const file = changedFile(buildDiffManifest({ cwd: repo, baseSha, headSha }), options.filePath);
+
+    expect(file?.excludedReason).toBeUndefined();
+    expect(file?.hunks.length).toBeGreaterThan(0);
+    expect(file?.commentableRanges.length).toBeGreaterThan(0);
+  });
 }
 
 function git(repo: string, ...args: string[]): string {

@@ -1,5 +1,5 @@
 const defaultImage = "pipr-action:act";
-const dockerImagePattern = /^(\s*)image:\s*Dockerfile\s*$/m;
+const dockerImagePattern = /^(\s*)image:\s*docker:\/\/\S+\s*$/m;
 const actArgsPattern = /^(\s*)args:\s*$/m;
 
 export function renderActActionMetadata(
@@ -11,7 +11,7 @@ export function renderActActionMetadata(
     throw new Error("PIPR_ACTION_IMAGE must not be empty");
   }
   if (!dockerImagePattern.test(source)) {
-    throw new Error("action metadata must contain runs.image: Dockerfile");
+    throw new Error("action metadata must contain runs.image: docker://...");
   }
   let rendered = source.replace(
     dockerImagePattern,

@@ -1,4 +1,5 @@
 import type { InlinePublicationItem, PublicationPlan } from "../review/comment.js";
+import type { PriorReviewState } from "../review/prior-state.js";
 import type { PublicationResult } from "../review/publication-result.js";
 import type {
   ChangeRequestEventContext,
@@ -57,6 +58,9 @@ export type CodeHostAdapter = {
     plan: PublicationPlan;
     change: ChangeRequestEventContext;
   }): Promise<PublicationResult>;
+  loadPriorReviewState?(options: {
+    change: ChangeRequestEventContext;
+  }): Promise<PriorReviewState | undefined>;
   mapInlineLocation(item: InlinePublicationItem, change: ChangeRequestEventContext): unknown;
   ensureWorkspaceSafeDirectory?(options: { rootDir: string; env?: NodeJS.ProcessEnv }): void;
 };

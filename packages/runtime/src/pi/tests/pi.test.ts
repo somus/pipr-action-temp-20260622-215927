@@ -23,6 +23,7 @@ describe("Pi contract", () => {
     expect(piRequiredCliFlags).toEqual([
       "--provider",
       "--model",
+      "--system-prompt",
       "--mode",
       "--print",
       "--no-session",
@@ -112,6 +113,8 @@ describe("buildPiArgs", () => {
       "deepseek",
       "--model",
       "deepseek-v4-pro",
+      "--system-prompt",
+      expect.stringContaining("strict JSON API"),
       "--mode",
       "json",
       "--print",

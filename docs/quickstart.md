@@ -90,7 +90,7 @@ jobs:
           api-key-env: DEEPSEEK_API_KEY
 ```
 
-`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit.
+`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit. `pull-requests: write` lets pipr attempt best-effort stale review thread cleanup after findings are fixed.
 
 ## 4. Trigger a review
 

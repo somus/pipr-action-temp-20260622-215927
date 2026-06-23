@@ -59,14 +59,22 @@ PIPR_ACTION_IMAGE=pipr-action:e2e bun run --cwd packages/e2e check:container
 
 ## Docker image release
 
-The Docker image can be published by the release workflow or by the manual Docker image workflow:
+The checked-in Action metadata uses the published image directly:
+
+```text
+docker://ghcr.io/somus/pipr-action:main
+```
+
+Local `act` fixtures rewrite that metadata to the `PIPR_ACTION_IMAGE` value so Action checks still exercise the freshly built local image.
+
+The Docker image can be published by the main-branch Docker image workflow, the release workflow, or the manual Docker image workflow:
 
 ```text
 .github/workflows/release.yml
 .github/workflows/docker-image.yml
 ```
 
-Both paths build a local `pipr-action:e2e` image and run `check:container` before publishing to GHCR. The manual workflow publishes only when the `push` input is `true`.
+All publish paths build a local `pipr-action:e2e` image and run `check:container` before publishing to GHCR. The manual workflow publishes only when the `push` input is `true`.
 
 The GHCR image name is:
 

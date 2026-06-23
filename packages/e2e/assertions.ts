@@ -21,6 +21,8 @@ type TelemetryEvent = {
   time: number;
 };
 
+const mainCommentMarkerPrefix = "<!-- pipr:main-comment change=1 version=1 state=";
+
 export async function assertActFixture(options: {
   fixturePath: string;
   mode: ActAssertionMode;
@@ -53,10 +55,7 @@ export async function assertActFullFixture(
 
 export function assertActCondensedFixture(fixture: PublicationFixture): void {
   const mainComment = readOnlyMainComment(fixture);
-  assert(
-    mainComment.includes("<!-- pipr:main-comment change=1 -->"),
-    "main comment marker missing",
-  );
+  assert(mainComment.includes(mainCommentMarkerPrefix), "main comment marker missing");
   assert(
     mainComment.includes("Condensed act fixture reached Pi after runtime tools passed."),
     "condensed summary missing",
@@ -67,10 +66,7 @@ export function assertActCondensedFixture(fixture: PublicationFixture): void {
 
 export function assertActOrchestratorFixture(fixture: PublicationFixture): void {
   const mainComment = readOnlyMainComment(fixture);
-  assert(
-    mainComment.includes("<!-- pipr:main-comment change=1 -->"),
-    "main comment marker missing",
-  );
+  assert(mainComment.includes(mainCommentMarkerPrefix), "main comment marker missing");
   assert(
     mainComment.includes(
       "Orchestrated review combined correctness, security, and tests specialist outputs.",
@@ -89,7 +85,7 @@ function readOnlyMainComment(fixture: PublicationFixture): string {
 }
 
 function assertFullMainComment(body: string): void {
-  assert(body.includes("<!-- pipr:main-comment change=1 -->"), "main comment marker missing");
+  assert(body.includes(mainCommentMarkerPrefix), "main comment marker missing");
   assert(body.includes("Full fixture secondary section"), "secondary section missing");
   assert(
     body.includes(
@@ -98,10 +94,8 @@ function assertFullMainComment(body: string): void {
     "unexpected selected tasks",
   );
   assert(!body.includes("pipr/docs-only"), "path-missed task was selected");
-  assert(
-    countOccurrences(body, "Full-flow act reached inline publication.") === 1,
-    "duplicate findings were not deduped in main comment",
-  );
+  const fullFlowFindingCount = body.split("Full-flow act reached inline publication.").length - 1;
+  assert(fullFlowFindingCount === 1, "duplicate findings were not deduped in main comment");
 }
 
 function readOnlyInlinePayload(fixture: PublicationFixture): ReviewCommentPayload {
@@ -149,7 +143,11 @@ async function readTelemetryFile(path: string): Promise<TelemetryEvent[]> {
 function maxActiveCalls(events: TelemetryEvent[]): number {
   let active = 0;
   let maxActive = 0;
-  for (const event of events.toSorted(compareTelemetryEvents)) {
+  for (const event of events.toSorted(
+    (left, right) =>
+      left.time - right.time ||
+      (left.phase === "start" ? 0 : 1) - (right.phase === "start" ? 0 : 1),
+  )) {
     if (event.phase === "start") {
       active += 1;
       maxActive = Math.max(maxActive, active);
@@ -161,14 +159,6 @@ function maxActiveCalls(events: TelemetryEvent[]): number {
   return maxActive;
 }
 
-function compareTelemetryEvents(left: TelemetryEvent, right: TelemetryEvent): number {
-  return left.time - right.time || phaseOrder(left.phase) - phaseOrder(right.phase);
-}
-
-function phaseOrder(phase: TelemetryEvent["phase"]): number {
-  return phase === "start" ? 0 : 1;
-}
-
 function assertEqual<T>(actual: T, expected: T, message: string): void {
   assert(actual === expected, `${message}: expected ${expected}, got ${actual}`);
 }
@@ -177,8 +167,4 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
-}
-
-function countOccurrences(value: string, needle: string): number {
-  return value.split(needle).length - 1;
 }

@@ -1,4 +1,9 @@
-import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from "../types.js";
+import type {
+  ChangeRequestEventContext,
+  DiffManifest,
+  ReviewFinding,
+  ValidatedReview,
+} from "../types.js";
 import {
   buildPublicationPlan,
   type InlineCommentDraft,
@@ -6,8 +11,13 @@ import {
   type PublicationMetadata,
   type PublicationPlan,
   prepareInlinePublicationItems,
-  reviewToMainSectionContributions,
 } from "./comment.js";
+import {
+  buildPriorReviewState,
+  findingIdFor,
+  type PriorFindingRecord,
+  type PriorReviewState,
+} from "./prior-state.js";
 
 export type CommentSectionTemplate = {
   title: string;
@@ -24,6 +34,7 @@ export type BuildCommentPublishingPlanOptions = {
   manifest: DiffManifest;
   metadata: Omit<PublicationMetadata, "cappedInlineFindings">;
   maxInlineComments?: number;
+  priorReviewState?: PriorReviewState;
 };
 
 export type CommentPublishingPlan = {
@@ -34,22 +45,30 @@ export type CommentPublishingPlan = {
 export function buildCommentPublishingPlan(
   options: BuildCommentPublishingPlanOptions,
 ): CommentPublishingPlan {
+  const reviewState = buildPriorReviewState({
+    priorState: options.priorReviewState,
+    findings: options.validated.validFindings,
+    reviewedHeadSha: options.event.change.head.sha,
+    selectedTasks: options.metadata.selectedTasks,
+  }).state;
   const inlineCommentDrafts = prepareInlinePublicationItems({
     validated: options.validated,
     manifest: options.manifest,
     reviewedHeadSha: options.event.change.head.sha,
+    reviewState,
   });
   const publicationPlan = buildPublicationPlan({
     event: options.event,
     layout: mainCommentLayoutFor(options.sectionTemplates),
     mainContributions: [
       ...options.summaries,
-      ...findingsSectionContribution(options.validated),
+      ...findingsSectionContribution(reviewState, options.validated.validFindings),
       ...options.sections,
     ],
     inlineItems: inlineCommentDrafts,
     maxInlineComments: options.maxInlineComments,
     metadata: options.metadata,
+    reviewState,
   });
   return {
     publicationPlan,
@@ -57,11 +76,38 @@ export function buildCommentPublishingPlan(
   };
 }
 
-function findingsSectionContribution(validated: ValidatedReview): MainSectionContribution[] {
-  return reviewToMainSectionContributions({
-    sourceId: "findings",
-    validated,
-  }).filter((contribution) => contribution.sectionId === "findings");
+function findingsSectionContribution(
+  reviewState: PriorReviewState,
+  currentFindings: ReviewFinding[],
+): MainSectionContribution[] {
+  const findings = reviewState.findings.filter((finding) => finding.status === "open");
+  if (findings.length === 0) {
+    return [];
+  }
+  const currentFindingById = new Map(
+    currentFindings.map((finding) => [findingIdFor(finding, reviewState), finding]),
+  );
+  return [
+    {
+      sourceId: "findings",
+      sectionId: "findings",
+      policy: "list",
+      priority: 0,
+      value: findings.map((finding) => ({
+        id: finding.id,
+        body: `- ${findingListBody(finding, currentFindingById.get(finding.id))}`,
+      })),
+      itemKey: "id",
+    },
+  ];
+}
+
+function findingListBody(finding: PriorFindingRecord, currentFinding: ReviewFinding | undefined) {
+  if (currentFinding) {
+    return currentFinding.body;
+  }
+  const end = finding.endLine === finding.startLine ? "" : `-${finding.endLine}`;
+  return `Existing finding at ${finding.path}:${finding.startLine}${end} remains open. See Inline Review Comment.`;
 }
 
 function mainCommentLayoutFor(sectionTemplates: Map<string, CommentSectionTemplate>) {
