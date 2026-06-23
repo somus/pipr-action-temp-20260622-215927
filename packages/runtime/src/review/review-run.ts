@@ -1,4 +1,11 @@
-import type { Agent, AgentTool, DurationInput, RuntimePlan, TaskContext } from "@pipr/sdk";
+import type {
+  Agent,
+  AgentTool,
+  DurationInput,
+  PathFilter,
+  RuntimePlan,
+  TaskContext,
+} from "@pipr/sdk";
 import { isBuiltinReadOnlyTool, renderPromptValue } from "@pipr/sdk";
 import { compact, uniqBy } from "lodash-es";
 import { z } from "zod";
@@ -282,6 +289,7 @@ async function renderAgentPrompt(
     `Available Pi tools: ${availableTools.join(", ")}.`,
     "Do not use bash, write, edit, platform APIs, or comment publishing tools.",
     customToolPrompt(options.agentTools),
+    pathScopePrompt(options.runOptions?.paths),
     "Return only valid JSON. Do not include Markdown fences or prose outside JSON.",
     `Output Schema ID: ${options.agent.definition.output.id}`,
     options.agent.definition.output.id === prReviewSchemaId
@@ -294,6 +302,19 @@ async function renderAgentPrompt(
     priorFindingsPrompt(options.runtime.priorReviewState),
     `Prompt:\n${renderPromptValue(prompt)}`,
   ]).join("\n\n");
+}
+
+function pathScopePrompt(paths: PathFilter | undefined): string | undefined {
+  if (!paths) {
+    return undefined;
+  }
+  return [
+    "Path scope:",
+    "This run is scoped to repository paths matching this filter:",
+    JSON.stringify(paths, null, 2),
+    "Publishable inline findings must target only files matching this filter.",
+    "Read tools may access the whole repository. Prefer matching files, and read non-matching files only when needed to understand or review matching files.",
+  ].join("\n");
 }
 
 function priorFindingsPrompt(state: PriorReviewState | undefined): string | undefined {

@@ -1,5 +1,12 @@
+import { diffFileMatchesPathFilter, pathMatchesFilter } from "../diff/path-filter.js";
 import { createDiffRangeIndex } from "../diff/ranges.js";
-import type { CommentableRange, DiffManifest, ValidatedReview } from "../types.js";
+import type {
+  CommentableRange,
+  DiffManifest,
+  DiffManifestFile,
+  PathFilter,
+  ValidatedReview,
+} from "../types.js";
 import { parseValidatedReview } from "../types.js";
 import {
   type PrReview,
@@ -15,6 +22,7 @@ export { parsePrReview, prReviewJsonSchema, prReviewSchemaId, reviewSchemaExampl
 
 export type ValidateReviewOptions = {
   expectedHeadSha?: string;
+  pathScopeForFinding?: (finding: ReviewFinding, index: number) => PathFilter | undefined;
 };
 
 export function validatePrReview(
@@ -33,12 +41,15 @@ export function validatePrReview(
   const validFindings: ReviewFinding[] = [];
   const droppedFindings: ValidatedReview["droppedFindings"] = [];
 
-  for (const finding of review.inlineFindings) {
+  for (const [index, finding] of review.inlineFindings.entries()) {
     const fingerprint = findingFingerprint(finding);
+    const rangeMatch = ranges.findRange(finding.rangeId);
     const reason = findingDropReason({
       finding,
       fingerprint,
-      range: ranges.rangeById(finding.rangeId),
+      pathScope: options.pathScopeForFinding?.(finding, index),
+      file: rangeMatch?.file,
+      range: rangeMatch?.range,
       excludedReason: ranges.excludedReason(finding.path),
       seenFingerprints,
     });
@@ -62,6 +73,8 @@ export function validatePrReview(
 type FindingValidationContext = {
   finding: ReviewFinding;
   fingerprint: string;
+  pathScope?: PathFilter;
+  file?: DiffManifestFile;
   range?: CommentableRange;
   excludedReason?: string;
   seenFingerprints: Set<string>;
@@ -70,6 +83,7 @@ type FindingValidationContext = {
 type FindingValidator = (context: FindingValidationContext) => string | undefined;
 
 const findingValidators: FindingValidator[] = [
+  validatePathScope,
   validateExcludedFile,
   validateRangeMatch,
   validateDuplicateFingerprint,
@@ -83,6 +97,17 @@ function findingDropReason(context: FindingValidationContext): string | undefine
     }
   }
   return undefined;
+}
+
+function validatePathScope(context: FindingValidationContext): string | undefined {
+  if (!context.pathScope) {
+    return undefined;
+  }
+  const matches =
+    context.file && context.finding.path === context.file.path
+      ? diffFileMatchesPathFilter(context.file, context.pathScope)
+      : pathMatchesFilter(context.finding.path, context.pathScope);
+  return matches ? undefined : "finding path is outside configured paths";
 }
 
 function validateExcludedFile(context: FindingValidationContext): string | undefined {

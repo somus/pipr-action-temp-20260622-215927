@@ -47,6 +47,20 @@ export default definePipr((pipr) => {
 
 `pipr.review` registers a change request review task, the `@pipr review` command, and the local `review` entrypoint unless `entrypoints` disables or renames them.
 
+Use `paths` to scope a review recipe to matching repository paths:
+
+```ts
+pipr.review({
+  reviewer,
+  paths: {
+    include: ["packages/runtime/**"],
+    exclude: ["**/*.test.ts"],
+  },
+});
+```
+
+`paths` filters the Diff Manifest and publishable Inline Review Comments. Pi still receives read-only access to the whole repository, and pipr instructs it to read nonmatching files only when needed to review matching files.
+
 The `entrypoints` object is the preferred public API:
 
 ```ts
@@ -102,10 +116,11 @@ const security = pipr.agent({
 });
 
 const task = pipr.task("security-review", async (ctx) => {
-  const manifest = await ctx.change.diffManifest({ compressed: true });
-  const result = await ctx.pi.run(security, { manifest });
+  const paths = { include: ["packages/runtime/**"] };
+  const manifest = await ctx.change.diffManifest({ compressed: true, paths });
+  const result = await ctx.pi.run(security, { manifest }, { paths });
   ctx.output.summary(result.summary, { key: "security", merge: "append" });
-  ctx.output.findings(result.inlineFindings);
+  ctx.output.findings(result.inlineFindings, { paths });
 });
 
 pipr.on.changeRequest(["opened", "updated"], task);

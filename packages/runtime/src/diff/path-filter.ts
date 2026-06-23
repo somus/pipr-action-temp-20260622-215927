@@ -40,7 +40,7 @@ export function filterDiffManifestByPaths(
   };
 }
 
-function diffFileMatchesPathFilter(
+export function diffFileMatchesPathFilter(
   file: Pick<DiffManifestFile, "path" | "previousPath">,
   filter: PathFilter | undefined,
 ): boolean {

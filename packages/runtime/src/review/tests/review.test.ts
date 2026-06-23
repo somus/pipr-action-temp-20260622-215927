@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
-import type { PrReview } from "../../types.js";
+import type { DiffManifest, PrReview } from "../../types.js";
 import {
   parsePrReview,
   prReviewJsonSchema,
@@ -89,6 +89,28 @@ describe("validatePrReview", () => {
     expect(validated.droppedFindings).toHaveLength(0);
   });
 
+  it("keeps scoped findings on renamed files when the filter matches the previous path", () => {
+    const review: PrReview = {
+      ...baseReview,
+      inlineFindings: [
+        {
+          ...baseFinding,
+          path: "packages/new.ts",
+          rangeId: "range-renamed",
+          startLine: 1,
+          endLine: 1,
+        },
+      ],
+    };
+
+    const validated = validatePrReview(review, renamedManifest(), {
+      pathScopeForFinding: () => ({ include: ["packages/old.ts"] }),
+    });
+
+    expect(validated.validFindings).toHaveLength(1);
+    expect(validated.droppedFindings).toHaveLength(0);
+  });
+
   it("drops excluded-file findings", () => {
     const review: PrReview = {
       ...baseReview,
@@ -162,3 +184,44 @@ describe("validatePrReview", () => {
     ).toThrow("does not match expected head SHA");
   });
 });
+
+function renamedManifest(): DiffManifest {
+  return {
+    baseSha: "base",
+    headSha: "head",
+    mergeBaseSha: "base",
+    files: [
+      {
+        path: "packages/new.ts",
+        previousPath: "packages/old.ts",
+        status: "renamed",
+        additions: 1,
+        deletions: 0,
+        hunks: [
+          {
+            hunkIndex: 1,
+            header: "@@ -1 +1 @@",
+            oldStart: 1,
+            oldLines: 1,
+            newStart: 1,
+            newLines: 1,
+            contentHash: "deadbeefcafe",
+          },
+        ],
+        commentableRanges: [
+          {
+            id: "range-renamed",
+            path: "packages/new.ts",
+            side: "RIGHT",
+            startLine: 1,
+            endLine: 1,
+            kind: "added",
+            hunkIndex: 1,
+            hunkHeader: "@@ -1 +1 @@",
+            hunkContentHash: "deadbeefcafe",
+          },
+        ],
+      },
+    ],
+  };
+}

@@ -52,6 +52,18 @@ await expectFailure("path-missed task was selected", {
   ...validFullFixture(),
   issueComments: [{ body: `${fullMainCommentBody()}\npipr/docs-only` }],
 });
+await expectFailure("path-scoped drops missing", {
+  ...validFullFixture(),
+  issueComments: [{ body: fullMainCommentBody().replace("Dropped findings: `3`", "") }],
+});
+await expectFailure("unexpected path-scoped drop count", {
+  ...validFullFixture(),
+  droppedFindings: [droppedFinding("finding path does not match range path")],
+});
+await expectFailure("out-of-scope finding was published", {
+  ...validFullFixture(),
+  issueComments: [{ body: `${fullMainCommentBody()}\nOut-of-scope act path should not publish.` }],
+});
 await expectFailure("duplicate findings were not deduped in main comment", {
   ...validFullFixture(),
   issueComments: [{ body: `${fullMainCommentBody()}\nFull-flow act reached inline publication.` }],
@@ -135,13 +147,23 @@ type PublicationFixture = {
   issueComments?: Array<{ body?: string }>;
   reviewCommentPayloads?: ReviewCommentPayload[];
   reviewComments?: ReviewCommentPayload[];
+  droppedFindings?: Array<{ reason?: string }>;
 };
 
 function validFullFixture(): PublicationFixture {
   return {
     issueComments: [{ body: fullMainCommentBody() }],
     reviewCommentPayloads: [validInlinePayload()],
+    droppedFindings: [
+      droppedFinding(),
+      droppedFinding(),
+      droppedFinding("duplicate finding fingerprint"),
+    ],
   };
+}
+
+function droppedFinding(reason = "finding path is outside configured paths"): { reason: string } {
+  return { reason };
 }
 
 function fullMainCommentBody(): string {
@@ -155,6 +177,7 @@ function fullMainCommentBody(): string {
     "- Full-flow act reached inline publication.",
     "",
     "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
+    "Dropped findings: `3`",
   ].join("\n");
 }
 

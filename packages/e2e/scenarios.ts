@@ -60,10 +60,14 @@ export default definePipr((pipr) => {
     tools: pipr.tools.readOnly,
     prompt: (input) => pipr.prompt\`Review this change.\\n\${pipr.compactManifest(input.manifest)}\`,
   });
-  const addReviewTask = (name, priority, secondary = false) => {
+  const sourcePaths = {
+    include: ["packages/e2e/fixtures/act/project/**"],
+    exclude: ["**/*.test.ts"],
+  };
+  const addReviewTask = (name, priority, secondary = false, paths = undefined) => {
     const task = pipr.task(name, async (ctx) => {
-      const manifest = await ctx.change.diffManifest({ compressed: true });
-      const result = await ctx.pi.run(reviewer, { manifest });
+      const manifest = await ctx.change.diffManifest({ compressed: true, paths });
+      const result = await ctx.pi.run(reviewer, { manifest }, { paths });
       if (secondary) {
         ctx.output.summary("Full fixture secondary section", {
           key: name,
@@ -72,14 +76,14 @@ export default definePipr((pipr) => {
         });
       } else {
         ctx.output.summary(result.summary, { key: name, merge: "append", priority });
-        ctx.output.findings(result.inlineFindings);
+        ctx.output.findings(result.inlineFindings, { paths });
       }
     });
     pipr.on.changeRequest(["opened"], task);
   };
 
-  addReviewTask("pipr/review", 100);
-  addReviewTask("pipr/full-duplicate-review", 90);
+  addReviewTask("pipr/review", 100, false, sourcePaths);
+  addReviewTask("pipr/full-duplicate-review", 90, false, sourcePaths);
   addReviewTask("pipr/full-secondary-section", 80, true);
 });
 `;

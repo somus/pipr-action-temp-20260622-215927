@@ -13,6 +13,7 @@ type PublicationFixture = {
   issueComments?: Array<{ body?: string }>;
   reviewCommentPayloads?: ReviewCommentPayload[];
   reviewComments?: ReviewCommentPayload[];
+  droppedFindings?: Array<{ reason?: string; finding?: { body?: string } }>;
 };
 
 type TelemetryEvent = {
@@ -47,6 +48,8 @@ export async function assertActFullFixture(
   telemetryPath?: string,
 ): Promise<void> {
   assertFullMainComment(readOnlyMainComment(fixture));
+  assertPathScopedDropReasons(fixture);
+  assertNoOutOfScopeFinding(fixture);
   assertInlinePayload(readOnlyInlinePayload(fixture), expectedHeadSha);
   if (telemetryPath) {
     await assertParallelPiCalls(telemetryPath);
@@ -93,9 +96,33 @@ function assertFullMainComment(body: string): void {
     ),
     "unexpected selected tasks",
   );
+  assert(body.includes("Dropped findings: `3`"), "path-scoped drops missing");
   assert(!body.includes("pipr/docs-only"), "path-missed task was selected");
+  assert(
+    !body.includes("Out-of-scope act path should not publish."),
+    "out-of-scope finding was published",
+  );
   const fullFlowFindingCount = body.split("Full-flow act reached inline publication.").length - 1;
   assert(fullFlowFindingCount === 1, "duplicate findings were not deduped in main comment");
+}
+
+function assertPathScopedDropReasons(fixture: PublicationFixture): void {
+  const pathScopedDrops = (fixture.droppedFindings ?? []).filter(
+    (drop) => drop.reason === "finding path is outside configured paths",
+  );
+  assertEqual(pathScopedDrops.length, 2, "unexpected path-scoped drop count");
+}
+
+function assertNoOutOfScopeFinding(fixture: PublicationFixture): void {
+  const publishedText = [
+    ...(fixture.issueComments ?? []).map((comment) => comment.body ?? ""),
+    ...(fixture.reviewCommentPayloads ?? []).map((comment) => comment.body ?? ""),
+    ...(fixture.reviewComments ?? []).map((comment) => comment.body ?? ""),
+  ].join("\n");
+  assert(
+    !publishedText.includes("Out-of-scope act path should not publish."),
+    "out-of-scope finding was published",
+  );
 }
 
 function readOnlyInlinePayload(fixture: PublicationFixture): ReviewCommentPayload {
