@@ -1,0 +1,41 @@
+packages/runtime/src/review/tests/comment.test.ts
+  s_611e522ea23400::t_8e753420110191 143-144
+  s_611e522ea23400::t_74c676a37e66e5 148-149,151
+  s_611e522ea23400::t_bc701d381009e5 145,147,150,152-169
+packages/runtime/src/review/comment.ts
+  s_611e522ea23400::t_21c27213b27d8d 203,208-217
+packages/sdk/src/index.ts
+  s_611e522ea23400::t_52ae6bde265404 1051
+packages/runtime/src/review/tests/review.test.ts
+  s_611e522ea23400::t_52ae6bde265404 33-34,36
+  s_611e522ea23400::t_840c8eea0ad98a 35
+packages/runtime/src/review/tests/task-runtime.test.ts
+  s_611e522ea23400::t_52ae6bde265404 718-719
+docs/runtime.md
+  s_611e522ea23400::t_12669d88401022 107,111
+docs/sdk-reference.md
+  s_611e522ea23400::t_12669d88401022 319
+docs/configuration.md
+  s_611e522ea23400::t_12669d88401022 179
+packages/runtime/src/review/review-run.ts
+  s_611e522ea23400::t_52ae6bde265404 332-334
+packages/runtime/src/review/tests/publish.test.ts
+  s_611e522ea23400::t_4ca1a803926a3f 122-124,126-129,142
+  s_611e522ea23400::t_840c8eea0ad98a 118-121,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "f902adce1b500f22c814da333aaaf0eb86651844",
+  "prompts": {},
+  "sessions": {
+    "s_611e522ea23400": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef836-1781-7052-a770-eac8bfbc3291",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
