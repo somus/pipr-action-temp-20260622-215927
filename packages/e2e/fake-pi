@@ -49,7 +49,7 @@ async function readPrompt(value) {
 
 async function fullFixtureReview() {
   assertPathScopePrompt();
-  const manifest = parsePromptJson("Diff Manifest:");
+  const manifest = parsePromptJson("\nManifest:");
   const ranges = manifest.files.flatMap((file) => file.commentableRanges ?? []);
   const range =
     ranges.find(

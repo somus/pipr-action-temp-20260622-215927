@@ -50,6 +50,7 @@ try {
       "--container-architecture",
       containerArchitecture,
       "--pull=false",
+      "--rm",
     ],
     prepared.worktree,
   );
