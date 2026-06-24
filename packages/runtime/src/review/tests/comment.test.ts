@@ -140,7 +140,33 @@ describe("comments", () => {
       new Set([`pipr:finding:${existing.findingId}:head`]),
     );
     expect(first[0]?.body).toContain("This can fail.");
-    expect(first[0]?.body).toContain("Suggested fix:");
+    expect(first[0]?.body).toContain("```suggestion\nUse a safe call.\n```");
+    expect(first[0]?.body).not.toContain("Suggested fix:");
+  });
+
+  it("omits suggested-change blocks when suggestedFix is absent", () => {
+    const findingWithoutSuggestion = { ...finding };
+    delete findingWithoutSuggestion.suggestedFix;
+    const [item] = prepareInlinePublicationItems({
+      validated: { validFindings: [findingWithoutSuggestion] },
+      manifest,
+      reviewedHeadSha: "head",
+    });
+
+    expect(item?.body).toContain("This can fail.");
+    expect(item?.body).not.toContain("```suggestion");
+  });
+
+  it("uses a longer suggestion fence when replacement code contains backticks", () => {
+    const [item] = prepareInlinePublicationItems({
+      validated: {
+        validFindings: [{ ...finding, suggestedFix: 'const fence = "```";' }],
+      },
+      manifest,
+      reviewedHeadSha: "head",
+    });
+
+    expect(item?.body).toContain('````suggestion\nconst fence = "```";\n````');
   });
 
   it("republishes inline drafts when the same-head inline comment was deleted", () => {

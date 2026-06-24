@@ -329,6 +329,9 @@ function outputPrompt(schema: Schema<unknown>): string {
     schema.id === prReviewSchemaId
       ? `Example:\n${JSON.stringify(reviewSchemaExample(), null, 2)}`
       : undefined,
+    schema.id === prReviewSchemaId
+      ? "`suggestedFix` is exact replacement code for the selected range. Do not include Markdown fences, prose, or labels in `suggestedFix`."
+      : undefined,
     "Return exactly one JSON value matching the schema.",
     "Do not include Markdown, prose, explanations, or leading/trailing text.",
   ]).join("\n\n");

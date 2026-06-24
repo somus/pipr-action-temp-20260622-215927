@@ -316,7 +316,7 @@ export default definePipr((pipr) => {
 });
 ```
 
-Use `pipr.schemas.review` when an agent directly returns publishable Inline Review Comments.
+Use `pipr.schemas.review` when an agent directly returns publishable Inline Review Comments. `suggestedFix` is optional exact replacement code for the selected range and is rendered as a GitHub suggested change.
 
 The `z` export is the recommended typed path for JSON-Schema-representable schemas. Generated `.pipr/types` include a standalone Zod authoring subset so `pipr init` projects type-check without installing `zod`; use `pipr.jsonSchema<T>()` for advanced JSON Schema shapes or when a Zod helper is outside that generated subset.
 

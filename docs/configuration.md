@@ -176,7 +176,7 @@ export default definePipr((pipr) => {
 
 The runtime includes schema details in the Pi prompt when they are available. Tasks can map custom outputs into `ctx.comment(...)`.
 
-To publish inline comments from a custom schema, map the custom output into `ReviewFinding[]` and pass it to `ctx.comment({ inlineFindings })`.
+To publish inline comments from a custom schema, map the custom output into `ReviewFinding[]` and pass it to `ctx.comment({ inlineFindings })`. Use `suggestedFix` only for exact replacement code, without Markdown fences or prose.
 
 Schema metadata is model-visible prompt content. Do not put secrets, private data, or sensitive internal notes in JSON Schema fields such as `description`, `examples`, `default`, or `$comment`.
 

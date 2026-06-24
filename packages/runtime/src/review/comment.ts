@@ -200,8 +200,18 @@ function renderInlineBody(
   return [
     renderInlineFindingMarker(findingId, reviewedHeadSha),
     finding.body,
-    finding.suggestedFix ? `\nSuggested fix:\n\n${finding.suggestedFix}` : "",
+    finding.suggestedFix ? `\n${renderSuggestedChange(finding.suggestedFix)}` : "",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function renderSuggestedChange(suggestedFix: string): string {
+  const fence = "`".repeat(Math.max(3, longestBacktickRun(suggestedFix) + 1));
+  const closingPrefix = suggestedFix.endsWith("\n") ? "" : "\n";
+  return `${fence}suggestion\n${suggestedFix}${closingPrefix}${fence}`;
+}
+
+function longestBacktickRun(value: string): number {
+  return Math.max(0, ...[...value.matchAll(/`+/g)].map((match) => match[0].length));
 }

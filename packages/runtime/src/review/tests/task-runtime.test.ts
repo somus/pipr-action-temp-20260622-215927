@@ -715,6 +715,9 @@ describe("runTaskRuntime", () => {
     expect(observedPrompt).toContain("JSON Schema:");
     expect(observedPrompt).toContain("Example:");
     expect(observedPrompt).toContain(
+      "`suggestedFix` is exact replacement code for the selected range.",
+    );
+    expect(observedPrompt).toContain(
       "Diff Manifest:\nUse this as the authoritative changed-code context",
     );
     expect(observedPrompt).toContain(

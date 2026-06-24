@@ -1048,7 +1048,7 @@ export function reviewSchemaExample(): ReviewResult {
         side: "RIGHT",
         startLine: 1,
         endLine: 1,
-        suggestedFix: "Optional fix.",
+        suggestedFix: "return safeValue;",
       },
     ],
   };

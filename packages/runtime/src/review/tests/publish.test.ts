@@ -115,8 +115,18 @@ afterEach(() => {
 describe("publishPublicationPlan", () => {
   it("upserts the main comment and publishes inline comments", async () => {
     const client = new FakePublicationClient("head");
-    const first = await publishPublicationPlan({ client, change: event, plan: plan() });
-    const second = await publishPublicationPlan({ client, change: event, plan: plan() });
+    const [firstFinding, secondFinding] = validated.validFindings;
+    if (!firstFinding || !secondFinding) {
+      throw new Error("test fixture missing validated findings");
+    }
+    const publicationPlan = plan({
+      validated: {
+        ...validated,
+        validFindings: [{ ...firstFinding, suggestedFix: "safeCall();" }, secondFinding],
+      },
+    });
+    const first = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    const second = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
 
     expect(first.mainComment.action).toBe("created");
     expect(second.mainComment.action).toBe("updated");
@@ -129,6 +139,7 @@ describe("publishPublicationPlan", () => {
       side: "RIGHT",
       start_line: 10,
       start_side: "RIGHT",
+      body: expect.stringContaining("```suggestion\nsafeCall();\n```"),
     });
     expect(client.reviewCommentPayloads[1]).toMatchObject({
       path: "src/a.ts",

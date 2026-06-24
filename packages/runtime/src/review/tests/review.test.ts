@@ -30,9 +30,10 @@ if (!baseFinding) {
 
 describe("validatePrReview", () => {
   it("uses one Review Output for examples and runtime schema", () => {
-    expect(parsePrReview(reviewSchemaExample()).summary.body).toBe(
-      "Concise pull request review summary.",
-    );
+    const example = parsePrReview(reviewSchemaExample());
+
+    expect(example.summary.body).toBe("Concise pull request review summary.");
+    expect(example.inlineFindings[0]?.suggestedFix).toBe("return safeValue;");
     expect(prReviewJsonSchema).toMatchObject({
       type: "object",
       properties: {

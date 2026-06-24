@@ -104,8 +104,11 @@ Each file carries changed-line ranges that can receive inline comments. Review F
   side: "RIGHT",
   startLine: 12,
   endLine: 12,
+  suggestedFix: "return safeValue;",
 }
 ```
+
+`suggestedFix` is optional exact replacement code for that range. pipr renders it as a GitHub suggested change, so do not include Markdown fences, prose, or labels.
 
 When the full manifest is too large, pipr sends a condensed manifest and attaches bounded Diff Read Tools. The model can ask for more range-scoped context without receiving shell or arbitrary filesystem access.
 
