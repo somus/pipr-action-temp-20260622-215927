@@ -53,7 +53,7 @@ const reviewer = pipr.reviewer({
 });
 
 pipr.review({
-  name: "review",
+  id: "review",
   reviewer,
   paths: {
     include: ["packages/runtime/**"],
@@ -90,6 +90,7 @@ To disable one entrypoint:
 
 ```ts
 pipr.review({
+  id: "review",
   reviewer,
   entrypoints: {
     command: false,
@@ -156,8 +157,10 @@ const task = pipr.task("security-review", async (ctx) => {
   const manifest = await ctx.change.diffManifest({ compressed: true, paths });
   const result = await ctx.pi.run(security, { manifest }, { paths });
 
-  ctx.output.summary(result.summary, { key: "security", merge: "append" });
-  ctx.output.findings(result.inlineFindings, { paths });
+  await ctx.comment(
+    { main: result.summary.body, inlineFindings: result.inlineFindings },
+    { key: "security", order: 20 },
+  );
 });
 
 pipr.on.changeRequest(["opened", "updated"], task);
@@ -174,56 +177,43 @@ pipr.local("security", task);
 | `ctx.repository` | Provider-neutral repository metadata. |
 | `ctx.change` | Provider-neutral change request metadata plus diff helpers. |
 | `ctx.pi.run(agent, input, options?)` | Execute a Pi-backed agent and validate structured output. |
-| `ctx.output` | Contribute summary sections, findings, metadata, and custom sections. |
+| `ctx.comment(source, options?)` | Contribute Main Review Comment markdown and Inline Review Comments. |
 | `ctx.log` | Write runtime logs. |
 
 `ctx.change.diffManifest(...)` returns commentable file ranges. Findings must reference those ranges by `rangeId`.
 
-When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)`, `ctx.pi.run(...)`, and `ctx.output.findings(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops publishable findings outside the scope.
+When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)` and `ctx.pi.run(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops publishable findings outside the scope.
 
-## Output collection
+## Comment output
 
-Use `ctx.output.summary(...)` for text that belongs in the Main Review Comment:
+Use `ctx.comment(...)` for Main Review Comment markdown:
 
 ```ts
-ctx.output.summary(
-  { title: "Security review", body: "No exploitable findings." },
-  { key: "security", merge: "replace", priority: 20 },
-);
+await ctx.comment("## Security review\n\nNo exploitable findings.", {
+  key: "security",
+  order: 20,
+});
 ```
 
-Use `ctx.output.section(...)` for custom rendered sections:
+Use object form when also publishing inline findings:
 
 ```ts
-ctx.output.section(
-  "test-plan",
-  ["unit tests passed", "no e2e evidence"],
-  {
-    title: "Test Plan",
-    order: 30,
-    merge: "list",
-    render: (items) => items.map((item) => `- ${item}`).join("\n"),
-  },
-);
-```
-
-Use `ctx.output.findings(...)` for inline comments:
-
-```ts
-ctx.output.findings([
-  {
+await ctx.comment({
+  main: "## Security review\n\nFound one issue.",
+  inlineFindings: [{
+    title: "Cleanup can be skipped",
     body: "This branch can throw before cleanup runs.",
     path: "src/server.ts",
     rangeId: "rng_...",
     side: "RIGHT",
     startLine: 42,
     endLine: 42,
-    data: { category: "correctness" },
-  },
-]);
+  }],
+});
 ```
 
 pipr validates findings against the Diff Manifest, drops invalid findings, dedupes finding markers, and caps inline publication.
+Subjective labels such as severity, confidence, or category are not part of the built-in finding contract. Define them in a custom schema or render them into your own `ctx.comment(...)` markdown when your workflow needs them.
 
 ## Tools
 
@@ -242,7 +232,6 @@ const lookupOwner = pipr.tool({
   toModelOutput(output) {
     return {
       owner: output.team,
-      confidence: output.confidence,
     };
   },
 });

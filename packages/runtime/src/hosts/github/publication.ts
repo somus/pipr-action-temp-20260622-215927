@@ -335,16 +335,8 @@ export async function loadGitHubPriorReviewState(options: {
   change: ChangeRequestEventContext;
 }): Promise<PriorReviewState | undefined> {
   const ownerLogin = await options.client.getAuthenticatedUserLogin();
-  const mainComment = findMainComment(
-    await options.client.listIssueComments({
-      repo: options.change.repository.slug,
-      issueNumber: options.change.change.number,
-    }),
-    mainCommentMarker,
-    options.change.change.number,
-    ownerLogin,
-  );
-  const state = extractPriorReviewState(mainComment?.body, options.change.change.number);
+  const mainComment = await loadGitHubPriorMainComment({ ...options, ownerLogin });
+  const state = extractPriorReviewState(mainComment, options.change.change.number);
   if (!state) {
     return undefined;
   }
@@ -357,6 +349,24 @@ export async function loadGitHubPriorReviewState(options: {
     .filter((comment) => comment.authorLogin === ownerLogin)
     .map((comment) => comment.body ?? "");
   return applyInlineFindingMarkers(state, inlineBodies);
+}
+
+export async function loadGitHubPriorMainComment(options: {
+  client: GitHubPublicationClient;
+  change: ChangeRequestEventContext;
+  ownerLogin?: string;
+}): Promise<string | undefined> {
+  const ownerLogin = options.ownerLogin ?? (await options.client.getAuthenticatedUserLogin());
+  const mainComment = findMainComment(
+    await options.client.listIssueComments({
+      repo: options.change.repository.slug,
+      issueNumber: options.change.change.number,
+    }),
+    mainCommentMarker,
+    options.change.change.number,
+    ownerLogin,
+  );
+  return mainComment?.body ?? undefined;
 }
 
 export async function publishGitHubPublicationPlan(options: {

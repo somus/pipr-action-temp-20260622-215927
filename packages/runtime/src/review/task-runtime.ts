@@ -1,12 +1,12 @@
 import type {
+  CommentOptions,
+  CommentSource,
   DiffManifestOptions,
   PathFilter,
   ReviewFinding,
-  ReviewSummary,
   RuntimePlan,
   TaskContext,
 } from "@pipr/sdk";
-import { renderPromptValue } from "@pipr/sdk";
 import { uniq } from "lodash-es";
 import { selectRuntimeTasks } from "../config/task-selection.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "../diff/diff.js";
@@ -22,10 +22,8 @@ import type {
 import { parseDiffManifest, parsePiprConfig, parseProviderConfig } from "../types.js";
 import {
   type InlineCommentDraft,
-  type MainSectionContribution,
-  mainSectionContributionSchema,
+  type MainCommentContribution,
   type PublicationPlan,
-  publicationTaskMetadataSchema,
   runtimeVersion,
 } from "./comment.js";
 import { buildCommentPublishingPlan } from "./comment-publishing.js";
@@ -51,7 +49,9 @@ export type RunTaskRuntimeOptions = {
   piRunner?: PiRunner;
   diffManifestBuilder?: DiffManifestBuilder;
   priorReviewState?: PriorReviewState;
+  priorMainComment?: string;
   loadPriorReviewState?: () => Promise<PriorReviewState | undefined>;
+  loadPriorMainComment?: () => Promise<string | undefined>;
 };
 
 export type ReviewRuntimeResult = {
@@ -68,12 +68,9 @@ export type ReviewRuntimeResult = {
 };
 
 type OutputState = {
-  summaries: MainSectionContribution[];
-  sections: MainSectionContribution[];
-  sectionTemplates: Map<string, { title: string; order: number; collapsed?: boolean }>;
+  mainContributions: MainCommentContribution[];
   findings: FindingContribution[];
-  findingScopes: WeakMap<ReviewFinding[], PathFilter>;
-  metadata: Record<string, unknown>;
+  findingScopes: WeakMap<readonly ReviewFinding[], PathFilter>;
   providerModels: string[];
   repairAttempted: boolean;
 };
@@ -121,12 +118,13 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   const selectedTasks = tasks.map((task) => task.name);
   const loadedPriorReviewState =
     options.priorReviewState ?? (await options.loadPriorReviewState?.());
+  const priorMainComment = options.priorMainComment ?? (await options.loadPriorMainComment?.());
   const priorReviewState = priorReviewStateForSelectedTasks(loadedPriorReviewState, selectedTasks);
   const runtimeOptions = { ...options, priorReviewState };
 
   const manifestCache = new Map<string, DiffManifest>();
   const taskResults = await Promise.all(
-    tasks.map(async (task) => {
+    tasks.map(async (task, taskOrder) => {
       const output = createOutputState();
       await task.handler(
         createTaskContext({
@@ -136,6 +134,8 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
           diffManifest,
           manifestCache,
           output,
+          taskName: task.name,
+          taskOrder,
         }),
         task.name === options.taskName ? (options.taskInput as never) : (undefined as never),
       );
@@ -151,13 +151,12 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   });
   const publishing = buildCommentPublishingPlan({
     event: options.event,
-    sectionTemplates: output.sectionTemplates,
-    summaries: output.summaries,
-    sections: output.sections,
+    mainContributions: output.mainContributions,
     validated,
     manifest: diffManifest,
     maxInlineComments: config.publication.maxInlineComments,
     priorReviewState,
+    priorMainComment,
     metadata: {
       runtimeVersion,
       trustedConfigSha: options.trustedConfigSha,
@@ -165,7 +164,6 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       reviewedHeadSha: options.event.change.head.sha,
       providerModels:
         output.providerModels.length > 0 ? uniq(output.providerModels) : [provider.model],
-      taskMetadata: taskMetadata(output),
       selectedTasks,
       failedTasks: [],
       validFindings: validated.validFindings.length,
@@ -187,12 +185,6 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   };
 }
 
-function taskMetadata(output: OutputState) {
-  return Object.keys(output.metadata).length > 0
-    ? publicationTaskMetadataSchema.parse(output.metadata)
-    : undefined;
-}
-
 function createTaskContext(
   options: RunTaskRuntimeOptions & {
     config: PiprConfig;
@@ -200,6 +192,8 @@ function createTaskContext(
     diffManifest: DiffManifest;
     manifestCache: Map<string, DiffManifest>;
     output: OutputState;
+    taskName: string;
+    taskOrder: number;
   },
 ): TaskContext {
   return {
@@ -255,7 +249,13 @@ function createTaskContext(
         return result.value as never;
       },
     },
-    output: createOutputCollector(options.output),
+    async comment(source, commentOptions) {
+      await collectComment(options.output, source, {
+        key: commentOptions?.key ?? `default/${options.taskName}`,
+        order: commentOptions?.order ?? options.taskOrder,
+        paths: commentOptions?.paths,
+      });
+    },
     log: console,
   };
 }
@@ -263,13 +263,8 @@ function createTaskContext(
 function mergeTaskOutputs(results: TaskRunResult[]): OutputState {
   const merged = createOutputState();
   for (const { output } of results) {
-    merged.summaries.push(...output.summaries);
-    merged.sections.push(...output.sections);
-    for (const [id, layoutSection] of output.sectionTemplates) {
-      merged.sectionTemplates.set(id, layoutSection);
-    }
+    merged.mainContributions.push(...output.mainContributions);
     merged.findings.push(...output.findings);
-    Object.assign(merged.metadata, output.metadata);
     merged.providerModels.push(...output.providerModels);
     merged.repairAttempted ||= output.repairAttempted;
   }
@@ -358,59 +353,44 @@ function truncatePreview(
 
 function createOutputState(): OutputState {
   return {
-    summaries: [],
-    sections: [],
-    sectionTemplates: new Map([
-      ["summary", { title: "Summary", order: 10 }],
-      ["findings", { title: "Findings", order: 20 }],
-      ["metadata", { title: "Review metadata", order: 100, collapsed: true }],
-    ]),
+    mainContributions: [],
     findings: [],
     findingScopes: new WeakMap(),
-    metadata: {},
     providerModels: [],
     repairAttempted: false,
   };
 }
 
-function createOutputCollector(state: OutputState): TaskContext["output"] {
-  return {
-    summary(value, options = {}) {
-      const summary = typeof value === "string" ? value : renderSummary(value);
-      state.summaries.push(
-        mainSectionContributionSchema.parse({
-          sourceId: options.key ?? "summary",
-          sectionId: "summary",
-          policy: options.merge ?? "exclusive",
-          priority: options.priority ?? 100,
-          value: summary,
-        }),
-      );
-    },
-    findings(value, options) {
-      const paths = options?.paths ?? state.findingScopes.get(value);
-      state.findings.push(...value.map((finding) => ({ finding, paths })));
-    },
-    section(id, value, options) {
-      state.sectionTemplates.set(id, {
-        title: options.title,
-        order: options.order ?? 50,
-        collapsed: options.collapsed,
-      });
-      state.sections.push(
-        mainSectionContributionSchema.parse({
-          sourceId: id,
-          sectionId: id,
-          policy: options.merge ?? "exclusive",
-          priority: options.priority ?? 0,
-          value: renderSectionValue(value, options.render),
-        }),
-      );
-    },
-    metadata(value) {
-      Object.assign(state.metadata, value);
-    },
-  };
+async function collectComment(
+  state: OutputState,
+  source: CommentSource,
+  options: Required<Pick<CommentOptions, "key" | "order">> & Pick<CommentOptions, "paths">,
+): Promise<void> {
+  const value = typeof source === "function" ? await source() : source;
+  if (value === null) {
+    state.mainContributions.push({ key: options.key, order: options.order, body: null });
+    return;
+  }
+  if (typeof value === "string") {
+    state.mainContributions.push({ key: options.key, order: options.order, body: value });
+    return;
+  }
+  collectInlineFindings(state, value.inlineFindings, options.paths);
+  if (value.main !== undefined) {
+    state.mainContributions.push({ key: options.key, order: options.order, body: value.main });
+  }
+}
+
+function collectInlineFindings(
+  state: OutputState,
+  findings: readonly ReviewFinding[] | undefined,
+  paths: PathFilter | undefined,
+): void {
+  if (!findings) {
+    return;
+  }
+  const scope = paths ?? state.findingScopes.get(findings);
+  state.findings.push(...findings.map((finding) => ({ finding, paths: scope })));
 }
 
 function trackResultFindingScope(
@@ -424,7 +404,7 @@ function trackResultFindingScope(
   state.findingScopes.set(value.inlineFindings, paths);
 }
 
-function hasInlineFindings(value: unknown): value is { inlineFindings: ReviewFinding[] } {
+function hasInlineFindings(value: unknown): value is { inlineFindings: readonly ReviewFinding[] } {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -432,28 +412,14 @@ function hasInlineFindings(value: unknown): value is { inlineFindings: ReviewFin
   );
 }
 
-function renderSummary(summary: ReviewSummary): string {
-  return summary.title ? `**${summary.title}**\n\n${summary.body}` : summary.body;
-}
-
-function renderSectionValue<T>(value: T, render?: (value: T) => string): unknown {
-  if (render) {
-    return render(value);
-  }
-  if (
-    typeof value === "string" ||
-    (Array.isArray(value) && value.every((item) => typeof item === "string")) ||
-    (Array.isArray(value) &&
-      value.every((item) => typeof item === "object" && item !== null && !Array.isArray(item)))
-  ) {
-    return value;
-  }
-  return renderPromptValue(value);
-}
-
 function collectedReview(output: OutputState): PrReview {
   return {
-    summary: { body: output.summaries.length > 0 ? "Review completed." : "No summary produced." },
+    summary: {
+      body:
+        output.mainContributions.length > 0 || output.findings.length > 0
+          ? "Review completed."
+          : "No comment produced.",
+    },
     inlineFindings: output.findings.map((item) => item.finding),
   };
 }
@@ -471,9 +437,7 @@ function skippedTaskRuntimeResult(options: {
   const validated: ValidatedReview = { review, validFindings: [], droppedFindings: [] };
   const publishing = buildCommentPublishingPlan({
     event: options.event,
-    sectionTemplates: createOutputState().sectionTemplates,
-    summaries: [],
-    sections: [],
+    mainContributions: [{ key: "runtime/skipped", order: 0, body: options.reason }],
     validated,
     manifest: options.diffManifest,
     maxInlineComments: options.config.publication.maxInlineComments,

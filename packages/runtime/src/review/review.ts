@@ -126,7 +126,7 @@ function validateDuplicateFingerprint(context: FindingValidationContext): string
     : undefined;
 }
 
-export function findingFingerprint(finding: ReviewFinding): string {
+function findingFingerprint(finding: ReviewFinding): string {
   const location = [
     finding.path,
     finding.rangeId,

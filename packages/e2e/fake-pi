@@ -76,13 +76,13 @@ async function fullFixtureReview() {
     },
     inlineFindings: [
       {
+        title: "Full-flow inline publication",
         body: "Full-flow act reached inline publication.",
         path: range.path,
         rangeId: range.id,
         side: range.side,
         startLine: range.startLine,
         endLine: range.startLine,
-        data: { category: "maintainability" },
       },
       ...outOfScopeFindings(range),
     ],
@@ -95,6 +95,7 @@ function outOfScopeFindings(range) {
   }
   return [
     {
+      title: "Out-of-scope path",
       body: "Out-of-scope act path should not publish.",
       path: "docs/out-of-scope.md",
       rangeId: range.id,
@@ -124,12 +125,29 @@ function orchestratorReview() {
   assertPromptContains("Correctness specialist review");
   assertPromptContains("Security specialist review");
   assertPromptContains("Tests specialist review");
+  const manifest = parsePromptJson("\nManifest:", "\nSpecialist reviews:");
+  const file = manifest.files.find((item) => item.path === "packages/e2e/fixtures/act/project/sample.ts");
+  assert(file, "orchestrator manifest missing sample file");
+  const range =
+    file.commentableRanges.find((item) => item.side === "RIGHT") ?? file.commentableRanges[0];
+  assert(range, "orchestrator manifest missing commentable range");
   return {
     summary: {
       title: "Orchestrator fixture review",
       body: "Orchestrated review combined correctness, security, and tests specialist outputs.",
     },
-    findings: [],
+    findings: [
+      {
+        title: "Orchestrated inline publication",
+        body: "Orchestrator custom schema mapped a labeled finding into core inline output.",
+        path: range.path,
+        rangeId: range.id,
+        side: range.side,
+        startLine: range.startLine,
+        endLine: range.startLine,
+        severity: "medium",
+      },
+    ],
   };
 }
 
@@ -270,6 +288,9 @@ function parsePromptJson(startLabel, endLabel) {
   const start = prompt.indexOf(startLabel);
   assert(start !== -1, `prompt missing ${startLabel}`);
   const contentStart = start + startLabel.length;
+  if (endLabel !== undefined) {
+    return parseFirstJsonValue(prompt.slice(contentStart));
+  }
   const end =
     endLabel === undefined
       ? readNextPromptSectionIndex(contentStart)
@@ -289,6 +310,39 @@ function readNextPromptSectionIndex(contentStart) {
     .map((marker) => prompt.indexOf(marker, contentStart))
     .filter((index) => index !== -1);
   return markers.length > 0 ? Math.min(...markers) : prompt.length;
+}
+
+function parseFirstJsonValue(value) {
+  const trimmed = value.trimStart();
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (inString) {
+      escaped = char === "\\" && !escaped;
+      if (char === '"' && !escaped) {
+        inString = false;
+      }
+      if (char !== "\\") {
+        escaped = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      depth += 1;
+    } else if (char === "}" || char === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        return JSON.parse(trimmed.slice(0, index + 1));
+      }
+    }
+  }
+  throw new Error("prompt JSON value was incomplete");
 }
 
 async function loadRuntimeTools(extensionPath) {

@@ -37,36 +37,29 @@ await expectFailure("secondary section missing", {
   ...validFullFixture(),
   issueComments: [{ body: fullMainCommentBody().replace("Full fixture secondary section\n", "") }],
 });
-await expectFailure("unexpected selected tasks", {
-  ...validFullFixture(),
-  issueComments: [
-    {
-      body: fullMainCommentBody().replace(
-        "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
-        "Selected tasks: `pipr/review`",
-      ),
-    },
-  ],
-});
 await expectFailure("path-missed task was selected", {
   ...validFullFixture(),
   issueComments: [{ body: `${fullMainCommentBody()}\npipr/docs-only` }],
 });
-await expectFailure("path-scoped drops missing", {
+await expectFailure("unexpected path-scoped drop count", {
   ...validFullFixture(),
-  issueComments: [{ body: fullMainCommentBody().replace("Dropped findings: `3`", "") }],
+  droppedFindings: [droppedFinding("duplicate finding fingerprint")],
 });
 await expectFailure("unexpected path-scoped drop count", {
   ...validFullFixture(),
   droppedFindings: [droppedFinding("finding path does not match range path")],
 });
+await expectFailure("unexpected duplicate finding drop count", {
+  ...validFullFixture(),
+  droppedFindings: [
+    droppedFinding(),
+    droppedFinding(),
+    droppedFinding("finding path does not match range path"),
+  ],
+});
 await expectFailure("out-of-scope finding was published", {
   ...validFullFixture(),
   issueComments: [{ body: `${fullMainCommentBody()}\nOut-of-scope act path should not publish.` }],
-});
-await expectFailure("duplicate findings were not deduped in main comment", {
-  ...validFullFixture(),
-  issueComments: [{ body: `${fullMainCommentBody()}\nFull-flow act reached inline publication.` }],
 });
 expectCondensedFailure("condensed summary missing", {
   ...validCondensedFixture(),
@@ -79,6 +72,18 @@ expectCondensedFailure("unexpected inline payloads: expected 0, got 1", {
 expectOrchestratorFailure("orchestrated summary missing", {
   ...validOrchestratorFixture(),
   issueComments: [{ body: mainMarker() }],
+});
+expectOrchestratorFailure("custom severity label missing", {
+  ...validOrchestratorFixture(),
+  issueComments: [
+    {
+      body:
+        validOrchestratorFixture().issueComments?.[0]?.body?.replace(
+          "- Orchestrated inline publication",
+          "",
+        ) ?? "",
+    },
+  ],
 });
 
 console.log("act fixture assertion tests ok");
@@ -172,12 +177,10 @@ function fullMainCommentBody(): string {
     "",
     "# pipr Review",
     "",
+    '<!-- pipr:contribution key="pipr/full-secondary-section" order="80" -->',
     "Full fixture secondary section",
-    "",
+    "<!-- /pipr:contribution -->",
     "- Full-flow act reached inline publication.",
-    "",
-    "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
-    "Dropped findings: `3`",
   ].join("\n");
 }
 
@@ -197,10 +200,31 @@ function validOrchestratorFixture(): PublicationFixture {
   return {
     issueComments: [
       {
-        body: `${mainMarker()}\n\nOrchestrated review combined correctness, security, and tests specialist outputs.`,
+        body: [
+          mainMarker(),
+          "",
+          "Orchestrated review combined correctness, security, and tests specialist outputs.",
+          "",
+          "## Custom labels",
+          "",
+          "### medium",
+          "",
+          "- Orchestrated inline publication",
+        ].join("\n"),
       },
     ],
-    reviewCommentPayloads: [],
+    reviewCommentPayloads: [
+      {
+        body: [
+          "<!-- pipr:finding id=fnd_fixture head=head-sha -->",
+          "**Orchestrated inline publication**",
+          "",
+          "Severity: medium",
+          "",
+          "Orchestrator custom schema mapped a labeled finding into core inline output.",
+        ].join("\n"),
+      },
+    ],
   };
 }
 

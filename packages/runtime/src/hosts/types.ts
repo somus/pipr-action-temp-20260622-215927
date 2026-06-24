@@ -61,6 +61,9 @@ export type CodeHostAdapter = {
   loadPriorReviewState?(options: {
     change: ChangeRequestEventContext;
   }): Promise<PriorReviewState | undefined>;
+  loadPriorMainComment?(options: {
+    change: ChangeRequestEventContext;
+  }): Promise<string | undefined>;
   mapInlineLocation(item: InlinePublicationItem, change: ChangeRequestEventContext): unknown;
   ensureWorkspaceSafeDirectory?(options: { rootDir: string; env?: NodeJS.ProcessEnv }): void;
 };

@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { get } from "lodash-es";
 import { z } from "zod";
 import type { ReviewFinding } from "../types.js";
 import { reviewSideSchema } from "../types.js";
@@ -129,13 +128,6 @@ export function matchFindingRecord(
   if (deterministic) {
     return deterministic;
   }
-  const explicitId = priorFindingId(finding);
-  if (explicitId) {
-    const explicit = state.findings.find((record) => record.id === explicitId);
-    if (explicit) {
-      return explicit;
-    }
-  }
   return findOpenOverlappingFinding(state.findings, finding);
 }
 
@@ -251,7 +243,6 @@ function selectFindingId(options: {
   usedPriorIds: Set<string>;
 }): string {
   const candidateIds = [
-    priorFindingId(options.finding),
     newFindingId(options.finding),
     findUnambiguousOverlappingFinding(options)?.id,
   ];
@@ -319,14 +310,8 @@ function findingOverlapsRecord(finding: ReviewFinding, record: PriorFindingRecor
   );
 }
 
-function priorFindingId(finding: ReviewFinding): string | undefined {
-  const value = get(finding.data, "pipr.priorFindingId");
-  return typeof value === "string" && findingIdSchema.safeParse(value).success ? value : undefined;
-}
-
 function newFindingId(finding: ReviewFinding): string {
-  const issueKey = get(finding.data, "pipr.issueKey");
-  const semanticKey = typeof issueKey === "string" && issueKey ? issueKey : finding.body;
+  const semanticKey = finding.fingerprintHint ?? finding.semanticAnchor ?? finding.title;
   return `fnd_${hashParts([
     finding.path,
     finding.rangeId,

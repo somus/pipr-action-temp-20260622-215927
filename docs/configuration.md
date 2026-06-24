@@ -33,6 +33,7 @@ export default definePipr((pipr) => {
   });
 
   pipr.review({
+    id: "review",
     reviewer,
     entrypoints: {
       changeRequest: ["opened", "updated", "reopened", "ready"],
@@ -51,6 +52,7 @@ Use `paths` to scope a review recipe to matching repository paths:
 
 ```ts
 pipr.review({
+  id: "runtime-review",
   reviewer,
   paths: {
     include: ["packages/runtime/**"],
@@ -121,8 +123,10 @@ const task = pipr.task("security-review", async (ctx) => {
   const paths = { include: ["packages/runtime/**"] };
   const manifest = await ctx.change.diffManifest({ compressed: true, paths });
   const result = await ctx.pi.run(security, { manifest }, { paths });
-  ctx.output.summary(result.summary, { key: "security", merge: "append" });
-  ctx.output.findings(result.inlineFindings, { paths });
+  await ctx.comment(
+    { main: result.summary.body, inlineFindings: result.inlineFindings },
+    { key: "security", order: 20 },
+  );
 });
 
 pipr.on.changeRequest(["opened", "updated"], task);
@@ -130,7 +134,7 @@ pipr.on.changeRequest(["opened", "updated"], task);
 
 Pass `manifest` to `ctx.pi.run(...)`. pipr injects the full or condensed Diff Manifest into the Pi prompt and attaches read-only diff tools when needed.
 
-Inline findings passed to `ctx.output.findings(...)` must target valid Diff Manifest ranges.
+Inline findings passed to `ctx.comment(...)` must target valid Diff Manifest ranges.
 
 ## Custom schemas
 
@@ -164,9 +168,9 @@ export default definePipr((pipr) => {
 });
 ```
 
-The runtime includes schema details in the Pi prompt when they are available. Tasks can map custom outputs into `ctx.output.summary(...)`, `ctx.output.findings(...)`, or `ctx.output.section(...)`.
+The runtime includes schema details in the Pi prompt when they are available. Tasks can map custom outputs into `ctx.comment(...)`.
 
-To publish inline comments from a custom schema, map the custom output into `ReviewFinding[]` and call `ctx.output.findings(...)`.
+To publish inline comments from a custom schema, map the custom output into `ReviewFinding[]` and pass it to `ctx.comment({ inlineFindings })`.
 
 Schema metadata is model-visible prompt content. Do not put secrets, private data, or sensitive internal notes in JSON Schema fields such as `description`, `examples`, `default`, or `$comment`.
 
@@ -212,7 +216,7 @@ Invalid structured output gets one repair attempt by default. Transient Pi execu
 
 ```ts
 const reviewer = pipr.agent({
-  name: "review",
+  id: "review",
   model,
   fallbacks: [backupModel],
   instructions: "Review the pull request.",

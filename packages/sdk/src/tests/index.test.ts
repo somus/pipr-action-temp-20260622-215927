@@ -38,14 +38,16 @@ describe("definePipr", () => {
       const task = pipr.task("review", async (context) => {
         const manifest = await context.change.diffManifest({ paths });
         const result = await context.pi.run(agent, { manifest }, { paths });
-        context.output.summary(result.summary);
-        context.output.findings(result.inlineFindings, { paths });
+        await context.comment({
+          main: result.summary.body,
+          inlineFindings: result.inlineFindings,
+        });
       });
       expect(pipr.on.changeRequest(["opened"], task)).toBeUndefined();
       expect(pipr.command("@pipr review", { permission: "write" }, task)).toBeUndefined();
       expect(pipr.local("review", task)).toBeUndefined();
       pipr.review({
-        name: "scoped",
+        id: "scoped",
         model,
         instructions: "Review scoped files.",
         paths: { include: ["docs/**"] },
@@ -120,7 +122,7 @@ describe("definePipr", () => {
         name: "deepseek",
         apiKey: pipr.secret("DEEPSEEK_API_KEY"),
       });
-      pipr.review({ model, instructions: "Review.", inlineComments: { max: 3 } });
+      pipr.review({ id: "review", model, instructions: "Review.", inlineComments: { max: 3 } });
     });
 
     const plan = buildPiprPlan(factory);
@@ -151,7 +153,7 @@ describe("definePipr", () => {
         instructions: "Review correctness.",
       });
       pipr.review({
-        name: "correctness",
+        id: "correctness",
         reviewer,
         entrypoints: {
           changeRequest: false,
@@ -162,7 +164,7 @@ describe("definePipr", () => {
           },
           local: "correctness",
         },
-        inlineComments: false,
+        comment: () => null,
       });
     });
 
@@ -177,7 +179,7 @@ describe("definePipr", () => {
       description: "Run correctness review.",
     });
     expect(plan.locals[0]).toMatchObject({ name: "correctness" });
-    expect(plan.publication.maxInlineComments).toBe(0);
+    expect(plan.publication.maxInlineComments).toBe(5);
   });
 
   it("passes review-level timeout when reusing an explicit reviewer", async () => {
@@ -192,6 +194,7 @@ describe("definePipr", () => {
         instructions: "Review.",
       });
       pipr.review({
+        id: "review",
         reviewer,
         timeout: "5m",
         entrypoints: {
@@ -233,12 +236,7 @@ describe("definePipr", () => {
             >;
           },
         },
-        output: {
-          summary() {},
-          findings() {},
-          section() {},
-          metadata() {},
-        },
+        async comment() {},
         log: {
           info() {},
           warn() {},
@@ -388,14 +386,14 @@ describe("definePipr", () => {
       });
       const task = pipr.task("security", async (context) => {
         const result = await context.pi.run(agent, {});
-        context.output.section("security", result, { title: "Security" });
+        await context.comment(JSON.stringify(result));
       });
       pipr.on.changeRequest(["opened"], task);
     });
 
     const plan = buildPiprPlan(factory);
     const task = plan.tasks[0];
-    let sectionValue: unknown;
+    let commentValue: unknown;
 
     await task?.handler(
       {
@@ -408,20 +406,15 @@ describe("definePipr", () => {
             return agent.definition.output.parse({ summary: "Done.", findings: ["A"] }) as never;
           },
         },
-        output: {
-          summary() {},
-          findings() {},
-          section(_id, value) {
-            sectionValue = value;
-          },
-          metadata() {},
+        async comment(value) {
+          commentValue = value;
         },
         log: fakeLog(),
       },
       undefined,
     );
 
-    expect(sectionValue).toEqual({ summary: "Done.", findings: ["A"] });
+    expect(commentValue).toEqual('{"summary":"Done.","findings":["A"]}');
   });
 
   it("validates builtin schema values", () => {
@@ -435,7 +428,7 @@ describe("definePipr", () => {
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
-        inlineFindings: [{ title: "Old title", ...validReviewFinding() }],
+        inlineFindings: [{ ...validReviewFinding(), title: 123 }],
       }),
     ).toThrow("title");
     expect(() =>
@@ -454,25 +447,24 @@ describe("definePipr", () => {
     expect(
       schemas.review.parse({
         summary: { body: "Review." },
-        inlineFindings: [validReviewFinding({ data: { category: "correctness" } })],
-        metadata: { source: "test" },
+        inlineFindings: [validReviewFinding()],
       }),
     ).toMatchObject({
-      inlineFindings: [{ data: { category: "correctness" } }],
-      metadata: { source: "test" },
+      inlineFindings: [{ title: "Finding title." }],
     });
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
-        inlineFindings: [validReviewFinding({ data: { when: new Date() } })],
+        inlineFindings: [validReviewFinding({ data: { label: "correctness" } })],
       }),
-    ).toThrow("Invalid input");
+    ).toThrow("data");
     expect(() =>
       schemas.review.parse({
         summary: { body: "Review." },
-        inlineFindings: [validReviewFinding({ data: { values: new Map([["key", "value"]]) } })],
+        inlineFindings: [validReviewFinding()],
+        metadata: { source: "test" },
       }),
-    ).toThrow("Invalid input");
+    ).toThrow("metadata");
   });
 });
 
@@ -505,7 +497,7 @@ function expectExplicitReviewerRejectsConstructionFields(
 
 void expectExplicitReviewerRejectsConstructionFields;
 
-type InlineComments = false | { max?: number };
+type InlineComments = { max?: number };
 
 function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineComments) {
   return definePipr((pipr) => {
@@ -514,7 +506,7 @@ function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineCo
       apiKey: pipr.secret("DEEPSEEK_API_KEY"),
     });
     pipr.review({
-      name: "correctness",
+      id: "correctness",
       model,
       instructions: "Review correctness.",
       inlineComments: firstInline,
@@ -522,7 +514,7 @@ function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineCo
       localName: false,
     });
     pipr.review({
-      name: "security",
+      id: "security",
       model,
       instructions: "Review security.",
       inlineComments: secondInline,
@@ -534,6 +526,7 @@ function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineCo
 
 function validReviewFinding(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    title: "Finding title.",
     body: "Finding body.",
     path: "src/example.ts",
     rangeId: "rng_example",

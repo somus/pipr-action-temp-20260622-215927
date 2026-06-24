@@ -9,6 +9,7 @@ import {
 } from "../types.js";
 
 const finding: ReviewFinding = {
+  title: "Unsafe call",
   body: "This can fail.",
   path: "src/a.ts",
   rangeId: "range-1",

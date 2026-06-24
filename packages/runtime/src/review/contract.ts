@@ -10,6 +10,7 @@ import { z } from "zod";
 export const prReviewSchemaId = reviewOutputSchemaId;
 
 export const reviewFindingSchema = z.strictObject({
+  title: z.string().min(1),
   body: z.string().min(1),
   path: z.string().min(1),
   rangeId: z.string().min(1),
@@ -17,7 +18,8 @@ export const reviewFindingSchema = z.strictObject({
   startLine: z.number().int().positive(),
   endLine: z.number().int().positive(),
   suggestedFix: z.string().min(1).optional(),
-  data: z.record(z.string(), z.json()).optional(),
+  semanticAnchor: z.string().min(1).optional(),
+  fingerprintHint: z.string().min(1).optional(),
 });
 
 export const prReviewSchema = z.strictObject({
@@ -26,7 +28,6 @@ export const prReviewSchema = z.strictObject({
     body: z.string().min(1),
   }),
   inlineFindings: z.array(reviewFindingSchema),
-  metadata: z.record(z.string(), z.json()).optional(),
 });
 
 export type ReviewFinding = SdkReviewFinding;

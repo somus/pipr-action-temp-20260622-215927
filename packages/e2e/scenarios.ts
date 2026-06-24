@@ -69,14 +69,15 @@ export default definePipr((pipr) => {
       const manifest = await ctx.change.diffManifest({ compressed: true, paths });
       const result = await ctx.pi.run(reviewer, { manifest }, { paths });
       if (secondary) {
-        ctx.output.summary("Full fixture secondary section", {
+        await ctx.comment("Full fixture secondary section", {
           key: name,
-          merge: "append",
-          priority,
+          order: priority,
         });
       } else {
-        ctx.output.summary(result.summary, { key: name, merge: "append", priority });
-        ctx.output.findings(result.inlineFindings, { paths });
+        await ctx.comment(
+          { main: result.summary.body, inlineFindings: result.inlineFindings },
+          { key: name, order: priority },
+        );
       }
     });
     pipr.on.changeRequest(["opened"], task);
@@ -107,6 +108,7 @@ export default definePipr((pipr) => {
     },
   });
   pipr.review({
+    id: "review",
     model,
     instructions: "Review the condensed act fixture.",
     inlineComments: { max: 5 },
@@ -130,12 +132,17 @@ export default definePipr((pipr) => {
     }),
   );
   const findingSchema = z.strictObject({
+    title: z.string(),
     body: z.string(),
     path: z.string(),
     rangeId: z.string(),
     side: z.enum(["RIGHT", "LEFT"]),
     startLine: z.number().int().positive(),
     endLine: z.number().int().positive(),
+    severity: z.enum(["critical", "high", "medium", "low", "nit"]),
+    suggestedFix: z.string().optional(),
+    semanticAnchor: z.string().optional(),
+    fingerprintHint: z.string().optional(),
   });
   const orchestratorOutput = pipr.schema(
     "fixture/orchestrator-output",
@@ -159,7 +166,7 @@ export default definePipr((pipr) => {
     model,
     instructions: "Merge specialist reviews into one final review.",
     output: orchestratorOutput,
-    prompt: (input) => pipr.prompt\`Specialist reviews:\\n\${pipr.json(input.reviews)}\`,
+    prompt: (input) => pipr.prompt\`Manifest:\\n\${pipr.json(input.manifest)}\\n\\nSpecialist reviews:\\n\${pipr.json(input.reviews)}\`,
   });
   const task = pipr.task("review", async (ctx) => {
     const manifest = await ctx.change.diffManifest({ compressed: true });
@@ -172,8 +179,25 @@ export default definePipr((pipr) => {
       manifest,
       reviews: { correctness, security, tests },
     });
-    ctx.output.summary(result.summary);
-    ctx.output.findings(result.findings);
+    const inlineFindings = result.findings.map(({ severity, ...finding }) => ({
+      ...finding,
+      body: \`Severity: \${severity}\\n\\n\${finding.body}\`,
+    }));
+    const grouped = Map.groupBy(result.findings, (finding) => finding.severity);
+    const labels = result.findings.length === 0
+      ? "No labeled findings."
+      : ["critical", "high", "medium", "low", "nit"]
+          .flatMap((severity) => {
+            const findings = grouped.get(severity) ?? [];
+            return findings.length === 0
+              ? []
+              : [\`### \${severity}\`, "", ...findings.map((finding) => \`- \${finding.title}\`), ""];
+          })
+          .join("\\n");
+    await ctx.comment({
+      main: \`\${result.summary.body}\\n\\n## Custom labels\\n\\n\${labels}\`,
+      inlineFindings,
+    });
   });
   pipr.on.changeRequest(["opened"], task);
 });

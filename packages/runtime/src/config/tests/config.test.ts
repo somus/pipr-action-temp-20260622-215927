@@ -75,6 +75,7 @@ export default definePipr((pipr) => {
   });
 
   pipr.review({
+    id: "review",
     model,
     instructions: "Review this change.",
   });
@@ -98,6 +99,7 @@ export default definePipr((pipr) => {
   });
 
   pipr.review({
+    id: "review",
     model,
     instructions: "Review this change.",
   });
@@ -122,7 +124,7 @@ export default definePipr((pipr) => {
     name: "deepseek",
     apiKey: pipr.secret("DEEPSEEK_API_KEY"),
   });
-  pipr.review({ model, instructions: "Review this change." });
+  pipr.review({ id: "review", model, instructions: "Review this change." });
 });
 `,
     );
@@ -188,14 +190,13 @@ export default definePipr((pipr) => {
   const task = pipr.task("review", async (ctx) => {
     const manifest = await ctx.change.diffManifest({ compressed: true, maxPreviewLines: 1 });
     const result = await ctx.pi.run(agent, { manifest });
-    ctx.output.metadata({ title: ctx.change.title });
-    ctx.output.findings(result.inlineFindings);
+    await ctx.comment({ main: ctx.change.title, inlineFindings: result.inlineFindings });
   });
   pipr.on.changeRequest(["opened"], task);
   pipr.command("@pipr review", { permission: "write" }, task);
   pipr.local("review", task);
   pipr.review({
-    name: "default-review",
+    id: "default-review",
     model,
     instructions: "Review.",
     command: false,

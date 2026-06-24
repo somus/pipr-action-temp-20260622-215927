@@ -55,7 +55,8 @@ export type ReviewSummary = {
   body: string;
 };
 
-export type ReviewFinding<TData extends JsonObject = JsonObject> = {
+export type ReviewFinding = {
+  title: string;
   body: string;
   path: string;
   rangeId: string;
@@ -63,13 +64,31 @@ export type ReviewFinding<TData extends JsonObject = JsonObject> = {
   startLine: number;
   endLine: number;
   suggestedFix?: string;
-  data?: TData;
+  semanticAnchor?: string;
+  fingerprintHint?: string;
 };
 
-export type ReviewResult<TData extends JsonObject = JsonObject> = {
+export type ReviewResult = {
   summary: ReviewSummary;
-  inlineFindings: ReviewFinding<TData>[];
-  metadata?: JsonObject;
+  inlineFindings: ReviewFinding[];
+};
+
+export type Markdown = string;
+
+export type CommentValue =
+  | Markdown
+  | {
+      main?: Markdown;
+      inlineFindings?: readonly ReviewFinding[];
+    }
+  | null;
+
+export type CommentSource = CommentValue | (() => CommentValue | Promise<CommentValue>);
+
+export type CommentOptions = {
+  key?: string;
+  order?: number;
+  paths?: PathFilter;
 };
 
 export type PathFilter = {
@@ -189,7 +208,7 @@ export type ReviewEntrypoints = {
 };
 
 type ReviewRecipeEntrypointOptions = {
-  name?: string;
+  id: string;
   entrypoints?: ReviewEntrypoints;
   on?: ChangeRequestAction[] | false;
   command?: string | false;
@@ -200,7 +219,14 @@ type ReviewRecipeEntrypointOptions = {
     | {
         max?: number;
       };
-  summary?: boolean;
+  comment?:
+    | CommentValue
+    | ((
+        result: ReviewResult,
+        context: ReviewCommentContext,
+      ) => CommentValue | Promise<CommentValue>);
+  commentKey?: string;
+  commentOrder?: number;
   timeout?: DurationInput;
   paths?: PathFilter;
 };
@@ -212,6 +238,13 @@ export type ReviewRecipeOptions =
 export type DefaultReviewInput = {
   manifest: DiffManifest;
   change: ChangeRequestInfo;
+};
+
+export type ReviewCommentContext = {
+  review: { id: string };
+  repository: RepositoryInfo;
+  change: ChangeRequestContext;
+  platform: PlatformInfo;
 };
 
 export type PiprPlugin<Handle> = {
@@ -350,32 +383,6 @@ export type ChangeRequestContext = ChangeRequestInfo & {
   currentHeadSha(): Promise<string>;
 };
 
-export type OutputCollector = {
-  summary(value: ReviewSummary | string, options?: SummaryContributionOptions): void;
-  findings(value: ReviewFinding[], options?: FindingContributionOptions): void;
-  section<T>(id: string, value: T, options: SectionContributionOptions<T>): void;
-  metadata(value: Record<string, unknown>): void;
-};
-
-export type SummaryContributionOptions = {
-  key?: string;
-  merge?: "exclusive" | "replace" | "append";
-  priority?: number;
-};
-
-export type SectionContributionOptions<T> = {
-  title: string;
-  order?: number;
-  merge?: "exclusive" | "replace" | "append" | "list";
-  priority?: number;
-  collapsed?: boolean;
-  render?: (value: T) => string;
-};
-
-export type FindingContributionOptions = {
-  paths?: PathFilter;
-};
-
 export type PiRunner = {
   run<Input, Output>(
     agent: Agent<Input, Output>,
@@ -396,7 +403,7 @@ export type TaskContext = {
   readonly change: ChangeRequestContext;
   readonly platform: PlatformInfo;
   readonly pi: PiRunner;
-  readonly output: OutputCollector;
+  comment(source: CommentSource, options?: CommentOptions): Promise<void>;
   readonly log: {
     info(message: string): void;
     warn(message: string): void;
@@ -415,7 +422,6 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   ]),
 );
 
-const jsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), jsonValueSchema);
 const nonEmptyStringSchema = z.string().min(1);
 const positiveIntegerSchema = z.number().int().positive();
 
@@ -425,6 +431,7 @@ const reviewSummarySchema = z.strictObject({
 });
 
 const reviewFindingShape = {
+  title: nonEmptyStringSchema,
   body: nonEmptyStringSchema,
   path: nonEmptyStringSchema,
   rangeId: nonEmptyStringSchema,
@@ -432,7 +439,8 @@ const reviewFindingShape = {
   startLine: positiveIntegerSchema,
   endLine: positiveIntegerSchema,
   suggestedFix: nonEmptyStringSchema.optional(),
-  data: jsonObjectSchema.optional(),
+  semanticAnchor: nonEmptyStringSchema.optional(),
+  fingerprintHint: nonEmptyStringSchema.optional(),
 };
 
 const reviewFindingSchema = z.strictObject(reviewFindingShape);
@@ -440,7 +448,6 @@ const reviewFindingSchema = z.strictObject(reviewFindingShape);
 const reviewResultSchema = z.strictObject({
   summary: reviewSummarySchema,
   inlineFindings: z.array(reviewFindingSchema),
-  metadata: jsonObjectSchema.optional(),
 });
 
 /** Defines a synchronous pipr configuration factory. */
@@ -500,6 +507,17 @@ export const schemas: BuiltinSchemaCatalog = {
   review: createZodSchema<ReviewResult>(reviewOutputSchemaId, reviewResultSchema),
   summary: createZodSchema<ReviewSummary>("core/summary", reviewSummarySchema),
 };
+
+export function md(strings: TemplateStringsArray, ...values: unknown[]): Markdown {
+  let text = "";
+  for (let index = 0; index < strings.length; index += 1) {
+    text += strings[index] ?? "";
+    if (index < values.length) {
+      text += String(values[index] ?? "");
+    }
+  }
+  return stripCommonIndent(text).trim();
+}
 
 function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
   const models: ModelProfile[] = [];
@@ -691,10 +709,10 @@ function registerReviewRecipe(
   publication: RuntimePlan["publication"],
   options: ReviewRecipeOptions,
 ): void {
-  const name = options.name ?? "review";
-  const agent = options.reviewer ?? createReviewer(api, reviewRecipeReviewerOptions(options, name));
+  const id = options.id;
+  const agent = options.reviewer ?? createReviewer(api, reviewRecipeReviewerOptions(options, id));
 
-  const task = createReviewRecipeTask(api, name, agent, options);
+  const task = createReviewRecipeTask(api, id, agent, options);
   registerReviewRecipeEntrypoints(api, task, options);
   updateReviewRecipePublication(publication, options);
 }
@@ -737,13 +755,18 @@ function createReviewer(api: PiprBuilder, options: ReviewerOptions): Reviewer {
 
 function createReviewRecipeTask(
   api: PiprBuilder,
-  name: string,
+  id: string,
   agent: Agent<DefaultReviewInput, ReviewResult>,
   options: ReviewRecipeOptions,
 ): Task {
-  return api.task(name, async (context) => {
+  return api.task(id, async (context) => {
     const manifest = await context.change.diffManifest({ compressed: true, paths: options.paths });
     if (options.paths && manifest.files.length === 0) {
+      await context.comment(null, {
+        key: options.commentKey ?? `review:${id}`,
+        order: options.commentOrder,
+        paths: options.paths,
+      });
       return;
     }
     const result = await context.pi.run(
@@ -754,13 +777,36 @@ function createReviewRecipeTask(
         paths: options.paths,
       },
     );
-    if (options.summary !== false) {
-      context.output.summary(result.summary, { key: name, merge: "append" });
-    }
-    if (options.inlineComments !== false) {
-      context.output.findings(result.inlineFindings, { paths: options.paths });
-    }
+    const source =
+      typeof options.comment === "function"
+        ? await options.comment(result, {
+            review: { id },
+            repository: context.repository,
+            change: context.change,
+            platform: context.platform,
+          })
+        : (options.comment ?? defaultReviewComment(result, options.inlineComments !== false));
+    await context.comment(source, {
+      key: options.commentKey ?? `review:${id}`,
+      order: options.commentOrder,
+      paths: options.paths,
+    });
   });
+}
+
+function defaultReviewComment(result: ReviewResult, includeInlineFindings: boolean): CommentValue {
+  return {
+    main: includeInlineFindings ? defaultReviewMarkdown(result) : result.summary.body,
+    ...(includeInlineFindings ? { inlineFindings: result.inlineFindings } : {}),
+  };
+}
+
+function defaultReviewMarkdown(result: ReviewResult): Markdown {
+  const findings =
+    result.inlineFindings.length === 0
+      ? "No inline findings."
+      : result.inlineFindings.map((finding) => `- ${finding.title}`).join("\n");
+  return `## Summary\n\n${result.summary.body}\n\n## Findings\n\n${findings}`;
 }
 
 function registerReviewRecipeEntrypoints(
@@ -874,6 +920,7 @@ export function reviewSchemaExample(): ReviewResult {
     },
     inlineFindings: [
       {
+        title: "Unsafe example call",
         body: "Specific issue and why it matters.",
         path: "src/example.ts",
         rangeId: "rng_example",
@@ -881,10 +928,9 @@ export function reviewSchemaExample(): ReviewResult {
         startLine: 1,
         endLine: 1,
         suggestedFix: "Optional fix.",
-        data: { category: "correctness" },
+        semanticAnchor: "example-call",
       },
     ],
-    metadata: {},
   };
 }
 

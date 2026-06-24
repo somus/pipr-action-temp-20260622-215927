@@ -76,7 +76,17 @@ export function assertActOrchestratorFixture(fixture: PublicationFixture): void 
     ),
     "orchestrated summary missing",
   );
-  assertEqual((fixture.reviewCommentPayloads ?? []).length, 0, "unexpected inline payloads");
+  assert(mainComment.includes("## Custom labels"), "custom labels section missing");
+  assert(mainComment.includes("### medium"), "custom severity group missing");
+  assert(
+    mainComment.includes("- Orchestrated inline publication"),
+    "custom severity label missing",
+  );
+  const inlinePayloads = fixture.reviewCommentPayloads ?? [];
+  assertEqual(inlinePayloads.length, 1, "unexpected inline payloads");
+  const inlineBody = inlinePayloads[0]?.body ?? "";
+  assert(inlineBody.includes("Orchestrated inline publication"), "orchestrator inline missing");
+  assert(inlineBody.includes("Severity: medium"), "custom severity missing from inline finding");
 }
 
 function readOnlyMainComment(fixture: PublicationFixture): string {
@@ -89,28 +99,25 @@ function readOnlyMainComment(fixture: PublicationFixture): string {
 
 function assertFullMainComment(body: string): void {
   assert(body.includes(mainCommentMarkerPrefix), "main comment marker missing");
+  assert(body.includes("<!-- pipr:contribution key="), "contribution block missing");
   assert(body.includes("Full fixture secondary section"), "secondary section missing");
-  assert(
-    body.includes(
-      "Selected tasks: `pipr/review, pipr/full-duplicate-review, pipr/full-secondary-section`",
-    ),
-    "unexpected selected tasks",
-  );
-  assert(body.includes("Dropped findings: `3`"), "path-scoped drops missing");
   assert(!body.includes("pipr/docs-only"), "path-missed task was selected");
   assert(
     !body.includes("Out-of-scope act path should not publish."),
     "out-of-scope finding was published",
   );
-  const fullFlowFindingCount = body.split("Full-flow act reached inline publication.").length - 1;
-  assert(fullFlowFindingCount === 1, "duplicate findings were not deduped in main comment");
 }
 
 function assertPathScopedDropReasons(fixture: PublicationFixture): void {
   const pathScopedDrops = (fixture.droppedFindings ?? []).filter(
     (drop) => drop.reason === "finding path is outside configured paths",
   );
+  const duplicateDrops = (fixture.droppedFindings ?? []).filter(
+    (drop) => drop.reason === "duplicate finding fingerprint",
+  );
   assertEqual(pathScopedDrops.length, 2, "unexpected path-scoped drop count");
+  assertEqual(duplicateDrops.length, 1, "unexpected duplicate finding drop count");
+  assertEqual((fixture.droppedFindings ?? []).length, 3, "unexpected total dropped finding count");
 }
 
 function assertNoOutOfScopeFinding(fixture: PublicationFixture): void {

@@ -98,6 +98,7 @@ Each file carries changed-line ranges that can receive inline comments. Review F
 
 ```ts
 {
+  title: "Specific issue",
   body: "Specific issue and why it matters.",
   path: "src/example.ts",
   rangeId: "rng_...",
@@ -139,10 +140,9 @@ Invalid structured output receives one repair attempt when configured. Transient
 
 Review Tasks do not write code host comments. They contribute output:
 
-- `ctx.output.summary(...)`
-- `ctx.output.section(...)`
-- `ctx.output.findings(...)`
-- `ctx.output.metadata(...)`
+- `ctx.comment(markdown)`
+- `ctx.comment({ main, inlineFindings })`
+- `ctx.comment(null, { key })`
 
 pipr reduces those contributions into a provider-neutral `PublicationPlan`:
 

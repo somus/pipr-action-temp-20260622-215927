@@ -8,6 +8,7 @@ The public config stays provider-neutral:
 
 ```ts
 pipr.review({
+  id: "review",
   reviewer,
   entrypoints: {
     changeRequest: ["opened", "updated"],

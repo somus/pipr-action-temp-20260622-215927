@@ -114,10 +114,10 @@ describe("runTaskRuntime", () => {
     const plan = testPlan((pipr) => {
       const slow = pipr.task("slow", async (ctx) => {
         await delay(25);
-        ctx.output.findings([finding("slow", "range-1", 10)]);
+        await ctx.comment({ inlineFindings: [finding("slow", "range-1", 10)] });
       });
-      const fast = pipr.task("fast", (ctx) => {
-        ctx.output.findings([finding("fast", "range-2", 20)]);
+      const fast = pipr.task("fast", async (ctx) => {
+        await ctx.comment({ inlineFindings: [finding("fast", "range-2", 20)] });
       });
       pipr.on.changeRequest(["opened"], slow);
       pipr.on.changeRequest(["opened"], fast);
@@ -132,6 +132,66 @@ describe("runTaskRuntime", () => {
     expect(result.inlineCommentDrafts.map((item) => item.finding.body)).toEqual(["slow body"]);
   });
 
+  it("collects markdown and inline findings through ctx.comment", async () => {
+    const plan = testPlan((pipr) => {
+      const task = pipr.task("review", async (ctx) => {
+        await ctx.comment(
+          {
+            main: "Review summary.",
+            inlineFindings: [finding("inline", "range-1", 10)],
+          },
+          { key: "review", order: 20 },
+        );
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({
+      plan,
+    });
+
+    expect(result.mainComment).toContain("Review summary.");
+    expect(result.inlineCommentDrafts.map((item) => item.finding.body)).toEqual(["inline body"]);
+  });
+
+  it("collects async function sources through ctx.comment", async () => {
+    const plan = testPlan((pipr) => {
+      const task = pipr.task("review", async (ctx) => {
+        await ctx.comment(
+          async () => ({
+            main: "Async review summary.",
+            inlineFindings: [finding("async", "range-1", 10)],
+          }),
+          { key: "review", order: 20 },
+        );
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({ plan });
+
+    expect(result.mainComment).toContain("Async review summary.");
+    expect(result.inlineCommentDrafts.map((item) => item.finding.body)).toEqual(["async body"]);
+  });
+
+  it("removes prior main contributions through ctx.comment null sources", async () => {
+    const priorMainComment = [
+      '<!-- pipr:contribution key="review" order="20" -->',
+      "Old review summary.",
+      "<!-- /pipr:contribution -->",
+    ].join("\n");
+    const plan = testPlan((pipr) => {
+      const task = pipr.task("review", async (ctx) => {
+        await ctx.comment(null, { key: "review", order: 20 });
+      });
+      pipr.on.changeRequest(["opened"], task);
+    });
+
+    const result = await runRuntime({ plan, priorMainComment });
+
+    expect(result.mainComment).not.toContain("Old review summary.");
+  });
+
   it("applies Diff Manifest options exposed on task context", async () => {
     const manifest = reviewTestManifestWithContext();
     const plan = testPlan((pipr) => {
@@ -141,11 +201,13 @@ describe("runTaskRuntime", () => {
           maxPreviewLines: 1,
         });
         const file = scoped.files[0] as DiffManifest["files"][number];
-        ctx.output.metadata({
-          preview: file.commentableRanges[0]?.preview,
-          hasSignals: "signals" in file,
-          hasChangedSymbols: "changedSymbols" in file,
-        });
+        await ctx.comment(
+          JSON.stringify({
+            preview: file.commentableRanges[0]?.preview,
+            hasSignals: "signals" in file,
+            hasChangedSymbols: "changedSymbols" in file,
+          }),
+        );
       });
       pipr.on.changeRequest(["opened"], task);
     });
@@ -155,18 +217,16 @@ describe("runTaskRuntime", () => {
       diffManifestBuilder: manifestBuilder(manifest),
     });
 
-    expect(result.publicationPlan.metadata.taskMetadata).toEqual({
-      preview: "const x = fail();",
-      hasSignals: false,
-      hasChangedSymbols: false,
-    });
+    expect(result.mainComment).toContain('"preview":"const x = fail();"');
+    expect(result.mainComment).toContain('"hasSignals":false');
+    expect(result.mainComment).toContain('"hasChangedSymbols":false');
   });
 
   it("filters Diff Manifest files by configured paths", async () => {
     const plan = testPlan((pipr) => {
       const task = pipr.task("review", async (ctx) => {
         const manifest = await ctx.change.diffManifest({ paths: { include: ["docs/**"] } });
-        ctx.output.metadata({ paths: manifest.files.map((file) => file.path) });
+        await ctx.comment(JSON.stringify({ paths: manifest.files.map((file) => file.path) }));
       });
       pipr.on.changeRequest(["opened"], task);
     });
@@ -176,53 +236,59 @@ describe("runTaskRuntime", () => {
       diffManifestBuilder: manifestBuilder(reviewTestManifestWithDocs()),
     });
 
-    expect(result.publicationPlan.metadata.taskMetadata).toEqual({
-      paths: ["docs/readme.md"],
-    });
+    expect(result.mainComment).toContain('"paths":["docs/readme.md"]');
   });
 
   it("drops findings outside configured output paths", async () => {
-    const plan = testPlan((pipr) => {
-      const task = pipr.task("review", (ctx) => {
-        ctx.output.findings(
-          [finding("inside", "range-1", 10), finding("outside", "range-1", 10, "docs/readme.md")],
-          { paths: { include: ["src/**"] } },
-        );
-      });
-      pipr.on.changeRequest(["opened"], task);
-    });
+    const result = await runWithInsideOutsideFindings(scopedPiReviewPlan());
 
-    const result = await runRuntime({ plan });
-
-    expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
-    expectDroppedOutsideConfiguredPaths(result);
+    expectOnlyInsideFinding(result);
   });
 
   it("uses scoped Pi result findings as the default output path scope", async () => {
+    const result = await runWithInsideOutsideFindings(scopedPiReviewPlan());
+
+    expectOnlyInsideFinding(result);
+  });
+
+  it("keeps explicit ctx.comment path scope for mapped findings", async () => {
     const plan = testPlan((pipr) => {
+      const paths = { include: ["src/**"] };
       const agent = defaultReviewAgent(pipr);
       const task = pipr.task("review", async (ctx) => {
         const result = await ctx.pi.run(
           agent,
           { manifest: await ctx.change.diffManifest() },
-          { paths: { include: ["src/**"] } },
+          { paths },
         );
-        ctx.output.findings(result.inlineFindings);
+        const mapped = result.inlineFindings.map((item) => ({
+          ...item,
+          body: `mapped: ${item.body}`,
+        }));
+        await ctx.comment({ inlineFindings: mapped }, { paths });
       });
       pipr.on.changeRequest(["opened"], task);
     });
 
     const result = await runRuntime({
       plan,
+      diffManifestBuilder: manifestBuilder(reviewTestManifestWithDocs()),
       piRunner: async () =>
         reviewPiResult([
           finding("inside", "range-1", 10),
-          finding("outside", "range-1", 10, "docs/readme.md"),
+          finding("outside", "docs-range-1", 1, "docs/readme.md"),
         ]),
     });
 
-    expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
-    expectDroppedOutsideConfiguredPaths(result);
+    expect(result.validated.validFindings.map((item) => item.body)).toEqual([
+      "mapped: inside body",
+    ]);
+    expect(result.validated.droppedFindings).toEqual([
+      {
+        finding: expect.objectContaining({ body: "mapped: outside body" }),
+        reason: "finding path is outside configured paths",
+      },
+    ]);
   });
 
   it("keeps the internal Diff Manifest immutable from task handlers", async () => {
@@ -232,7 +298,7 @@ describe("runTaskRuntime", () => {
         const file = manifest.files[0] as DiffManifest["files"][number];
         const range = file.commentableRanges[0] as { startLine: number };
         range.startLine = 999;
-        ctx.output.findings([finding("uses original range", "range-1", 10)]);
+        await ctx.comment({ inlineFindings: [finding("uses original range", "range-1", 10)] });
       });
       pipr.on.changeRequest(["opened"], task);
     });
@@ -255,9 +321,7 @@ describe("runTaskRuntime", () => {
         },
       });
       const task = pipr.task("review", async (ctx) => {
-        ctx.output.metadata({
-          taskContext: `${ctx.change.title}:${ctx.change.description}`,
-        });
+        await ctx.comment(`${ctx.change.title}:${ctx.change.description}`);
         await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
       });
       pipr.on.changeRequest(["opened"], task);
@@ -270,9 +334,7 @@ describe("runTaskRuntime", () => {
     });
 
     expect(seen).toEqual(["Useful title:Useful body"]);
-    expect(result.publicationPlan.metadata.taskMetadata).toEqual({
-      taskContext: "Useful title:Useful body",
-    });
+    expect(result.mainComment).toContain("Useful title:Useful body");
   });
 
   it("passes prior open finding locations without freeform bodies to review agent prompts", async () => {
@@ -294,7 +356,8 @@ describe("runTaskRuntime", () => {
 
     expect(observedPrompt).toContain("Prior pipr findings");
     expect(observedPrompt).toContain("fnd_existing");
-    expect(observedPrompt).toContain("data.pipr.priorFindingId");
+    expect(observedPrompt).toContain("emit one current inline finding");
+    expect(observedPrompt).not.toContain("data.pipr.priorFindingId");
     expect(observedPrompt).not.toContain(maliciousPriorBody);
   });
 
@@ -370,12 +433,8 @@ describe("runTaskRuntime", () => {
       pipr.on.changeRequest(["opened"], task);
     });
 
-    await runRuntime({
-      plan,
-      piRunner: async (options) => {
-        observedPrompt = options.prompt;
-        return { exitCode: 0, stdout: JSON.stringify({ ok: true }), stderr: "", durationMs: 1 };
-      },
+    await runCustomOkPlan(plan, (prompt) => {
+      observedPrompt = prompt;
     });
 
     expect(observedPrompt).not.toContain("Diff Manifest:");
@@ -465,25 +524,17 @@ describe("runTaskRuntime", () => {
         output,
         prompt: () => "Summarize.",
       });
-      const task = pipr.task("notes", async (ctx) => {
-        const result = await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
-        ctx.output.metadata(result);
-      });
-      pipr.on.changeRequest(["opened"], task);
+      registerCommentingAgentTask(pipr, "notes", agent);
     });
 
-    const result = await runRuntime({
-      plan,
-      piRunner: async (options) => {
-        observedPrompt = options.prompt;
-        return { exitCode: 0, stdout: JSON.stringify({ ok: true }), stderr: "", durationMs: 1 };
-      },
+    const result = await runCustomOkPlan(plan, (prompt) => {
+      observedPrompt = prompt;
     });
 
     expect(observedPrompt).toContain("Schema ID: custom/release-notes.");
     expect(observedPrompt).toContain("JSON Schema:");
     expect(observedPrompt).not.toContain("Example:");
-    expect(result.publicationPlan.metadata.taskMetadata).toEqual({ ok: true });
+    expect(result.mainComment).toContain('{"ok":true}');
   });
 
   it("uses repair prompts with the same contract and validation error for custom schemas", async () => {
@@ -502,11 +553,7 @@ describe("runTaskRuntime", () => {
         output,
         prompt: () => "Return ok.",
       });
-      const task = pipr.task("custom", async (ctx) => {
-        const result = await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
-        ctx.output.metadata(result);
-      });
-      pipr.on.changeRequest(["opened"], task);
+      registerCommentingAgentTask(pipr, "custom", agent);
     });
 
     const result = await runRuntime({
@@ -524,7 +571,7 @@ describe("runTaskRuntime", () => {
     expect(prompts[1]).toContain("Role:\nYou are pipr's read-only change request agent.");
     expect(prompts[1]).toContain("Schema ID: custom/json-output.");
     expect(result.repairAttempted).toBe(true);
-    expect(result.publicationPlan.metadata.taskMetadata).toEqual({ ok: true });
+    expect(result.mainComment).toContain('{"ok":true}');
   });
 
   it("uses agent timeout when running Pi", async () => {
@@ -735,10 +782,10 @@ describe("runTaskRuntime", () => {
     await expectCustomToolRejected(plan, "custom_tool");
   });
 
-  it("renders plain object output sections instead of rejecting them", async () => {
+  it("renders custom task details through ctx.comment markdown", async () => {
     const plan = testPlan((pipr) => {
-      const task = pipr.task("metadata", (ctx) => {
-        ctx.output.section("details", { status: "ok" }, { title: "Details" });
+      const task = pipr.task("metadata", async (ctx) => {
+        await ctx.comment(JSON.stringify({ status: "ok" }));
       });
       pipr.on.changeRequest(["opened"], task);
     });
@@ -747,21 +794,21 @@ describe("runTaskRuntime", () => {
       plan,
     });
 
-    expect(result.mainComment).toContain('"status": "ok"');
+    expect(result.mainComment).toContain('"status":"ok"');
   });
 
   it("allows multiple review recipes to append summaries deterministically", async () => {
     const plan = testPlan((pipr) => {
       const model = deepseekModel(pipr);
       pipr.review({
-        name: "correctness",
+        id: "correctness",
         model,
         instructions: "Review correctness.",
         command: false,
         localName: false,
       });
       pipr.review({
-        name: "security",
+        id: "security",
         model,
         instructions: "Review security.",
         command: false,
@@ -781,6 +828,7 @@ describe("runTaskRuntime", () => {
   it("skips scoped pipr.review Pi calls when no changed files match", async () => {
     const plan = testPlan((pipr) => {
       pipr.review({
+        id: "review",
         model: deepseekModel(pipr),
         instructions: "Review docs.",
         paths: { include: ["docs/**"] },
@@ -791,18 +839,25 @@ describe("runTaskRuntime", () => {
 
     const result = await runRuntime({
       plan,
+      priorMainComment: [
+        '<!-- pipr:contribution key="review:review" order="0" -->',
+        "Stale scoped review.",
+        "<!-- /pipr:contribution -->",
+      ].join("\n"),
       piRunner: async () => {
         throw new Error("Pi should not run when the scoped manifest is empty");
       },
     });
 
     expect(result.review.inlineFindings).toEqual([]);
+    expect(result.mainComment).not.toContain("Stale scoped review.");
     expect(result.publicationPlan.metadata.providerModels).toEqual([provider.model]);
   });
 
   it("enforces pipr.review paths against model findings", async () => {
     const plan = testPlan((pipr) => {
       pipr.review({
+        id: "review",
         model: deepseekModel(pipr),
         instructions: "Review source.",
         paths: { include: ["src/**"] },
@@ -811,17 +866,32 @@ describe("runTaskRuntime", () => {
       });
     });
 
-    const result = await runRuntime({
-      plan,
-      piRunner: async () =>
-        reviewPiResult([
-          finding("inside", "range-1", 10),
-          finding("outside", "range-1", 10, "docs/readme.md"),
-        ]),
+    const result = await runWithInsideOutsideFindings(plan);
+
+    expectOnlyInsideFinding(result);
+  });
+
+  it("honors pipr.review inlineComments false for default comments", async () => {
+    const plan = testPlan((pipr) => {
+      pipr.review({
+        id: "review",
+        model: deepseekModel(pipr),
+        instructions: "Review source.",
+        inlineComments: false,
+        command: false,
+        localName: false,
+      });
     });
 
-    expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
-    expectDroppedOutsideConfiguredPaths(result);
+    const result = await runRuntime({
+      plan,
+      piRunner: async () => reviewPiResult([finding("hidden", "range-1", 10)]),
+    });
+
+    expect(result.review.inlineFindings).toEqual([]);
+    expect(result.inlineCommentDrafts).toEqual([]);
+    expect(result.mainComment).toContain("No findings.");
+    expect(result.mainComment).not.toContain("hidden");
   });
 });
 
@@ -918,6 +988,62 @@ function fallbackReviewPlan(
       options.runOverridesModel ? { model: primary, fallbacks: [fallback] } : undefined,
     );
   });
+}
+
+function registerCommentingAgentTask(
+  pipr: PiprApi,
+  taskName: string,
+  agent: Agent<{ manifest: unknown }, unknown>,
+): void {
+  const task = pipr.task(taskName, async (ctx) => {
+    const result = await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
+    await ctx.comment(JSON.stringify(result));
+  });
+  pipr.on.changeRequest(["opened"], task);
+}
+
+function scopedPiReviewPlan() {
+  return testPlan((pipr) => {
+    const agent = defaultReviewAgent(pipr);
+    const task = pipr.task("review", async (ctx) => {
+      const result = await ctx.pi.run(
+        agent,
+        { manifest: await ctx.change.diffManifest() },
+        { paths: { include: ["src/**"] } },
+      );
+      await ctx.comment({ inlineFindings: result.inlineFindings });
+    });
+    pipr.on.changeRequest(["opened"], task);
+  });
+}
+
+async function runWithInsideOutsideFindings(plan: RunTaskRuntimeOptions["plan"]) {
+  return await runRuntime({
+    plan,
+    piRunner: async () =>
+      reviewPiResult([
+        finding("inside", "range-1", 10),
+        finding("outside", "range-1", 10, "docs/readme.md"),
+      ]),
+  });
+}
+
+async function runCustomOkPlan(
+  plan: RunTaskRuntimeOptions["plan"],
+  observePrompt: (prompt: string) => void,
+) {
+  return await runRuntime({
+    plan,
+    piRunner: async (options) => {
+      observePrompt(options.prompt);
+      return { exitCode: 0, stdout: JSON.stringify({ ok: true }), stderr: "", durationMs: 1 };
+    },
+  });
+}
+
+function expectOnlyInsideFinding(result: ReviewRuntimeResult) {
+  expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
+  expectDroppedOutsideConfiguredPaths(result);
 }
 
 function memoryTool(pipr: PiprApi) {
@@ -1044,6 +1170,7 @@ function finding(
   filePath = "src/a.ts",
 ): ReviewFinding {
   return {
+    title,
     body: `${title} body`,
     path: filePath,
     rangeId,

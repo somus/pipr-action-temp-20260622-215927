@@ -7,6 +7,7 @@ import { mapFindingToGithubReviewCommentLocation } from "./inline.js";
 import {
   createGitHubPublicationClient,
   type GitHubPublicationClient,
+  loadGitHubPriorMainComment,
   loadGitHubPriorReviewState,
   publishGitHubPublicationPlan,
 } from "./publication.js";
@@ -57,6 +58,12 @@ export function createGitHubHostAdapter(options: GitHubHostAdapterOptions = {}):
     },
     loadPriorReviewState(options) {
       return loadGitHubPriorReviewState({
+        client: publicationClient,
+        change: options.change,
+      });
+    },
+    loadPriorMainComment(options) {
+      return loadGitHubPriorMainComment({
         client: publicationClient,
         change: options.change,
       });

@@ -6,6 +6,7 @@ import {
 } from "../github.js";
 
 const finding: ReviewFinding = {
+  title: "Unsafe call",
   body: "This can fail.",
   path: "src/a.ts",
   rangeId: "rng_abcd1234_h1_RIGHT_10_12_deadbeefcafe",

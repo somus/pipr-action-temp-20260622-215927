@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { DiffManifest, ValidatedReview } from "../../types.js";
-import { mainSectionContributionSchema, runtimeVersion } from "../comment.js";
+import { runtimeVersion } from "../comment.js";
 import { buildCommentPublishingPlan } from "../comment-publishing.js";
 import type { PriorReviewState } from "../prior-state.js";
 
@@ -68,53 +68,27 @@ const manifest: DiffManifest = {
 const validated: ValidatedReview = {
   review: { summary: { body: "Review completed." }, inlineFindings: [] },
   validFindings: [
-    {
-      body: "First finding.",
-      path: "src/a.ts",
-      rangeId: "range-1",
-      side: "RIGHT",
-      startLine: 10,
-      endLine: 10,
-    },
-    {
-      body: "Second finding.",
-      path: "src/a.ts",
-      rangeId: "range-2",
-      side: "RIGHT",
-      startLine: 11,
-      endLine: 11,
-    },
+    finding("First finding.", "range-1", 10),
+    finding("Second finding.", "range-2", 11),
   ],
   droppedFindings: [],
 };
 
 describe("buildCommentPublishingPlan", () => {
-  it("assembles main comment sections and returns capped inline drafts", () => {
+  it("assembles main comment contributions and returns capped inline drafts", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      sectionTemplates: new Map([
-        ["summary", { title: "Summary", order: 10 }],
-        ["findings", { title: "Findings", order: 20 }],
-        ["details", { title: "Details", order: 30 }],
-        ["metadata", { title: "Review metadata", order: 40, collapsed: true }],
-      ]),
-      summaries: [
-        mainSectionContributionSchema.parse({
-          sourceId: "review",
-          sectionId: "summary",
-          policy: "append",
-          priority: 100,
-          value: "Summary body.",
-        }),
-      ],
-      sections: [
-        mainSectionContributionSchema.parse({
-          sourceId: "details",
-          sectionId: "details",
-          policy: "append",
-          priority: 0,
-          value: "Extra details.",
-        }),
+      mainContributions: [
+        {
+          key: "review",
+          order: 10,
+          body: "Summary body.",
+        },
+        {
+          key: "details",
+          order: 20,
+          body: "Extra details.",
+        },
       ],
       validated,
       manifest,
@@ -130,10 +104,8 @@ describe("buildCommentPublishingPlan", () => {
       },
     });
 
-    expect(publishing.publicationPlan.mainComment).toContain("## Summary\n\nSummary body.");
-    expect(publishing.publicationPlan.mainComment).toContain("## Findings\n\n- First finding.");
-    expect(publishing.publicationPlan.mainComment).toContain("- Second finding.");
-    expect(publishing.publicationPlan.mainComment).toContain("## Details\n\nExtra details.");
+    expect(publishing.publicationPlan.mainComment).toContain("Summary body.");
+    expect(publishing.publicationPlan.mainComment).toContain("Extra details.");
     expect(publishing.publicationPlan.metadata.cappedInlineFindings).toBe(1);
     expect(publishing.publicationPlan.inlineItems).toHaveLength(1);
     expect(publishing.inlineCommentDrafts).toEqual(publishing.publicationPlan.inlineItems);
@@ -144,24 +116,20 @@ describe("buildCommentPublishingPlan", () => {
     const currentFindings = manyFindings(101);
     const publishing = buildCommentPublishingPlan({
       event,
-      sectionTemplates: defaultSections(),
-      summaries: [],
-      sections: [],
+      mainContributions: [],
       validated: { ...validated, validFindings: currentFindings },
       manifest: manifestForFindings(currentFindings),
       metadata: metadata({ validFindings: currentFindings.length }),
     });
 
     expect(publishing.publicationPlan.reviewState.findings).toHaveLength(101);
-    expect(publishing.publicationPlan.mainComment).toContain("- Finding 101.");
+    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
   });
 
   it("keeps prior open findings on same-head reruns when the agent omits them", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      sectionTemplates: defaultSections(),
-      summaries: [],
-      sections: [],
+      mainContributions: [],
       validated: { ...validated, validFindings: [] },
       manifest,
       priorReviewState: priorState({ reviewedHeadSha: "head", lastCommentedHeadSha: "head" }),
@@ -174,17 +142,13 @@ describe("buildCommentPublishingPlan", () => {
       status: "open",
       lastSeenHeadSha: "head",
     });
-    expect(publishing.publicationPlan.mainComment).toContain(
-      "## Findings\n\n- Existing finding at src/a.ts:10 remains open. See Inline Review Comment.",
-    );
+    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
   });
 
   it("marks prior open findings resolved without showing them in the main findings list", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      sectionTemplates: defaultSections(),
-      summaries: [],
-      sections: [],
+      mainContributions: [],
       validated: { ...validated, validFindings: [] },
       manifest,
       priorReviewState: priorState({ reviewedHeadSha: "old-head", lastSeenHeadSha: "old-head" }),
@@ -196,7 +160,7 @@ describe("buildCommentPublishingPlan", () => {
       status: "resolved",
       lastSeenHeadSha: "old-head",
     });
-    expect(publishing.publicationPlan.mainComment).toContain("## Findings\n\nNo findings.");
+    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
     expect(publishing.publicationPlan.mainComment).not.toContain("[resolved]");
     expect(publishing.publicationPlan.mainComment).not.toContain("- Prior finding.");
   });
@@ -204,9 +168,7 @@ describe("buildCommentPublishingPlan", () => {
   it("does not carry prior findings from another selected task scope", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      sectionTemplates: defaultSections(),
-      summaries: [],
-      sections: [],
+      mainContributions: [],
       validated: { ...validated, validFindings: [] },
       manifest,
       priorReviewState: {
@@ -217,23 +179,14 @@ describe("buildCommentPublishingPlan", () => {
     });
 
     expect(publishing.publicationPlan.reviewState.findings).toEqual([]);
-    expect(publishing.publicationPlan.mainComment).toContain("## Findings\n\nNo findings.");
+    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
   });
 
   it("does not reuse ambiguous same-range prior ids for unrelated current findings", () => {
-    const currentFinding = {
-      body: "Current finding.",
-      path: "src/a.ts",
-      rangeId: "range-1",
-      side: "RIGHT" as const,
-      startLine: 10,
-      endLine: 10,
-    };
+    const currentFinding = finding("Current finding.", "range-1", 10);
     const publishing = buildCommentPublishingPlan({
       event,
-      sectionTemplates: defaultSections(),
-      summaries: [],
-      sections: [],
+      mainContributions: [],
       validated: { ...validated, validFindings: [currentFinding] },
       manifest,
       priorReviewState: {
@@ -263,14 +216,6 @@ describe("buildCommentPublishingPlan", () => {
     ).toEqual(["resolved", "resolved"]);
   });
 });
-
-function defaultSections() {
-  return new Map([
-    ["summary", { title: "Summary", order: 10 }],
-    ["findings", { title: "Findings", order: 20 }],
-    ["metadata", { title: "Review metadata", order: 30, collapsed: true }],
-  ]);
-}
 
 function metadata(options: { validFindings: number }) {
   return {
@@ -319,14 +264,21 @@ function priorFindingRecord(id: string): PriorReviewState["findings"][0] {
 }
 
 function manyFindings(count: number): ValidatedReview["validFindings"] {
-  return Array.from({ length: count }, (_, index) => ({
-    body: `Finding ${index + 1}.`,
+  return Array.from({ length: count }, (_, index) =>
+    finding(`Finding ${index + 1}.`, `range-${index + 1}`, index + 1),
+  );
+}
+
+function finding(body: string, rangeId: string, line: number): ValidatedReview["validFindings"][0] {
+  return {
+    title: body.replace(/\.$/, ""),
+    body,
     path: "src/a.ts",
-    rangeId: `range-${index + 1}`,
+    rangeId,
     side: "RIGHT",
-    startLine: index + 1,
-    endLine: index + 1,
-  }));
+    startLine: line,
+    endLine: line,
+  };
 }
 
 function manifestForFindings(findings: ValidatedReview["validFindings"]): DiffManifest {

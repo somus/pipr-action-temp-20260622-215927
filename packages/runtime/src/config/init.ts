@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { isPathContained, resolveContainedConfigDir } from "./paths.js";
 import { loadRuntimeProject } from "./project.js";
 import { embeddedSdkAssets } from "./sdk-assets.js";
+import { embeddedSdkDeclaration, type SdkDeclarationModule } from "./sdk-declaration.js";
 
 export type InitOfficialMinimalProjectOptions = {
   rootDir: string;
@@ -153,13 +154,7 @@ async function sdkDeclaration(): Promise<string> {
     assertStandaloneSdkDeclaration(embedded);
     return embedded;
   }
-  const declarations = await rawSdkDeclarations();
-  const declaration = [
-    "// biome-ignore-all format: generated from @pipr/sdk declarations",
-    "// biome-ignore-all assist/source/organizeImports: generated from @pipr/sdk declarations",
-    ...declarations.map((declaration) => declarationModuleBlock(declaration)),
-    "",
-  ].join("\n");
+  const declaration = embeddedSdkDeclaration(await rawSdkDeclarations());
   assertStandaloneSdkDeclaration(declaration);
   return declaration;
 }
@@ -170,18 +165,18 @@ function assertStandaloneSdkDeclaration(declaration: string): void {
   }
 }
 
-type SdkDeclarationModule = {
+type SdkDeclarationAsset = {
   moduleName: string;
   fileName: string;
 };
 
-const sdkDeclarationModules: SdkDeclarationModule[] = [
+const sdkDeclarationModules: SdkDeclarationAsset[] = [
   { moduleName: "@pipr/sdk", fileName: "index.d.mts" },
   { moduleName: "@pipr/sdk/review", fileName: "review.d.mts" },
   { moduleName: "@pipr/sdk/tools", fileName: "tools.d.mts" },
 ];
 
-async function rawSdkDeclarations(): Promise<Array<SdkDeclarationModule & { source: string }>> {
+async function rawSdkDeclarations(): Promise<SdkDeclarationModule[]> {
   const declarations = await Promise.all(
     sdkDeclarationModules.map(async (module) => {
       const declarationPath = await sdkDeclarationPath(module.fileName);
@@ -191,75 +186,13 @@ async function rawSdkDeclarations(): Promise<Array<SdkDeclarationModule & { sour
     }),
   );
   if (declarations.every((declaration) => declaration !== undefined)) {
-    return declarations as Array<SdkDeclarationModule & { source: string }>;
+    return declarations;
   }
   const embedded = embeddedSdkAssets().declaration;
   if (embedded) {
-    return [
-      { ...sdkDeclarationModules[0], source: embedded } as SdkDeclarationModule & {
-        source: string;
-      },
-    ];
+    return [{ moduleName: sdkDeclarationModules[0].moduleName, source: embedded }];
   }
   throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
-}
-
-function declarationModuleBlock(module: SdkDeclarationModule & { source: string }): string {
-  return [`declare module "${module.moduleName}" {`, declarationSource(module).trim(), "}"].join(
-    "\n",
-  );
-}
-
-function declarationSource(module: SdkDeclarationModule & { source: string }): string {
-  const source = module.source
-    .replace(/^declare /gm, "")
-    .replace(/^import \{ z \} from "zod";$/gm, zodShimDeclaration())
-    .replaceAll("z.ZodType", "ZodType")
-    .replaceAll('from "./index.js"', 'from "@pipr/sdk"')
-    .replaceAll('from "./index.mjs"', 'from "@pipr/sdk"')
-    .replace(/^import .* from "@pipr\/sdk";$/gm, "")
-    .replace(/^\/\/# sourceMappingURL=.*$/gm, "");
-  return module.moduleName === "@pipr/sdk"
-    ? source
-    : source.replace(/^export \{(?<exports>.*)\};$/gm, 'export {$<exports>} from "@pipr/sdk";');
-}
-
-function zodShimDeclaration(): string {
-  return [
-    "type ZodInfer<T> = T extends { parse(value: unknown): infer Output } ? Output : never;",
-    "type ZodType<T = unknown, Optional extends boolean = false> = {",
-    "  readonly _piprOptional: Optional;",
-    "  parse(value: unknown): T;",
-    "  optional(): ZodType<T | undefined, true>;",
-    "  min(value: number): ZodType<T, Optional>;",
-    "  max(value: number): ZodType<T, Optional>;",
-    "  int(): ZodType<T, Optional>;",
-    "  positive(): ZodType<T, Optional>;",
-    "  finite(): ZodType<T, Optional>;",
-    "};",
-    "type ZodAny = ZodType<unknown, boolean>;",
-    "type ZodOptionalKeys<T extends Record<string, ZodAny>> = { [K in keyof T]: T[K] extends ZodType<unknown, true> ? K : never }[keyof T];",
-    "type ZodObjectOutput<T extends Record<string, ZodAny>> = { [K in Exclude<keyof T, ZodOptionalKeys<T>>]: ZodInfer<T[K]> } & { [K in ZodOptionalKeys<T>]?: ZodInfer<T[K]> };",
-    "const z: {",
-    "  string(): ZodType<string>;",
-    "  number(): ZodType<number>;",
-    "  boolean(): ZodType<boolean>;",
-    "  null(): ZodType<null>;",
-    "  unknown(): ZodType<unknown>;",
-    "  any(): ZodType<unknown>;",
-    "  literal<T extends string | number | boolean | null>(value: T): ZodType<T>;",
-    "  enum<const T extends readonly [string, ...string[]]>(values: T): ZodType<T[number]>;",
-    "  array<T extends ZodAny>(schema: T): ZodType<Array<ZodInfer<T>>>;",
-    "  record<T extends ZodAny>(key: ZodType<string>, value: T): ZodType<Record<string, ZodInfer<T>>>;",
-    "  strictObject<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T>>;",
-    "  object<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T>>;",
-    "  looseObject<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T> & Record<string, unknown>>;",
-    "  union<const T extends readonly [ZodAny, ZodAny, ...ZodAny[]]>(schemas: T): ZodType<ZodInfer<T[number]>>;",
-    "  json(): ZodType<JsonValue>;",
-    "  fromJSONSchema(schema: JsonSchema): ZodType<unknown>;",
-    "  toJSONSchema(schema: ZodAny): JsonSchema;",
-    "};",
-  ].join("\n");
 }
 
 async function sdkDeclarationPath(fileName: string): Promise<string | undefined> {
@@ -287,6 +220,7 @@ export default definePipr((pipr) => {
   });
 
   pipr.review({
+    id: "review",
     model,
     instructions: \`
       Review the pull request diff for correctness, security,

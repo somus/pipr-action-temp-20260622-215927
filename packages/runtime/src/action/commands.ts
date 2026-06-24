@@ -453,6 +453,9 @@ async function runTrustedReviewAndPublish(options: {
     loadPriorReviewState: () =>
       options.adapter.loadPriorReviewState?.({ change: options.event }) ??
       Promise.resolve(undefined),
+    loadPriorMainComment: () =>
+      options.adapter.loadPriorMainComment?.({ change: options.event }) ??
+      Promise.resolve(undefined),
   });
   if (review.kind === "skipped") {
     return { kind: "skipped", reason: review.skipReason ?? "review skipped" };

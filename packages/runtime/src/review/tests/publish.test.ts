@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { loadGitHubPriorReviewState } from "../../hosts/github/publication.js";
 import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from "../../types.js";
-import {
-  buildPublicationPlan,
-  prepareInlinePublicationItems,
-  reviewToMainSectionContributions,
-} from "../comment.js";
+import { buildPublicationPlan, prepareInlinePublicationItems, runtimeVersion } from "../comment.js";
 import {
   type PriorReviewState,
   renderInlineFindingMarker,
@@ -91,6 +87,7 @@ const validated: ValidatedReview = {
   },
   validFindings: [
     {
+      title: "Unsafe call",
       body: "This can fail.",
       path: "src/a.ts",
       rangeId: "range-1",
@@ -99,6 +96,7 @@ const validated: ValidatedReview = {
       endLine: 12,
     },
     {
+      title: "Breaking call",
       body: "This can break.",
       path: "src/a.ts",
       rangeId: "range-2",
@@ -646,10 +644,13 @@ function plan(options: { maxInlineComments?: number; validated?: ValidatedReview
   const review = options.validated ?? validated;
   return buildPublicationPlan({
     event,
-    mainContributions: reviewToMainSectionContributions({
-      sourceId: "pipr/review",
-      validated: review,
-    }),
+    mainContributions: [
+      {
+        key: "review",
+        order: 0,
+        body: review.review.summary.body,
+      },
+    ],
     inlineItems: prepareInlinePublicationItems({
       validated: review,
       manifest,
@@ -657,7 +658,7 @@ function plan(options: { maxInlineComments?: number; validated?: ValidatedReview
     }),
     maxInlineComments: options.maxInlineComments,
     metadata: {
-      runtimeVersion: "0.0.0",
+      runtimeVersion,
       trustedConfigSha: "base",
       trustedConfigHash: "hash",
       reviewedHeadSha: "head",
@@ -694,7 +695,7 @@ function resolvedPriorPlan() {
     mainContributions: [],
     inlineItems: [],
     metadata: {
-      runtimeVersion: "0.0.0",
+      runtimeVersion,
       trustedConfigSha: "base",
       trustedConfigHash: "hash",
       reviewedHeadSha: "head",

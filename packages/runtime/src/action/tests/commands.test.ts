@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { Buffer } from "node:buffer";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -280,6 +281,37 @@ describe("runActionCommand pull_request dispatch", () => {
     }
   });
 
+  it("does not carry prior main comment contributions during pull_request publication", async () => {
+    const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writePullRequestEvent(eventPath, workspace);
+
+      const result = await runActionCommandWithDependencies({
+        rootDir: workspace.rootDir,
+        configDir: ".pipr",
+        eventPath,
+        dryRun: false,
+        env: pullRequestEnv(workspace.rootDir, eventPath),
+        githubPublicationClient: fakeGitHubPublicationClient(workspace, [
+          {
+            id: 10,
+            body: priorMainCommentBody(),
+            authorLogin: "github-actions[bot]",
+          },
+        ]),
+        piExecutable: workspace.piExecutable,
+      });
+
+      expect(result).toMatchObject({ kind: "review" });
+      expect(result.kind === "review" ? result.review.mainComment : "").not.toContain(
+        "Prior preserved section.",
+      );
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
   it("skips publication when no change request task is registered", async () => {
     const workspace = await createCommandWorkspace({
       baseConfigTs: reviewConfigTs({ event: false }),
@@ -419,8 +451,7 @@ function reviewConfigTs(
     "  const task = pipr.task('review', async (ctx, input = {}) => {",
     "    const manifest = await ctx.change.diffManifest({ compressed: true });",
     "    const result = await ctx.pi.run(reviewer, { manifest, scope: input.scope ?? 'changed' });",
-    "    ctx.output.summary(result.summary);",
-    "    ctx.output.findings(result.inlineFindings);",
+    "    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });",
     "  });",
     options.event === false ? "" : '  pipr.on.changeRequest(["opened"], task);',
     options.command === false
@@ -550,7 +581,10 @@ function failingGitHubClient(): GitHubCommandClient {
   };
 }
 
-function fakeGitHubPublicationClient(workspace: CommandWorkspace): GitHubPublicationClient {
+function fakeGitHubPublicationClient(
+  workspace: CommandWorkspace,
+  issueComments: Awaited<ReturnType<GitHubPublicationClient["listIssueComments"]>> = [],
+): GitHubPublicationClient {
   return {
     async getAuthenticatedUserLogin() {
       return "github-actions[bot]";
@@ -559,7 +593,7 @@ function fakeGitHubPublicationClient(workspace: CommandWorkspace): GitHubPublica
       return workspace.headSha;
     },
     async listIssueComments() {
-      return [];
+      return issueComments;
     },
     async createIssueComment() {
       return { id: 1 };
@@ -581,6 +615,27 @@ function fakeGitHubPublicationClient(workspace: CommandWorkspace): GitHubPublica
     },
     async resolveReviewThread() {},
   };
+}
+
+function priorMainCommentBody(): string {
+  const state = Buffer.from(
+    JSON.stringify({
+      version: 1,
+      reviewedHeadSha: "old-head",
+      selectedTasks: ["old-task"],
+      findings: [],
+    }),
+  ).toString("base64url");
+  return [
+    `<!-- pipr:main-comment change=1 version=1 state=${state} -->`,
+    "",
+    "# pipr Review",
+    "",
+    '<!-- pipr:contribution key="old-task" order="10" -->',
+    "Prior preserved section.",
+    "<!-- /pipr:contribution -->",
+    "",
+  ].join("\n");
 }
 
 function failingGitHubPublishingClient(): GitHubPublicationClient {

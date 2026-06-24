@@ -6,11 +6,11 @@ Review tasks produce typed comment contributions. They do not call code host API
 
 Comment Publishing:
 
-- reduces `MainSectionContribution` values into one deterministic Main Review Comment
-- renders that comment through the internal `MainCommentLayout`
+- reduces `ctx.comment(...)` main contributions into one deterministic Main Review Comment
+- renders runtime-owned hidden contribution blocks
 - combines contributions from all selected tasks for change request event runs
-- treats `ctx.output.summary` and `ctx.output.section` as named section contribution emitters
-- defaults shared section writes to `exclusive` unless tasks explicitly choose `append`, `replace`, or `list`
+- treats each `ctx.comment(...)` key as the replace/remove unit for one main comment contribution
+- preserves prior contribution blocks from tasks that did not run
 - verifies the current change request head SHA before any write
 - upserts the Main Review Comment by hidden marker and stores pipr-owned review state on that marker
 - caps Inline Review Comments only when `publication.maxInlineComments` is configured

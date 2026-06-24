@@ -44,6 +44,7 @@ export default definePipr((pipr) => {
   });
 
   pipr.review({
+    id: "review",
     reviewer,
     entrypoints: {
       changeRequest: ["opened", "updated", "reopened", "ready"],
