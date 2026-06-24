@@ -1,0 +1,23 @@
+packages/e2e/fake-pi
+  s_20df9ce89ce4ec::t_a313fac6af3bf4 52
+packages/e2e/run.ts
+  s_20df9ce89ce4ec::t_33ccee417a473f 53
+packages/e2e/check.ts
+  s_20df9ce89ce4ec::t_ca302f3723c9aa 14-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "34f58e349faa1d3b64ef4212356b7efb8de19d6f",
+  "prompts": {},
+  "sessions": {
+    "s_20df9ce89ce4ec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef7e3-2909-70a1-a29b-65403b259098",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
