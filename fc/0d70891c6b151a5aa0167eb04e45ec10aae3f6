@@ -1,0 +1,107 @@
+packages/runtime/src/review/tests/task-runtime.test.ts
+  s_d7de1e607fad82::t_b5708944710d8d 75,77,79,81,106,108,938,957-959,1105
+  s_d7de1e607fad82::t_09948f1f9e0b17 301-305,307-316,321-341
+  s_d7de1e607fad82::t_47c02f0aa8fa93 122,134-152,158,181,184-185,190-192,218,230,358
+  s_d7de1e607fad82::t_60ccdf129a2984 234-244
+  s_d7de1e607fad82::t_104d8e79069869 568-569
+  s_d7de1e607fad82::t_4bc404fbeafbaa 195-203,206-207,217,223-227,231-233,245,344
+  s_d7de1e607fad82::t_b958c5bdd961d9 317-320
+  s_d7de1e607fad82::t_76cda0900556fa 165-168,209-212,1100-1104
+  s_d7de1e607fad82::t_bca721b74a059c 193,384-430
+  s_d7de1e607fad82::t_f45a6aecff5da5 977-980
+  s_d7de1e607fad82::t_b46a561845a417 2-9
+  s_d7de1e607fad82::t_00df7f4c7c552a 1148
+docs/configuration.md
+  s_d7de1e607fad82::t_e4febaa6994f72 126
+packages/runtime/src/review/tests/publish.test.ts
+  s_d7de1e607fad82::t_1ab6cdfe2bfc21 645
+  s_d7de1e607fad82::t_ff726730dc2536 687
+docs/adr/0002-docker-action-with-read-only-pi-workspace.md
+  s_d7de1e607fad82::t_3b01a07386e9b3 7
+packages/runtime/src/review/tests/comment.test.ts
+  s_d7de1e607fad82::t_76cda0900556fa 3
+  s_d7de1e607fad82::t_8709f5466d3fa1 71,74,85-86,90-91,93,96,98-99
+  s_d7de1e607fad82::t_80cc2a318f7ef4 142
+packages/e2e/scenarios.ts
+  s_d7de1e607fad82::t_61b0f9968a2d41 79
+  s_d7de1e607fad82::t_f68b2679c3c097 67-78,81-82
+  s_d7de1e607fad82::t_68d28fa8d8d5ef 185
+packages/e2e/assertions.test.ts
+  s_d7de1e607fad82::t_3e39212ef0ba26 212
+  s_d7de1e607fad82::t_9f02b9b8c8efe2 82
+  s_d7de1e607fad82::t_8ca7a90f680a17 181-182
+docs/runtime.md
+  s_d7de1e607fad82::t_fbd1cc040e9f70 152
+  s_d7de1e607fad82::t_3b01a07386e9b3 140,145
+packages/runtime/src/review/prior-state.ts
+  s_d7de1e607fad82::t_3aaef4299cc70d 319
+packages/runtime/src/review/task-runtime.ts
+  s_d7de1e607fad82::t_dacda98d917e99 384-386,393-401,412-415
+  s_d7de1e607fad82::t_8ddc62ce4174a9 416
+  s_d7de1e607fad82::t_6612b0d16d4925 84,462
+  s_d7de1e607fad82::t_057a82545b95c7 417-421,423-426
+  s_d7de1e607fad82::t_5cd5c97a44823b 2,5,66,73-77,263-269,278-285,383,388,392,511
+  s_d7de1e607fad82::t_ef4cbe2be2cacc 440
+  s_d7de1e607fad82::t_ad3474b9a97f65 436-439,441-442,450-453,457,488
+  s_d7de1e607fad82::t_b24252741cb453 83,85-88,461,463-470,489
+  s_d7de1e607fad82::t_983fc48573a5d2 163-166
+  s_d7de1e607fad82::t_f550eeecbc8d0c 402-411
+  s_d7de1e607fad82::t_5979308af7b83d 458-460,481-487
+  s_d7de1e607fad82::t_76cda0900556fa 23,382
+  s_d7de1e607fad82::t_5ad440f223359f 129,152-154
+  s_d7de1e607fad82::t_2246813b50b541 493
+packages/sdk/src/tests/index.test.ts
+  s_d7de1e607fad82::t_f945149fdfed45 463
+  s_d7de1e607fad82::t_df4ae29c601e85 167,239-240,242-243,414-415,417-418
+  s_d7de1e607fad82::t_f550eeecbc8d0c 241,416
+packages/sdk/src/review.ts
+  s_d7de1e607fad82::t_f550eeecbc8d0c 8
+  s_d7de1e607fad82::t_df4ae29c601e85 9
+docs/sdk-reference.md
+  s_d7de1e607fad82::t_fbd1cc040e9f70 177
+  s_d7de1e607fad82::t_d1dc3019db09fc 187
+  s_d7de1e607fad82::t_3b01a07386e9b3 178,192
+  s_d7de1e607fad82::t_e4febaa6994f72 160
+  s_d7de1e607fad82::t_ef4cbe2be2cacc 183
+packages/runtime/src/review/review-run.ts
+  s_d7de1e607fad82::t_2b39e587dfcdbc 372
+packages/runtime/src/action/tests/commands.test.ts
+  s_d7de1e607fad82::t_82bb34c4063040 284
+packages/e2e/assertions.ts
+  s_d7de1e607fad82::t_24123db29e1573 171
+  s_d7de1e607fad82::t_daf8f68b1400a8 90,94-95
+  s_d7de1e607fad82::t_7520518e245f72 82-84,91-93
+packages/sdk/src/index.ts
+  s_d7de1e607fad82::t_fda523ec1234aa 767,787
+  s_d7de1e607fad82::t_f5e1bc2427f09b 802
+  s_d7de1e607fad82::t_781385671205c5 80,92-94,408-411
+  s_d7de1e607fad82::t_f550eeecbc8d0c 82-90,95
+.pipr/types/pipr-sdk.d.ts
+  s_d7de1e607fad82::t_e47c65c558d747 100,110-112,394-397
+  s_d7de1e607fad82::t_f550eeecbc8d0c 101-109,113,429,432
+packages/runtime/src/review/comment-publishing.ts
+  s_d7de1e607fad82::t_4e30761aa12c9c 13,43
+packages/runtime/src/review/tests/comment-publishing.test.ts
+  s_d7de1e607fad82::t_7b3cc096a33260 78,81,108,115,121,134,140,152,160,171,178
+packages/runtime/src/review/comment.ts
+  s_d7de1e607fad82::t_750533d7010bac 91,118,179,190
+  s_d7de1e607fad82::t_71b68c75fa44a2 2,20
+docs/adr/0005-pipr-owned-comment-publishing.md
+  s_d7de1e607fad82::t_3b01a07386e9b3 5,9-11,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "fc0d70891c6b151a5aa0167eb04e45ec10aae3f6",
+  "prompts": {},
+  "sessions": {
+    "s_d7de1e607fad82": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef604-8eb8-7e90-b90e-3c4d15f63971",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
