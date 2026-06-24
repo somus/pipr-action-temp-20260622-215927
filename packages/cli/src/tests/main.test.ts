@@ -20,7 +20,7 @@ describe("pipr CLI", () => {
     expect(result.stdout).toContain("review [options]");
     expect(result.stdout).toContain("run [options] <name>");
     expect(action.stdout).toContain("--config-dir <dir>");
-    expect(action.stdout).toContain("--provider <name>");
+    expect(action.stdout).not.toContain("--provider <name>");
   });
 
   it("requires an explicit base SHA for local review runs", async () => {

@@ -8,10 +8,7 @@ import { runGit as runGitCommand } from "../../diff/git.js";
 import type { GitHubCommandClient } from "../../hosts/github/command.js";
 import type { RepositoryPermission } from "../../hosts/types.js";
 import type { GitHubPublicationClient } from "../../review/publish.js";
-import {
-  type ActionCommandDependencyOptions,
-  runActionCommandWithDependencies,
-} from "../commands.js";
+import { runActionCommandWithDependencies } from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {
   it("ignores issue comments that are not pull request comments", async () => {
@@ -318,19 +315,13 @@ describe("runActionCommand pull_request dispatch", () => {
     }
   });
 
-  it("resolves trusted provider input through configured model ids", async () => {
+  it("uses the trusted base config model id for pull_request runs", async () => {
     const workspace = await createCommandWorkspace({
       baseConfigTs: explicitModelIdConfigTs(),
       checkoutBaseBeforeRun: true,
     });
     try {
-      const result = await runPullRequestAction(workspace, {
-        trustedProvider: {
-          provider: "fast",
-          model: "deepseek-v4-pro",
-          apiKeyEnv: "DEEPSEEK_API_KEY",
-        },
-      });
+      const result = await runPullRequestAction(workspace);
 
       expect(result).toMatchObject({ kind: "review" });
       expect(result.kind === "review" ? result.review.provider : undefined).toMatchObject({
@@ -558,7 +549,6 @@ async function runPullRequestAction(
   workspace: CommandWorkspace,
   options: {
     githubPublicationClient?: GitHubPublicationClient;
-    trustedProvider?: ActionCommandDependencyOptions["trustedProvider"];
   } = {},
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
@@ -571,7 +561,6 @@ async function runPullRequestAction(
     env: pullRequestEnv(workspace.rootDir, eventPath),
     githubPublicationClient:
       options.githubPublicationClient ?? fakeGitHubPublicationClient(workspace),
-    trustedProvider: options.trustedProvider,
     piExecutable: workspace.piExecutable,
   });
 }

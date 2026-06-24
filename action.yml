@@ -8,18 +8,6 @@ inputs:
     description: pipr configuration directory
     required: false
     default: .pipr
-  provider:
-    description: Trusted Pi provider backend used by the Action runtime
-    required: false
-    default: deepseek
-  model:
-    description: Trusted model used by the Action runtime
-    required: false
-    default: deepseek-v4-pro
-  api-key-env:
-    description: Trusted environment variable name containing the provider API key
-    required: false
-    default: DEEPSEEK_API_KEY
 outputs:
   main-comment:
     description: Rendered main PR review comment body
@@ -36,9 +24,3 @@ runs:
     - action
     - --config-dir
     - ${{ inputs.config-dir }}
-    - --provider
-    - ${{ inputs.provider }}
-    - --model
-    - ${{ inputs.model }}
-    - --api-key-env
-    - ${{ inputs.api-key-env }}

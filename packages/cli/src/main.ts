@@ -19,9 +19,6 @@ type CliOptions = {
   configDir: string;
   event?: string;
   force?: boolean;
-  provider?: string;
-  model?: string;
-  apiKeyEnv?: string;
   requireEnv?: boolean;
   base?: string;
   head?: string;
@@ -52,9 +49,6 @@ function createProgram(): Command {
     .command("action")
     .description("Run inside GitHub Docker Action")
     .option("--config-dir <dir>", "Config directory", ".pipr")
-    .option("--provider <name>", "Trusted provider name")
-    .option("--model <model>", "Trusted provider model")
-    .option("--api-key-env <env>", "Trusted provider API key env var")
     .action(runAction);
 
   program
@@ -114,11 +108,6 @@ function actionOptions(options: CliOptions): ActionOptions {
     env: process.env,
     eventPath,
     dryRun: process.env.PIPR_DRY_RUN === "1",
-    trustedProvider: {
-      provider: options.provider,
-      model: options.model,
-      apiKeyEnv: options.apiKeyEnv,
-    },
   };
 }
 

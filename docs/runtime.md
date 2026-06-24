@@ -54,9 +54,9 @@ type TaskContext = {
 
 For GitHub Action pull request runs:
 
-1. The workflow chooses trusted provider options.
-2. pipr checks out the pull request for review.
-3. pipr loads `.pipr/config.ts` and local imports from the base commit.
+1. pipr loads `.pipr/config.ts` and local imports from the base commit.
+2. pipr checks that configured provider env vars are available.
+3. pipr checks out the pull request for review.
 4. Pull request changes to `.pipr/config.ts` are reviewed as code, but do not affect the current run.
 5. Pi receives a read-only workspace copy and pipr-owned diff tools.
 
@@ -131,7 +131,7 @@ Model selection order:
 1. `ctx.pi.run(...)` call override
 2. `agent.model`
 3. `agent.fallbacks`
-4. trusted Action provider inputs or config default provider
+4. the trusted base config default provider
 
 Invalid structured output receives one repair attempt when configured. Transient retries are opt-in through agent retry settings.
 

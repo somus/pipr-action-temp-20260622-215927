@@ -29,10 +29,6 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-        with:
-          provider: deepseek
-          model: deepseek-v4-pro
-          api-key-env: DEEPSEEK_API_KEY
 ```
 
 ## Trusted options
@@ -40,11 +36,8 @@ jobs:
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `config-dir` | `.pipr` | Directory containing `config.ts` and `tsconfig.json`. |
-| `provider` | `deepseek` | Trusted Pi provider backend and provider profile id. |
-| `model` | `deepseek-v4-pro` | Trusted model for the Action run. |
-| `api-key-env` | `DEEPSEEK_API_KEY` | Trusted environment variable name containing the provider key. |
 
-Trusted provider options come from workflow YAML, not from pull request code. The provider profile's `thinking` option stays in the base-commit `.pipr/config.ts`.
+Provider settings come from the base-commit `.pipr/config.ts`, not from pull request code. The Action uses the base config's default model and configured fallbacks, including provider backend, model name, API key env name, and provider options.
 
 `checks: write` lets pipr publish task and aggregate Check Runs when enabled by config. `pull-requests: write` publishes Inline Review Comments and enables best-effort stale inline thread resolution after a finding disappears. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
 

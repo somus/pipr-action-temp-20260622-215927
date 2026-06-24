@@ -49,10 +49,6 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-        with:
-          provider: deepseek
-          model: deepseek-v4-pro
-          api-key-env: DEEPSEEK_API_KEY
 ```
 
 See [Docs](docs/index.md) or [Quickstart](docs/quickstart.md) for the full first-run path.

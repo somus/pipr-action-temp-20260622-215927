@@ -29,13 +29,8 @@ import {
   type RuntimeTaskCheckResult,
   runTaskRuntime,
 } from "../review/task-runtime.js";
-import type {
-  ChangeRequestEventContext,
-  PiprConfig,
-  ProviderConfig,
-  RuntimeSettings,
-} from "../types.js";
-import { parseChangeRequestEventContext, parsePiprConfig, parseProviderConfig } from "../types.js";
+import type { ChangeRequestEventContext, PiprConfig, RuntimeSettings } from "../types.js";
+import { parseChangeRequestEventContext } from "../types.js";
 import {
   hasRequiredRepositoryPermission,
   type PlanCommandResolution,
@@ -45,13 +40,6 @@ import {
 } from "./command-router.js";
 import { loadRuntimeProjectFromGitCommit } from "./git-project.js";
 
-const defaultActionProvider: ProviderConfig = {
-  id: "deepseek",
-  provider: "deepseek",
-  model: "deepseek-v4-pro",
-  apiKeyEnv: "DEEPSEEK_API_KEY",
-  thinking: "high",
-};
 const genericCheckFailureSummary = "pipr failed; see Action logs for details.";
 
 export type RuntimeCommandOptions = {
@@ -72,11 +60,6 @@ export type DryRunCommandOptions = RuntimeCommandOptions & {
 export type ActionCommandOptions = RuntimeCommandOptions & {
   eventPath: string;
   dryRun: boolean;
-  trustedProvider?: {
-    provider?: string;
-    model?: string;
-    apiKeyEnv?: string;
-  };
 };
 
 export type ActionCommandDependencyOptions = ActionCommandOptions & {
@@ -255,13 +238,12 @@ export async function runActionCommandWithDependencies(
     commitSha: event.change.base.sha,
     env: options.env,
   });
-  const provider = trustedActionProvider(options, trustedRuntime.settings.config);
+  assertTrustedActionProviderEnv(options, trustedRuntime.settings.config);
   adapter.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
   const completed = await runTrustedReviewAndPublish({
     options,
     adapter,
     trustedRuntime,
-    provider,
     event,
   });
   if (completed.kind === "skipped") {
@@ -410,13 +392,12 @@ async function dispatchIssueCommentCommand(
     return { kind: "ignored", reason: "command dispatch did not resolve to a runnable task" };
   }
 
-  const provider = trustedActionProvider(options, prepared.trustedRuntime.settings.config);
+  assertTrustedActionProviderEnv(options, prepared.trustedRuntime.settings.config);
   adapter.ensureHeadCheckout({ rootDir: options.rootDir, change: prepared.event });
   const completed = await runTrustedReviewAndPublish({
     options,
     adapter,
     trustedRuntime: prepared.trustedRuntime,
-    provider,
     event: prepared.event,
     taskName: parsedResolution.invocation.taskName,
     taskInput: parsedResolution.invocation.inputs,
@@ -438,7 +419,6 @@ async function runTrustedReviewAndPublish(options: {
   options: ActionCommandDependencyOptions;
   adapter: CodeHostAdapter;
   trustedRuntime: TrustedRuntimeProject;
-  provider: ProviderConfig;
   event: ChangeRequestEventContext;
   taskName?: string;
   taskInput?: unknown;
@@ -446,11 +426,6 @@ async function runTrustedReviewAndPublish(options: {
   | { kind: "skipped"; reason: string }
   | { kind: "completed"; review: ReviewRuntimeResult; publication: PublicationResult }
 > {
-  const runtimeConfig = trustedActionConfig(
-    options.trustedRuntime.settings.config,
-    options.options,
-    options.provider,
-  );
   const checks = await startRuntimeChecks({
     adapter: options.adapter,
     event: options.event,
@@ -460,10 +435,9 @@ async function runTrustedReviewAndPublish(options: {
   try {
     const review = await runTaskRuntime({
       workspace: options.options.rootDir,
-      config: runtimeConfig,
+      config: options.trustedRuntime.settings.config,
       event: options.event,
       env: options.options.env,
-      providerOverride: options.provider,
       plan: options.trustedRuntime.plan,
       taskName: options.taskName,
       taskInput: options.taskInput,
@@ -765,119 +739,20 @@ function taskCheckSettings(task: Task<unknown>): {
   };
 }
 
-function trustedActionConfig(
-  trustedConfig: PiprConfig,
+function assertTrustedActionProviderEnv(
   options: ActionCommandDependencyOptions,
-  provider: ProviderConfig,
-): PiprConfig {
+  trustedConfig: PiprConfig,
+): void {
   const env = actionEnv(options);
-  if (!env[provider.apiKeyEnv]) {
-    throw new Error(`Missing provider env vars: ${provider.apiKeyEnv}`);
+  const missing: string[] = [];
+  for (const provider of trustedConfig.providers) {
+    if (!env[provider.apiKeyEnv]) {
+      missing.push(provider.apiKeyEnv);
+    }
   }
-  return parsePiprConfig({
-    ...trustedConfig,
-    defaultProvider: provider.id,
-    providers: [provider],
-  });
-}
-
-function trustedActionProvider(
-  options: ActionCommandDependencyOptions,
-  trustedConfig: PiprConfig,
-): ProviderConfig {
-  return parseProviderConfig(trustedActionProviderConfig(options, trustedConfig));
-}
-
-function trustedActionProviderConfig(
-  options: ActionCommandDependencyOptions,
-  trustedConfig: PiprConfig,
-): ProviderConfig {
-  const selected = trustedActionProviderSelection(options, trustedConfig);
-  return {
-    id: trustedProviderId(selected),
-    provider: trustedProviderName(selected),
-    model: trustedProviderModel(selected),
-    apiKeyEnv: trustedProviderApiKeyEnv(selected),
-    thinking: selected.profile?.thinking,
-  };
-}
-
-function trustedActionProviderSelection(
-  options: ActionCommandDependencyOptions,
-  trustedConfig: PiprConfig,
-): {
-  providerSelector: string;
-  model?: string;
-  apiKeyEnv?: string;
-  profile?: ProviderConfig;
-  matchedById: boolean;
-} {
-  const provider = readTrustedProviderOption(options, "provider", "provider");
-  const model = readTrustedProviderOption(options, "model", "model");
-  const providerSelector = provider ?? defaultActionProvider.provider;
-  const modelSelector = model ?? defaultActionProvider.model;
-  const byId = trustedConfig.providers.find((item) => item.id === providerSelector);
-  const byProviderModel = trustedConfig.providers.find(
-    (item) => item.provider === providerSelector && item.model === modelSelector,
-  );
-  return {
-    providerSelector,
-    model,
-    apiKeyEnv: readTrustedProviderOption(options, "apiKeyEnv", "api-key-env"),
-    profile: byId ?? byProviderModel,
-    matchedById: byId !== undefined,
-  };
-}
-
-function trustedProviderName(selected: {
-  providerSelector: string;
-  profile?: ProviderConfig;
-  matchedById: boolean;
-}): string {
-  if (selected.matchedById && selected.profile) {
-    return selected.profile.provider;
+  if (missing.length > 0) {
+    throw new Error(`Missing provider env vars: ${missing.join(", ")}`);
   }
-  return selected.providerSelector;
-}
-
-function trustedProviderId(selected: {
-  providerSelector: string;
-  profile?: ProviderConfig;
-}): string {
-  return selected.profile?.id ?? selected.providerSelector;
-}
-
-function trustedProviderModel(selected: {
-  model?: string;
-  profile?: ProviderConfig;
-  matchedById: boolean;
-}): string {
-  if (selected.profile && selected.matchedById) {
-    return selected.profile.model;
-  }
-  return selected.model ?? selected.profile?.model ?? defaultActionProvider.model;
-}
-
-function trustedProviderApiKeyEnv(selected: {
-  apiKeyEnv?: string;
-  profile?: ProviderConfig;
-  matchedById: boolean;
-}): string {
-  if (selected.profile && selected.matchedById) {
-    return selected.profile.apiKeyEnv;
-  }
-  return selected.apiKeyEnv ?? selected.profile?.apiKeyEnv ?? defaultActionProvider.apiKeyEnv;
-}
-
-function readTrustedProviderOption(
-  options: ActionCommandDependencyOptions,
-  optionKey: keyof NonNullable<ActionCommandDependencyOptions["trustedProvider"]>,
-  inputName: string,
-): string | undefined {
-  return [
-    options.trustedProvider?.[optionKey],
-    readActionInput(actionEnv(options), inputName),
-  ].find((value) => value !== undefined && value.length > 0);
 }
 
 function actionEnv(options: ActionCommandDependencyOptions): NodeJS.ProcessEnv {
@@ -898,18 +773,4 @@ function createActionHostAdapter(options: {
       publicationClient: options.githubPublicationClient,
     })
   );
-}
-
-function readActionInput(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  for (const key of [
-    `INPUT_${name}`,
-    `INPUT_${name.toUpperCase()}`,
-    `INPUT_${name.replaceAll("-", "_").toUpperCase()}`,
-  ]) {
-    const value = env[key];
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
 }

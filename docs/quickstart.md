@@ -84,13 +84,9 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-        with:
-          provider: deepseek
-          model: deepseek-v4-pro
-          api-key-env: DEEPSEEK_API_KEY
 ```
 
-`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit. `checks: write` lets pipr publish Check Runs when your config enables them. `pull-requests: write` lets pipr attempt best-effort stale review thread cleanup after findings are fixed.
+`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit. pipr loads provider/model/API key settings from the base-branch `.pipr/config.ts`, so pull request changes cannot alter the model used for that run. `checks: write` lets pipr publish Check Runs when your config enables them. `pull-requests: write` lets pipr attempt best-effort stale review thread cleanup after findings are fixed.
 
 ## 4. Trigger a review
 

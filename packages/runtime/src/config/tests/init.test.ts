@@ -38,9 +38,9 @@ describe("initOfficialMinimalProject", () => {
     expect(workflow).toContain("checks: write");
     expect(workflow).not.toContain("config-dir:");
     expect(workflow).not.toContain("provider-id:");
-    expect(workflow).toContain("provider: deepseek");
-    expect(workflow).toContain("model: deepseek-v4-pro");
-    expect(workflow).toContain("api-key-env: DEEPSEEK_API_KEY");
+    expect(workflow).not.toContain("provider: deepseek");
+    expect(workflow).not.toContain("model: deepseek-v4-pro");
+    expect(workflow).not.toContain("api-key-env: DEEPSEEK_API_KEY");
     expect(workflow).toContain("DEEPSEEK_API_KEY:");
     expect(workflow).toContain("secrets.DEEPSEEK_API_KEY");
     expect(await listFiles(rootDir)).toEqual([

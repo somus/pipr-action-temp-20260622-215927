@@ -273,11 +273,9 @@ function starterWorkflow(relativeConfigDir: string): string {
     `          DEEPSEEK_API_KEY: $${["{{ ", "secrets.DEEPSEEK_API_KEY", " }}"].join("")}`,
     `          GITHUB_TOKEN: $${["{{ ", "github.token", " }}"].join("")}`,
     "        with:",
-    "          provider: deepseek",
-    "          model: deepseek-v4-pro",
-    "          api-key-env: DEEPSEEK_API_KEY",
   ];
   if (relativeConfigDir !== ".pipr") {
+    lines.push("        with:");
     lines.push(`          config-dir: ${relativeConfigDir}`);
   }
   lines.push("");

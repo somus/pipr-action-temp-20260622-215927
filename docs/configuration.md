@@ -216,7 +216,7 @@ pipr run security --base origin/main --head HEAD
 1. the call override
 2. `agent.model`
 3. `agent.fallbacks`
-4. the runtime provider selected from trusted workflow options or the config default provider
+4. the trusted base config default provider
 
 Invalid structured output gets one repair attempt by default. Transient Pi execution retries default to zero.
 
@@ -235,7 +235,7 @@ const reviewer = pipr.agent({
 });
 ```
 
-When GitHub workflow trusted provider options are present, pipr uses only that trusted provider and does not run agent or task fallbacks.
+For GitHub Action pull request runs, pipr resolves this order from the base-commit `.pipr/config.ts`; pull request changes to config are reviewed as code but do not affect the current run.
 
 ## Inspect
 
