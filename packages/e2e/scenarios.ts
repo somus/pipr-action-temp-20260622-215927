@@ -64,28 +64,22 @@ export default definePipr((pipr) => {
     include: ["packages/e2e/fixtures/act/project/**"],
     exclude: ["**/*.test.ts"],
   };
-  const addReviewTask = (name, priority, secondary = false, paths = undefined) => {
-    const task = pipr.task(name, async (ctx) => {
-      const manifest = await ctx.change.diffManifest({ compressed: true, paths });
-      const result = await ctx.pi.run(reviewer, { manifest }, { paths });
-      if (secondary) {
-        await ctx.comment("Full fixture secondary section", {
-          key: name,
-          order: priority,
-        });
-      } else {
-        await ctx.comment(
-          { main: result.summary.body, inlineFindings: result.inlineFindings },
-          { key: name, order: priority },
-        );
-      }
+  const task = pipr.task("pipr/review", async (ctx) => {
+    const manifest = await ctx.change.diffManifest({ compressed: true, paths: sourcePaths });
+    const [review, duplicate] = await Promise.all([
+      ctx.pi.run(reviewer, { manifest }, { paths: sourcePaths }),
+      ctx.pi.run(reviewer, { manifest }, { paths: sourcePaths }),
+    ]);
+    await ctx.comment({
+      main: [
+        "Full fixture secondary section",
+        "",
+        review.summary.body,
+      ].join("\\n"),
+      inlineFindings: [...review.inlineFindings, ...duplicate.inlineFindings],
     });
-    pipr.on.changeRequest(["opened"], task);
-  };
-
-  addReviewTask("pipr/review", 100, false, sourcePaths);
-  addReviewTask("pipr/full-duplicate-review", 90, false, sourcePaths);
-  addReviewTask("pipr/full-secondary-section", 80, true);
+  });
+  pipr.on.changeRequest(["opened"], task);
 });
 `;
 
@@ -132,7 +126,6 @@ export default definePipr((pipr) => {
     }),
   );
   const findingSchema = z.strictObject({
-    title: z.string(),
     body: z.string(),
     path: z.string(),
     rangeId: z.string(),
@@ -141,8 +134,6 @@ export default definePipr((pipr) => {
     endLine: z.number().int().positive(),
     severity: z.enum(["critical", "high", "medium", "low", "nit"]),
     suggestedFix: z.string().optional(),
-    semanticAnchor: z.string().optional(),
-    fingerprintHint: z.string().optional(),
   });
   const orchestratorOutput = pipr.schema(
     "fixture/orchestrator-output",
@@ -191,7 +182,7 @@ export default definePipr((pipr) => {
             const findings = grouped.get(severity) ?? [];
             return findings.length === 0
               ? []
-              : [\`### \${severity}\`, "", ...findings.map((finding) => \`- \${finding.title}\`), ""];
+              : [\`### \${severity}\`, "", ...findings.map((finding) => \`- \${finding.body}\`), ""];
           })
           .join("\\n");
     await ctx.comment({

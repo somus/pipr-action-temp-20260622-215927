@@ -14,7 +14,6 @@ const baseReview: PrReview = {
   summary: { body: "Looks fine." },
   inlineFindings: [
     {
-      title: "Unsafe call",
       body: "This can fail.",
       path: "src/a.ts",
       rangeId: "range-1",

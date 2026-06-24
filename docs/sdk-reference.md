@@ -157,10 +157,7 @@ const task = pipr.task("security-review", async (ctx) => {
   const manifest = await ctx.change.diffManifest({ compressed: true, paths });
   const result = await ctx.pi.run(security, { manifest }, { paths });
 
-  await ctx.comment(
-    { main: result.summary.body, inlineFindings: result.inlineFindings },
-    { key: "security", order: 20 },
-  );
+  await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
 });
 
 pipr.on.changeRequest(["opened", "updated"], task);
@@ -177,22 +174,22 @@ pipr.local("security", task);
 | `ctx.repository` | Provider-neutral repository metadata. |
 | `ctx.change` | Provider-neutral change request metadata plus diff helpers. |
 | `ctx.pi.run(agent, input, options?)` | Execute a Pi-backed agent and validate structured output. |
-| `ctx.comment(source, options?)` | Contribute Main Review Comment markdown and Inline Review Comments. |
+| `ctx.review.prior()` | Read prior review state: `main?`, `reviewedHeadSha?`, and `inlineFindings[]` with `id`, `status`, `path`, `rangeId`, `side`, `startLine`, and `endLine`. |
+| `ctx.comment(value)` | Emit the selected run's final Main Review Comment markdown and Inline Review Comments. |
 | `ctx.log` | Write runtime logs. |
 
 `ctx.change.diffManifest(...)` returns commentable file ranges. Findings must reference those ranges by `rangeId`.
 
-When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)` and `ctx.pi.run(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops publishable findings outside the scope.
+When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)` and `ctx.pi.run(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops findings from that scoped Pi result when they are outside the scope. That scope is preserved when passing returned findings or cloning them with object spread.
 
 ## Comment output
+
+Each selected run must call `ctx.comment(value)` exactly once. Missing or duplicate calls fail the run.
 
 Use `ctx.comment(...)` for Main Review Comment markdown:
 
 ```ts
-await ctx.comment("## Security review\n\nNo exploitable findings.", {
-  key: "security",
-  order: 20,
-});
+await ctx.comment("## Security review\n\nNo exploitable findings.");
 ```
 
 Use object form when also publishing inline findings:
@@ -201,7 +198,6 @@ Use object form when also publishing inline findings:
 await ctx.comment({
   main: "## Security review\n\nFound one issue.",
   inlineFindings: [{
-    title: "Cleanup can be skipped",
     body: "This branch can throw before cleanup runs.",
     path: "src/server.ts",
     rangeId: "rng_...",

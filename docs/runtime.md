@@ -98,7 +98,6 @@ Each file carries changed-line ranges that can receive inline comments. Review F
 
 ```ts
 {
-  title: "Specific issue",
   body: "Specific issue and why it matters.",
   path: "src/example.ts",
   rangeId: "rng_...",
@@ -138,20 +137,19 @@ Invalid structured output receives one repair attempt when configured. Transient
 
 ## Publication
 
-Review Tasks do not write code host comments. They contribute output:
+Review Tasks do not write code host comments. A selected run emits one final output:
 
 - `ctx.comment(markdown)`
 - `ctx.comment({ main, inlineFindings })`
-- `ctx.comment(null, { key })`
 
-pipr reduces those contributions into a provider-neutral `PublicationPlan`:
+pipr turns that output into a provider-neutral `PublicationPlan`:
 
 - one Main Review Comment
 - zero or more Inline Review Comment drafts
 - dropped finding metadata
 - run metadata
 
-Before publishing, pipr checks the current head SHA. It upserts the Main Review Comment by hidden marker. That marker also carries pipr-owned review state for prior finding IDs, locations, statuses, task scope, and head metadata. Reruns pass matching open prior finding locations back to the reviewer, keep same-head open findings visible if the reviewer omits them, and mark omitted prior findings resolved in hidden state when the reviewed head changes. GitHub publication replies to the stale Inline Review Comment with the resolving commit link and resolves that review thread when permissions allow; cleanup failures are recorded in publication metadata without failing the review. Inline Review Comments are deduped by stable finding id, reviewed head SHA, and pipr-owned same-head location overlap.
+Before publishing, pipr checks the current head SHA. It upserts the Main Review Comment by hidden marker and replaces the visible main body wholesale. That marker also carries pipr-owned review state for prior finding IDs, locations, statuses, task scope, and head metadata. Reruns pass matching open prior finding locations back to the reviewer, keep same-head open findings visible if the reviewer omits them, and mark omitted prior findings resolved in hidden state when the reviewed head changes. GitHub publication replies to the stale Inline Review Comment with the resolving commit link and resolves that review thread when permissions allow; cleanup failures are recorded in publication metadata without failing the review. Inline Review Comments are deduped by stable finding id, reviewed head SHA, and pipr-owned same-head location overlap.
 
 ## Failure behavior
 

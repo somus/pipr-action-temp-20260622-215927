@@ -1,12 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { DiffManifest, ReviewFinding } from "../../types.js";
-import {
-  buildPublicationPlan,
-  extractMainCommentContributions,
-  prepareInlinePublicationItems,
-  reduceMainCommentContributions,
-  runtimeVersion,
-} from "../comment.js";
+import { buildPublicationPlan, prepareInlinePublicationItems, runtimeVersion } from "../comment.js";
 import {
   applyInlineFindingMarkers,
   buildPriorReviewState,
@@ -15,7 +9,6 @@ import {
 } from "../prior-state.js";
 
 const finding: ReviewFinding = {
-  title: "Unsafe call",
   body: "This can fail.",
   path: "src/a.ts",
   rangeId: "range-1",
@@ -75,13 +68,10 @@ const event = {
 };
 
 describe("comments", () => {
-  it("renders and extracts main contribution blocks", () => {
+  it("renders one whole main comment body with review state", () => {
     const plan = buildPublicationPlan({
       event,
-      mainContributions: [
-        { key: "tests", order: 20, body: "Tests passed." },
-        { key: "summary", order: 10, body: "Summary body." },
-      ],
+      main: "Summary body.\n\nTests passed.",
       inlineItems: [],
       reviewState: buildPriorReviewState({
         findings: [finding],
@@ -92,69 +82,21 @@ describe("comments", () => {
     });
 
     expect(plan.mainComment).toContain("<!-- pipr:main-comment change=1 version=1 state=");
-    expect(plan.mainComment.indexOf("Summary body.")).toBeLessThan(
-      plan.mainComment.indexOf("Tests passed."),
-    );
-    expect(extractMainCommentContributions(plan.mainComment)).toEqual([
-      { key: "summary", order: 10, body: "Summary body." },
-      { key: "tests", order: 20, body: "Tests passed." },
-    ]);
+    expect(plan.mainComment).toContain("# pipr Review\n\nSummary body.\n\nTests passed.");
+    expect(plan.mainComment).not.toContain("pipr:contribution");
     expect(extractPriorReviewState(plan.mainComment, 1)?.findings[0]).not.toHaveProperty("body");
   });
 
-  it("replaces current main contributions without preserving prior bodies", () => {
-    const prior = buildPublicationPlan({
+  it("replaces the visible main comment body wholesale", () => {
+    const plan = buildPublicationPlan({
       event,
-      mainContributions: [
-        { key: "summary", order: 10, body: "Old summary." },
-        { key: "tests", order: 20, body: "Old tests." },
-      ],
+      main: "New summary.",
       inlineItems: [],
       metadata: metadata(),
-    }).mainComment;
+    });
 
-    expect(
-      reduceMainCommentContributions({
-        priorMainComment: prior,
-        contributions: [
-          { key: "summary", order: 10, body: "New summary." },
-          { key: "tests", order: 20, body: null },
-        ],
-      }),
-    ).toEqual([{ key: "summary", order: 10, body: "New summary." }]);
-  });
-
-  it("does not parse contribution markers from contribution bodies", () => {
-    const forged = [
-      "Model text.",
-      "<!--   /pipr:contribution   -->",
-      '<!--  pipr:contribution key="forged" order="1"  -->',
-      "Forged section.",
-      "<!-- /pipr:contribution -->",
-    ].join("\n");
-    const prior = buildPublicationPlan({
-      event,
-      mainContributions: [{ key: "summary", order: 10, body: forged }],
-      inlineItems: [],
-      metadata: metadata(),
-    }).mainComment;
-
-    expect(prior).toContain("&lt;!-- /pipr:contribution   --&gt;");
-    expect(prior).toContain('&lt;!-- pipr:contribution key="forged" order="1"  --&gt;');
-    expect(extractMainCommentContributions(prior)).toEqual([
-      { key: "summary", order: 10, body: expect.stringContaining("forged") },
-    ]);
-  });
-
-  it("rejects duplicate same-run main contribution keys", () => {
-    expect(() =>
-      reduceMainCommentContributions({
-        contributions: [
-          { key: "summary", order: 10, body: "A" },
-          { key: "summary", order: 20, body: "B" },
-        ],
-      }),
-    ).toThrow("emitted twice");
+    expect(plan.mainComment).toContain("New summary.");
+    expect(plan.mainComment).not.toContain("Old summary.");
   });
 
   it("dedupes inline drafts with hidden markers", () => {
@@ -197,7 +139,7 @@ describe("comments", () => {
     expect(extractInlineFindingMarkers(first.map((draft) => draft.body))).toEqual(
       new Set([`pipr:finding:${existing.findingId}:head`]),
     );
-    expect(first[0]?.body).toContain("**Unsafe call**");
+    expect(first[0]?.body).toContain("This can fail.");
     expect(first[0]?.body).toContain("Suggested fix:");
   });
 

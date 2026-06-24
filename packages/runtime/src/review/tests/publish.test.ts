@@ -87,7 +87,6 @@ const validated: ValidatedReview = {
   },
   validFindings: [
     {
-      title: "Unsafe call",
       body: "This can fail.",
       path: "src/a.ts",
       rangeId: "range-1",
@@ -96,7 +95,6 @@ const validated: ValidatedReview = {
       endLine: 12,
     },
     {
-      title: "Breaking call",
       body: "This can break.",
       path: "src/a.ts",
       rangeId: "range-2",
@@ -644,13 +642,7 @@ function plan(options: { maxInlineComments?: number; validated?: ValidatedReview
   const review = options.validated ?? validated;
   return buildPublicationPlan({
     event,
-    mainContributions: [
-      {
-        key: "review",
-        order: 0,
-        body: review.review.summary.body,
-      },
-    ],
+    main: review.review.summary.body,
     inlineItems: prepareInlinePublicationItems({
       validated: review,
       manifest,
@@ -692,7 +684,7 @@ function resolvedPriorPlan() {
   };
   return buildPublicationPlan({
     event,
-    mainContributions: [],
+    main: "Review completed.",
     inlineItems: [],
     metadata: {
       runtimeVersion,

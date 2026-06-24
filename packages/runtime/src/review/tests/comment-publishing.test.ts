@@ -75,21 +75,10 @@ const validated: ValidatedReview = {
 };
 
 describe("buildCommentPublishingPlan", () => {
-  it("assembles main comment contributions and returns capped inline drafts", () => {
+  it("assembles one main comment and returns capped inline drafts", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      mainContributions: [
-        {
-          key: "review",
-          order: 10,
-          body: "Summary body.",
-        },
-        {
-          key: "details",
-          order: 20,
-          body: "Extra details.",
-        },
-      ],
+      main: "Summary body.\n\nExtra details.",
       validated,
       manifest,
       maxInlineComments: 1,
@@ -116,20 +105,20 @@ describe("buildCommentPublishingPlan", () => {
     const currentFindings = manyFindings(101);
     const publishing = buildCommentPublishingPlan({
       event,
-      mainContributions: [],
+      main: "Review completed.",
       validated: { ...validated, validFindings: currentFindings },
       manifest: manifestForFindings(currentFindings),
       metadata: metadata({ validFindings: currentFindings.length }),
     });
 
     expect(publishing.publicationPlan.reviewState.findings).toHaveLength(101);
-    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
+    expect(publishing.publicationPlan.mainComment).toContain("Review completed.");
   });
 
   it("keeps prior open findings on same-head reruns when the agent omits them", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      mainContributions: [],
+      main: "Review completed.",
       validated: { ...validated, validFindings: [] },
       manifest,
       priorReviewState: priorState({ reviewedHeadSha: "head", lastCommentedHeadSha: "head" }),
@@ -142,13 +131,13 @@ describe("buildCommentPublishingPlan", () => {
       status: "open",
       lastSeenHeadSha: "head",
     });
-    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
+    expect(publishing.publicationPlan.mainComment).toContain("Review completed.");
   });
 
   it("marks prior open findings resolved without showing them in the main findings list", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      mainContributions: [],
+      main: "Review completed.",
       validated: { ...validated, validFindings: [] },
       manifest,
       priorReviewState: priorState({ reviewedHeadSha: "old-head", lastSeenHeadSha: "old-head" }),
@@ -160,7 +149,7 @@ describe("buildCommentPublishingPlan", () => {
       status: "resolved",
       lastSeenHeadSha: "old-head",
     });
-    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
+    expect(publishing.publicationPlan.mainComment).toContain("Review completed.");
     expect(publishing.publicationPlan.mainComment).not.toContain("[resolved]");
     expect(publishing.publicationPlan.mainComment).not.toContain("- Prior finding.");
   });
@@ -168,7 +157,7 @@ describe("buildCommentPublishingPlan", () => {
   it("does not carry prior findings from another selected task scope", () => {
     const publishing = buildCommentPublishingPlan({
       event,
-      mainContributions: [],
+      main: "Review completed.",
       validated: { ...validated, validFindings: [] },
       manifest,
       priorReviewState: {
@@ -179,14 +168,14 @@ describe("buildCommentPublishingPlan", () => {
     });
 
     expect(publishing.publicationPlan.reviewState.findings).toEqual([]);
-    expect(publishing.publicationPlan.mainComment).toContain("_No comment contributions._");
+    expect(publishing.publicationPlan.mainComment).toContain("Review completed.");
   });
 
   it("does not reuse ambiguous same-range prior ids for unrelated current findings", () => {
     const currentFinding = finding("Current finding.", "range-1", 10);
     const publishing = buildCommentPublishingPlan({
       event,
-      mainContributions: [],
+      main: "Review completed.",
       validated: { ...validated, validFindings: [currentFinding] },
       manifest,
       priorReviewState: {
@@ -271,7 +260,6 @@ function manyFindings(count: number): ValidatedReview["validFindings"] {
 
 function finding(body: string, rangeId: string, line: number): ValidatedReview["validFindings"][0] {
   return {
-    title: body.replace(/\.$/, ""),
     body,
     path: "src/a.ts",
     rangeId,

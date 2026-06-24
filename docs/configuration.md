@@ -123,10 +123,7 @@ const task = pipr.task("security-review", async (ctx) => {
   const paths = { include: ["packages/runtime/**"] };
   const manifest = await ctx.change.diffManifest({ compressed: true, paths });
   const result = await ctx.pi.run(security, { manifest }, { paths });
-  await ctx.comment(
-    { main: result.summary.body, inlineFindings: result.inlineFindings },
-    { key: "security", order: 20 },
-  );
+  await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
 });
 
 pipr.on.changeRequest(["opened", "updated"], task);

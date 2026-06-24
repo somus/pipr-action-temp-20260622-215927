@@ -164,7 +164,7 @@ describe("definePipr", () => {
           },
           local: "correctness",
         },
-        comment: () => null,
+        comment: "Correctness review disabled.",
       });
     });
 
@@ -234,6 +234,11 @@ describe("definePipr", () => {
             return { summary: { body: "Done." }, inlineFindings: [] } as Awaited<
               ReturnType<typeof _agent.definition.output.parse>
             >;
+          },
+        },
+        review: {
+          async prior() {
+            return { inlineFindings: [] };
           },
         },
         async comment() {},
@@ -406,6 +411,11 @@ describe("definePipr", () => {
             return agent.definition.output.parse({ summary: "Done.", findings: ["A"] }) as never;
           },
         },
+        review: {
+          async prior() {
+            return { inlineFindings: [] };
+          },
+        },
         async comment(value) {
           commentValue = value;
         },
@@ -450,7 +460,7 @@ describe("definePipr", () => {
         inlineFindings: [validReviewFinding()],
       }),
     ).toMatchObject({
-      inlineFindings: [{ title: "Finding title." }],
+      inlineFindings: [{ body: "Finding body." }],
     });
     expect(() =>
       schemas.review.parse({
@@ -526,7 +536,6 @@ function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineCo
 
 function validReviewFinding(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    title: "Finding title.",
     body: "Finding body.",
     path: "src/example.ts",
     rangeId: "rng_example",

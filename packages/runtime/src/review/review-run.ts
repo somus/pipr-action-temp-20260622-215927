@@ -369,7 +369,7 @@ function priorFindingsPrompt(state: PriorReviewState | undefined): string | unde
       null,
       2,
     ),
-    "Re-check these findings against the current diff. If a prior finding still applies, emit one current inline finding with matching stable semantic fields. If it no longer applies, omit it.",
+    "Re-check these findings against the current diff. If a prior finding still applies, emit one current inline finding for the same issue. If it no longer applies, omit it.",
   ].join("\n");
 }
 

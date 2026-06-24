@@ -2,7 +2,6 @@ import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from ".
 import {
   buildPublicationPlan,
   type InlineCommentDraft,
-  type MainCommentContribution,
   type PublicationMetadata,
   type PublicationPlan,
   prepareInlinePublicationItems,
@@ -11,13 +10,12 @@ import { buildPriorReviewState, type PriorReviewState } from "./prior-state.js";
 
 export type BuildCommentPublishingPlanOptions = {
   event: Pick<ChangeRequestEventContext, "change">;
-  mainContributions: MainCommentContribution[];
+  main: string;
   validated: ValidatedReview;
   manifest: DiffManifest;
   metadata: Omit<PublicationMetadata, "cappedInlineFindings">;
   maxInlineComments?: number;
   priorReviewState?: PriorReviewState;
-  priorMainComment?: string;
 };
 
 export type CommentPublishingPlan = {
@@ -42,12 +40,11 @@ export function buildCommentPublishingPlan(
   });
   const publicationPlan = buildPublicationPlan({
     event: options.event,
-    mainContributions: options.mainContributions,
+    main: options.main,
     inlineItems: inlineCommentDrafts,
     maxInlineComments: options.maxInlineComments,
     metadata: options.metadata,
     reviewState,
-    priorMainComment: options.priorMainComment,
   });
   return {
     publicationPlan,

@@ -281,7 +281,7 @@ describe("runActionCommand pull_request dispatch", () => {
     }
   });
 
-  it("does not carry prior main comment contributions during pull_request publication", async () => {
+  it("does not carry prior main comment body during pull_request publication", async () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     try {
       const eventPath = path.join(workspace.rootDir, "event.json");
@@ -631,9 +631,7 @@ function priorMainCommentBody(): string {
     "",
     "# pipr Review",
     "",
-    '<!-- pipr:contribution key="old-task" order="10" -->',
     "Prior preserved section.",
-    "<!-- /pipr:contribution -->",
     "",
   ].join("\n");
 }

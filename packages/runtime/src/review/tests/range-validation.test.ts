@@ -6,7 +6,6 @@ import { assertFindingMatchesRange, findingRangeMismatchReason } from "../range-
 
 const manifest = reviewTestManifest();
 const finding: ReviewFinding = {
-  title: "Unsafe call",
   body: "This can fail.",
   path: "src/a.ts",
   rangeId: "range-1",

@@ -79,7 +79,7 @@ expectOrchestratorFailure("custom severity label missing", {
     {
       body:
         validOrchestratorFixture().issueComments?.[0]?.body?.replace(
-          "- Orchestrated inline publication",
+          "- Orchestrator custom schema mapped a labeled finding into core inline output.",
           "",
         ) ?? "",
     },
@@ -177,9 +177,9 @@ function fullMainCommentBody(): string {
     "",
     "# pipr Review",
     "",
-    '<!-- pipr:contribution key="pipr/full-secondary-section" order="80" -->',
     "Full fixture secondary section",
-    "<!-- /pipr:contribution -->",
+    "",
+    "Fake Pi reviewed the act full-flow fixture.",
     "- Full-flow act reached inline publication.",
   ].join("\n");
 }
@@ -209,7 +209,7 @@ function validOrchestratorFixture(): PublicationFixture {
           "",
           "### medium",
           "",
-          "- Orchestrated inline publication",
+          "- Orchestrator custom schema mapped a labeled finding into core inline output.",
         ].join("\n"),
       },
     ],
@@ -217,8 +217,6 @@ function validOrchestratorFixture(): PublicationFixture {
       {
         body: [
           "<!-- pipr:finding id=fnd_fixture head=head-sha -->",
-          "**Orchestrated inline publication**",
-          "",
           "Severity: medium",
           "",
           "Orchestrator custom schema mapped a labeled finding into core inline output.",

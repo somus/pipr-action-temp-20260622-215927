@@ -81,7 +81,6 @@ type ReviewSummary = {
   body: string;
 };
 type ReviewFinding = {
-  title: string;
   body: string;
   path: string;
   rangeId: string;
@@ -89,8 +88,6 @@ type ReviewFinding = {
   startLine: number;
   endLine: number;
   suggestedFix?: string;
-  semanticAnchor?: string;
-  fingerprintHint?: string;
 };
 type ReviewResult = {
   summary: ReviewSummary;
@@ -100,12 +97,20 @@ type Markdown = string;
 type CommentValue = Markdown | {
   main?: Markdown;
   inlineFindings?: readonly ReviewFinding[];
-} | null;
-type CommentSource = CommentValue | (() => CommentValue | Promise<CommentValue>);
-type CommentOptions = {
-  key?: string;
-  order?: number;
-  paths?: PathFilter;
+};
+type PriorInlineFinding = {
+  id: string;
+  status: "open" | "resolved";
+  path: string;
+  rangeId: string;
+  side: "RIGHT" | "LEFT";
+  startLine: number;
+  endLine: number;
+};
+type PriorReview = {
+  main?: Markdown;
+  reviewedHeadSha?: string;
+  inlineFindings: readonly PriorInlineFinding[];
 };
 type PathFilter = {
   include?: string[];
@@ -209,8 +214,6 @@ type ReviewRecipeEntrypointOptions = {
     max?: number;
   };
   comment?: CommentValue | ((result: ReviewResult, context: ReviewCommentContext) => CommentValue | Promise<CommentValue>);
-  commentKey?: string;
-  commentOrder?: number;
   timeout?: DurationInput;
   paths?: PathFilter;
 };
@@ -388,7 +391,10 @@ type TaskContext = {
   readonly change: ChangeRequestContext;
   readonly platform: PlatformInfo;
   readonly pi: PiRunner;
-  comment(source: CommentSource, options?: CommentOptions): Promise<void>;
+  readonly review: {
+    prior(): Promise<PriorReview>;
+  };
+  comment(value: CommentValue): Promise<void>;
   readonly log: {
     info(message: string): void;
     warn(message: string): void;
@@ -420,10 +426,10 @@ function md(strings: TemplateStringsArray, ...values: unknown[]): Markdown;
 /** Renders a prompt source/value into plain text for Pi prompts. */
 function renderPromptValue(value: PromptValue): string;
 //#endregion
-export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommentOptions, CommentSource, CommentValue, CommandOptions, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonValue, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, Task, TaskContext, TaskHandler, ToolRunOptions, ZodSchema, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schema, schemas, z };
+export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommentValue, CommandOptions, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonValue, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PriorInlineFinding, PriorReview, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, Task, TaskContext, TaskHandler, ToolRunOptions, ZodSchema, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schema, schemas, z };
 }
 declare module "@pipr/sdk/review" {
-export { type AgentPromptContext, type ChangeRequestAction, type CommentOptions, type CommentSource, type CommentValue, type DefaultReviewInput, type Markdown, type PathFilter, type ReviewCommentContext, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, md, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewSchemaExample, schemas } from "@pipr/sdk";
+export { type AgentPromptContext, type ChangeRequestAction, type CommentValue, type DefaultReviewInput, type Markdown, type PathFilter, type PriorInlineFinding, type PriorReview, type ReviewCommentContext, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, md, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewSchemaExample, schemas } from "@pipr/sdk";
 }
 declare module "@pipr/sdk/tools" {
 export { type AgentTool, type BuiltinSchemaCatalog, type BuiltinToolCatalog, type JsonObject, type JsonValue, type PluginToolDefinition, type PromptSource, type PromptText, type PromptValue, type Schema, type SchemaParseResult, type ToolRunOptions, isBuiltinReadOnlyTool, renderPromptValue, schemas } from "@pipr/sdk";

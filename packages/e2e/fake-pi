@@ -76,7 +76,6 @@ async function fullFixtureReview() {
     },
     inlineFindings: [
       {
-        title: "Full-flow inline publication",
         body: "Full-flow act reached inline publication.",
         path: range.path,
         rangeId: range.id,
@@ -95,7 +94,6 @@ function outOfScopeFindings(range) {
   }
   return [
     {
-      title: "Out-of-scope path",
       body: "Out-of-scope act path should not publish.",
       path: "docs/out-of-scope.md",
       rangeId: range.id,
@@ -138,7 +136,6 @@ function orchestratorReview() {
     },
     findings: [
       {
-        title: "Orchestrated inline publication",
         body: "Orchestrator custom schema mapped a labeled finding into core inline output.",
         path: range.path,
         rangeId: range.id,

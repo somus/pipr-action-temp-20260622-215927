@@ -79,13 +79,20 @@ export function assertActOrchestratorFixture(fixture: PublicationFixture): void 
   assert(mainComment.includes("## Custom labels"), "custom labels section missing");
   assert(mainComment.includes("### medium"), "custom severity group missing");
   assert(
-    mainComment.includes("- Orchestrated inline publication"),
+    mainComment.includes(
+      "- Orchestrator custom schema mapped a labeled finding into core inline output.",
+    ),
     "custom severity label missing",
   );
   const inlinePayloads = fixture.reviewCommentPayloads ?? [];
   assertEqual(inlinePayloads.length, 1, "unexpected inline payloads");
   const inlineBody = inlinePayloads[0]?.body ?? "";
-  assert(inlineBody.includes("Orchestrated inline publication"), "orchestrator inline missing");
+  assert(
+    inlineBody.includes(
+      "Orchestrator custom schema mapped a labeled finding into core inline output.",
+    ),
+    "orchestrator inline missing",
+  );
   assert(inlineBody.includes("Severity: medium"), "custom severity missing from inline finding");
 }
 
@@ -99,7 +106,6 @@ function readOnlyMainComment(fixture: PublicationFixture): string {
 
 function assertFullMainComment(body: string): void {
   assert(body.includes(mainCommentMarkerPrefix), "main comment marker missing");
-  assert(body.includes("<!-- pipr:contribution key="), "contribution block missing");
   assert(body.includes("Full fixture secondary section"), "secondary section missing");
   assert(!body.includes("pipr/docs-only"), "path-missed task was selected");
   assert(
@@ -162,7 +168,7 @@ async function assertParallelPiCalls(telemetryPath: string): Promise<void> {
   const fullStarts = events.filter(
     (event) => event.phase === "start" && event.promptKind === "full",
   );
-  assert(fullStarts.length >= 3, `expected at least 3 full Pi calls, got ${fullStarts.length}`);
+  assert(fullStarts.length >= 2, `expected at least 2 full Pi calls, got ${fullStarts.length}`);
   assert(maxActiveCalls(events) >= 2, "task Pi calls did not overlap");
 }
 

@@ -311,13 +311,12 @@ function findingOverlapsRecord(finding: ReviewFinding, record: PriorFindingRecor
 }
 
 function newFindingId(finding: ReviewFinding): string {
-  const semanticKey = finding.fingerprintHint ?? finding.semanticAnchor ?? finding.title;
   return `fnd_${hashParts([
     finding.path,
     finding.rangeId,
     finding.side,
     `${finding.startLine}-${finding.endLine}`,
-    semanticKey,
+    finding.body,
   ])}`;
 }
 

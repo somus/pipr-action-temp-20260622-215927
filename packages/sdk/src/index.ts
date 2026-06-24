@@ -56,7 +56,6 @@ export type ReviewSummary = {
 };
 
 export type ReviewFinding = {
-  title: string;
   body: string;
   path: string;
   rangeId: string;
@@ -64,8 +63,6 @@ export type ReviewFinding = {
   startLine: number;
   endLine: number;
   suggestedFix?: string;
-  semanticAnchor?: string;
-  fingerprintHint?: string;
 };
 
 export type ReviewResult = {
@@ -80,15 +77,22 @@ export type CommentValue =
   | {
       main?: Markdown;
       inlineFindings?: readonly ReviewFinding[];
-    }
-  | null;
+    };
 
-export type CommentSource = CommentValue | (() => CommentValue | Promise<CommentValue>);
+export type PriorInlineFinding = {
+  id: string;
+  status: "open" | "resolved";
+  path: string;
+  rangeId: string;
+  side: "RIGHT" | "LEFT";
+  startLine: number;
+  endLine: number;
+};
 
-export type CommentOptions = {
-  key?: string;
-  order?: number;
-  paths?: PathFilter;
+export type PriorReview = {
+  main?: Markdown;
+  reviewedHeadSha?: string;
+  inlineFindings: readonly PriorInlineFinding[];
 };
 
 export type PathFilter = {
@@ -225,8 +229,6 @@ type ReviewRecipeEntrypointOptions = {
         result: ReviewResult,
         context: ReviewCommentContext,
       ) => CommentValue | Promise<CommentValue>);
-  commentKey?: string;
-  commentOrder?: number;
   timeout?: DurationInput;
   paths?: PathFilter;
 };
@@ -403,7 +405,10 @@ export type TaskContext = {
   readonly change: ChangeRequestContext;
   readonly platform: PlatformInfo;
   readonly pi: PiRunner;
-  comment(source: CommentSource, options?: CommentOptions): Promise<void>;
+  readonly review: {
+    prior(): Promise<PriorReview>;
+  };
+  comment(value: CommentValue): Promise<void>;
   readonly log: {
     info(message: string): void;
     warn(message: string): void;
@@ -431,7 +436,6 @@ const reviewSummarySchema = z.strictObject({
 });
 
 const reviewFindingShape = {
-  title: nonEmptyStringSchema,
   body: nonEmptyStringSchema,
   path: nonEmptyStringSchema,
   rangeId: nonEmptyStringSchema,
@@ -439,8 +443,6 @@ const reviewFindingShape = {
   startLine: positiveIntegerSchema,
   endLine: positiveIntegerSchema,
   suggestedFix: nonEmptyStringSchema.optional(),
-  semanticAnchor: nonEmptyStringSchema.optional(),
-  fingerprintHint: nonEmptyStringSchema.optional(),
 };
 
 const reviewFindingSchema = z.strictObject(reviewFindingShape);
@@ -762,11 +764,7 @@ function createReviewRecipeTask(
   return api.task(id, async (context) => {
     const manifest = await context.change.diffManifest({ compressed: true, paths: options.paths });
     if (options.paths && manifest.files.length === 0) {
-      await context.comment(null, {
-        key: options.commentKey ?? `review:${id}`,
-        order: options.commentOrder,
-        paths: options.paths,
-      });
+      await context.comment({ main: "No changed files matched this review's path scope." });
       return;
     }
     const result = await context.pi.run(
@@ -786,11 +784,7 @@ function createReviewRecipeTask(
             platform: context.platform,
           })
         : (options.comment ?? defaultReviewComment(result, options.inlineComments !== false));
-    await context.comment(source, {
-      key: options.commentKey ?? `review:${id}`,
-      order: options.commentOrder,
-      paths: options.paths,
-    });
+    await context.comment(source);
   });
 }
 
@@ -805,7 +799,7 @@ function defaultReviewMarkdown(result: ReviewResult): Markdown {
   const findings =
     result.inlineFindings.length === 0
       ? "No inline findings."
-      : result.inlineFindings.map((finding) => `- ${finding.title}`).join("\n");
+      : result.inlineFindings.map((finding) => `- ${finding.body}`).join("\n");
   return `## Summary\n\n${result.summary.body}\n\n## Findings\n\n${findings}`;
 }
 
@@ -920,7 +914,6 @@ export function reviewSchemaExample(): ReviewResult {
     },
     inlineFindings: [
       {
-        title: "Unsafe example call",
         body: "Specific issue and why it matters.",
         path: "src/example.ts",
         rangeId: "rng_example",
@@ -928,7 +921,6 @@ export function reviewSchemaExample(): ReviewResult {
         startLine: 1,
         endLine: 1,
         suggestedFix: "Optional fix.",
-        semanticAnchor: "example-call",
       },
     ],
   };

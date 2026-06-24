@@ -1,4 +1,5 @@
 import { z } from "zod";
+import runtimePackage from "../../package.json" with { type: "json" };
 import { createDiffRangeIndex } from "../diff/ranges.js";
 import type { ChangeRequestEventContext, DiffManifest, ReviewFinding } from "../types.js";
 import { commentableRangeSchema, reviewSideSchema } from "../types.js";
@@ -16,16 +17,7 @@ import {
   renderMainCommentMarker,
 } from "./prior-state.js";
 
-export const runtimeVersion = "0.0.0";
-
-const mainCommentContributionSchema = z.strictObject({
-  key: z.string().min(1),
-  order: z.number().int(),
-  body: z.string().nullable(),
-});
-const mainCommentContributionsSchema = z.array(mainCommentContributionSchema);
-
-export type MainCommentContribution = z.infer<typeof mainCommentContributionSchema>;
+export const runtimeVersion = runtimePackage.version;
 
 const inlinePublicationItemSchema = z
   .strictObject({
@@ -96,12 +88,11 @@ export type PublicationPlan = z.infer<typeof publicationPlanSchema>;
 
 export type BuildPublicationPlanOptions = {
   event: Pick<ChangeRequestEventContext, "change">;
-  mainContributions: MainCommentContribution[];
+  main: string;
   inlineItems: InlinePublicationItem[];
   metadata: Omit<PublicationMetadata, "cappedInlineFindings">;
   maxInlineComments?: number;
   reviewState?: PriorReviewState;
-  priorMainComment?: string;
 };
 
 export function buildPublicationPlan(options: BuildPublicationPlanOptions): PublicationPlan {
@@ -124,10 +115,7 @@ export function buildPublicationPlan(options: BuildPublicationPlanOptions): Publ
     mainComment: renderMainComment({
       event: options.event,
       reviewState,
-      contributions: reduceMainCommentContributions({
-        priorMainComment: options.priorMainComment,
-        contributions: options.mainContributions,
-      }),
+      main: options.main,
     }),
     mainMarker: mainCommentMarker,
     changeNumber: options.event.change.number,
@@ -135,48 +123,6 @@ export function buildPublicationPlan(options: BuildPublicationPlanOptions): Publ
     metadata,
     reviewState,
   });
-}
-
-export function reduceMainCommentContributions(options: {
-  priorMainComment?: string;
-  contributions: MainCommentContribution[];
-}): MainCommentContribution[] {
-  const byKey = new Map<string, MainCommentContribution>();
-  const seen = new Set<string>();
-  for (const contribution of mainCommentContributionsSchema.parse(options.contributions)) {
-    if (seen.has(contribution.key)) {
-      throw new Error(`Main Review Comment contribution '${contribution.key}' was emitted twice`);
-    }
-    seen.add(contribution.key);
-    if (contribution.body === null) {
-      byKey.delete(contribution.key);
-    } else {
-      byKey.set(contribution.key, contribution);
-    }
-  }
-  return [...byKey.values()].toSorted(
-    (left, right) => left.order - right.order || left.key.localeCompare(right.key),
-  );
-}
-
-export function extractMainCommentContributions(
-  body: string | undefined,
-): MainCommentContribution[] {
-  if (!body) {
-    return [];
-  }
-  const matches = body.matchAll(
-    /<!--\s*pipr:contribution\s+key="(?<key>[^"]+)"\s+order="(?<order>-?\d+)"\s*-->\n?(?<body>.*?)\n?<!--\s*\/pipr:contribution\s*-->/gs,
-  );
-  return mainCommentContributionsSchema
-    .parse(
-      [...matches].map((match) => ({
-        key: unescapeAttr(match.groups?.key ?? ""),
-        order: Number(match.groups?.order),
-        body: match.groups?.body ?? "",
-      })),
-    )
-    .filter((item) => Number.isInteger(item.order));
 }
 
 export function prepareInlinePublicationItems(options: {
@@ -230,12 +176,8 @@ export function prepareInlinePublicationItems(options: {
 function renderMainComment(options: {
   event: Pick<ChangeRequestEventContext, "change">;
   reviewState: PriorReviewState;
-  contributions: MainCommentContribution[];
+  main: string;
 }): string {
-  const blocks =
-    options.contributions.length === 0
-      ? ["_No comment contributions._"]
-      : options.contributions.flatMap(renderContributionBlock);
   return [
     renderMainCommentMarker({
       marker: mainCommentMarker,
@@ -245,18 +187,9 @@ function renderMainComment(options: {
     "",
     "# pipr Review",
     "",
-    ...blocks,
+    options.main,
     "",
   ].join("\n");
-}
-
-function renderContributionBlock(contribution: MainCommentContribution): string[] {
-  return [
-    `<!-- pipr:contribution key="${escapeAttr(contribution.key)}" order="${contribution.order}" -->`,
-    escapeContributionSentinels(contribution.body ?? ""),
-    "<!-- /pipr:contribution -->",
-    "",
-  ];
 }
 
 function renderInlineBody(
@@ -266,23 +199,9 @@ function renderInlineBody(
 ): string {
   return [
     renderInlineFindingMarker(findingId, reviewedHeadSha),
-    `**${finding.title}**`,
-    "",
     finding.body,
     finding.suggestedFix ? `\nSuggested fix:\n\n${finding.suggestedFix}` : "",
   ]
     .filter(Boolean)
     .join("\n");
-}
-
-function escapeAttr(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
-}
-
-function unescapeAttr(value: string): string {
-  return value.replaceAll("&quot;", '"').replaceAll("&amp;", "&");
-}
-
-function escapeContributionSentinels(value: string): string {
-  return value.replaceAll(/<!--\s*(\/?\s*pipr:contribution\b[^>]*)-->/g, "&lt;!-- $1--&gt;");
 }
