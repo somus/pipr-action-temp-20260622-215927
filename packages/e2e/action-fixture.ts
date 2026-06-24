@@ -231,6 +231,30 @@ function fixturePublicationClient(fixturePath: string): GitHubPublicationClient 
       fixture.resolvedThreadIds.push(options.threadId);
       await writeFixture(fixturePath, fixture);
     },
+    async createCheckRun(options) {
+      const fixture = await readFixture(fixturePath);
+      fixture.checkRuns ??= [];
+      const checkRun = {
+        id: fixture.checkRuns.length + 1,
+        name: options.name,
+        headSha: options.headSha,
+        summary: options.summary,
+      };
+      fixture.checkRuns.push(checkRun);
+      await writeFixture(fixturePath, fixture);
+      return { id: checkRun.id, name: checkRun.name };
+    },
+    async updateCheckRun(options) {
+      const fixture = await readFixture(fixturePath);
+      fixture.checkRunUpdates ??= [];
+      fixture.checkRunUpdates.push({
+        checkRunId: options.checkRunId,
+        name: options.name,
+        conclusion: options.conclusion,
+        summary: options.summary,
+      });
+      await writeFixture(fixturePath, fixture);
+    },
   };
 }
 
@@ -244,6 +268,13 @@ type GitHubPublicationFixture = {
   droppedFindings?: unknown[];
   reviewReplies?: Array<{ commentId: number; body: string }>;
   resolvedThreadIds?: string[];
+  checkRuns?: Array<{ id: number; name: string; headSha: string; summary?: string }>;
+  checkRunUpdates?: Array<{
+    checkRunId: number;
+    name: string;
+    conclusion: string;
+    summary?: string;
+  }>;
   failReviewComment?: boolean;
 };
 

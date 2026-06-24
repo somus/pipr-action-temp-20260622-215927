@@ -47,9 +47,10 @@ export const sourceRoot = gitOutput(process.cwd(), ["rev-parse", "--show-topleve
 const fullConfig = `import { definePipr } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const model = pipr.model("deepseek/deepseek-v4-pro", {
-    name: "deepseek",
-    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  const model = pipr.model({
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
     options: { thinking: "high" },
   });
   const reviewer = pipr.agent({
@@ -64,31 +65,35 @@ export default definePipr((pipr) => {
     include: ["packages/e2e/fixtures/act/project/**"],
     exclude: ["**/*.test.ts"],
   };
-  const task = pipr.task("pipr/review", async (ctx) => {
-    const manifest = await ctx.change.diffManifest({ compressed: true, paths: sourcePaths });
-    const [review, duplicate] = await Promise.all([
-      ctx.pi.run(reviewer, { manifest }, { paths: sourcePaths }),
-      ctx.pi.run(reviewer, { manifest }, { paths: sourcePaths }),
-    ]);
-    await ctx.comment({
-      main: [
-        "Full fixture secondary section",
-        "",
-        review.summary.body,
-      ].join("\\n"),
-      inlineFindings: [...review.inlineFindings, ...duplicate.inlineFindings],
-    });
+  const task = pipr.task({
+    name: "pipr/review",
+    async run(ctx) {
+      const manifest = await ctx.change.diffManifest({ compressed: true, paths: sourcePaths });
+      const [review, duplicate] = await Promise.all([
+        ctx.pi.run(reviewer, { manifest }, { paths: sourcePaths }),
+        ctx.pi.run(reviewer, { manifest }, { paths: sourcePaths }),
+      ]);
+      await ctx.comment({
+        main: [
+          "Full fixture secondary section",
+          "",
+          review.summary.body,
+        ].join("\\n"),
+        inlineFindings: [...review.inlineFindings, ...duplicate.inlineFindings],
+      });
+    },
   });
-  pipr.on.changeRequest(["opened"], task);
+  pipr.on.changeRequest({ actions: ["opened"], task });
 });
 `;
 
 const condensedConfig = `import { definePipr } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const model = pipr.model("deepseek/deepseek-v4-pro", {
-    name: "deepseek",
-    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  const model = pipr.model({
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
     options: { thinking: "high" },
   });
   pipr.limits({
@@ -113,18 +118,19 @@ export default definePipr((pipr) => {
 const orchestratorConfig = `import { definePipr, z } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const model = pipr.model("deepseek/deepseek-v4-pro", {
-    name: "deepseek",
-    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  const model = pipr.model({
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
     options: { thinking: "high" },
   });
-  const specialistOutput = pipr.schema(
-    "fixture/specialist-output",
-    z.strictObject({
+  const specialistOutput = pipr.schema({
+    id: "fixture/specialist-output",
+    schema: z.strictObject({
       focus: z.enum(["correctness", "security", "tests"]),
       summary: z.string(),
     }),
-  );
+  });
   const findingSchema = z.strictObject({
     body: z.string(),
     path: z.string(),
@@ -135,16 +141,16 @@ export default definePipr((pipr) => {
     severity: z.enum(["critical", "high", "medium", "low", "nit"]),
     suggestedFix: z.string().optional(),
   });
-  const orchestratorOutput = pipr.schema(
-    "fixture/orchestrator-output",
-    z.strictObject({
+  const orchestratorOutput = pipr.schema({
+    id: "fixture/orchestrator-output",
+    schema: z.strictObject({
       summary: z.strictObject({
         title: z.string().optional(),
         body: z.string(),
       }),
       findings: z.array(findingSchema),
     }),
-  );
+  });
   const specialist = pipr.agent({
     name: "specialist-reviewer",
     model,
@@ -159,38 +165,41 @@ export default definePipr((pipr) => {
     output: orchestratorOutput,
     prompt: (input) => pipr.prompt\`Manifest:\\n\${pipr.json(input.manifest)}\\n\\nSpecialist reviews:\\n\${pipr.json(input.reviews)}\`,
   });
-  const task = pipr.task("review", async (ctx) => {
-    const manifest = await ctx.change.diffManifest({ compressed: true });
-    const [correctness, security, tests] = await Promise.all([
-      ctx.pi.run(specialist, { manifest, focus: "correctness" }),
-      ctx.pi.run(specialist, { manifest, focus: "security" }),
-      ctx.pi.run(specialist, { manifest, focus: "tests" }),
-    ]);
-    const result = await ctx.pi.run(orchestrator, {
-      manifest,
-      reviews: { correctness, security, tests },
-    });
-    const inlineFindings = result.findings.map(({ severity, ...finding }) => ({
-      ...finding,
-      body: \`Severity: \${severity}\\n\\n\${finding.body}\`,
-    }));
-    const grouped = Map.groupBy(result.findings, (finding) => finding.severity);
-    const labels = result.findings.length === 0
-      ? "No labeled findings."
-      : ["critical", "high", "medium", "low", "nit"]
-          .flatMap((severity) => {
-            const findings = grouped.get(severity) ?? [];
-            return findings.length === 0
-              ? []
-              : [\`### \${severity}\`, "", ...findings.map((finding) => \`- \${finding.body}\`), ""];
-          })
-          .join("\\n");
-    await ctx.comment({
-      main: \`\${result.summary.body}\\n\\n## Custom labels\\n\\n\${labels}\`,
-      inlineFindings,
-    });
+  const task = pipr.task({
+    name: "review",
+    async run(ctx) {
+      const manifest = await ctx.change.diffManifest({ compressed: true });
+      const [correctness, security, tests] = await Promise.all([
+        ctx.pi.run(specialist, { manifest, focus: "correctness" }),
+        ctx.pi.run(specialist, { manifest, focus: "security" }),
+        ctx.pi.run(specialist, { manifest, focus: "tests" }),
+      ]);
+      const result = await ctx.pi.run(orchestrator, {
+        manifest,
+        reviews: { correctness, security, tests },
+      });
+      const inlineFindings = result.findings.map(({ severity, ...finding }) => ({
+        ...finding,
+        body: \`Severity: \${severity}\\n\\n\${finding.body}\`,
+      }));
+      const grouped = Map.groupBy(result.findings, (finding) => finding.severity);
+      const labels = result.findings.length === 0
+        ? "No labeled findings."
+        : ["critical", "high", "medium", "low", "nit"]
+            .flatMap((severity) => {
+              const findings = grouped.get(severity) ?? [];
+              return findings.length === 0
+                ? []
+                : [\`### \${severity}\`, "", ...findings.map((finding) => \`- \${finding.body}\`), ""];
+            })
+            .join("\\n");
+      await ctx.comment({
+        main: \`\${result.summary.body}\\n\\n## Custom labels\\n\\n\${labels}\`,
+        inlineFindings,
+      });
+    },
   });
-  pipr.on.changeRequest(["opened"], task);
+  pipr.on.changeRequest({ actions: ["opened"], task });
 });
 `;
 

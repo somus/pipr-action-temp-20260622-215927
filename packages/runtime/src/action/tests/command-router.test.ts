@@ -10,22 +10,23 @@ describe("plan command routing", () => {
   it("matches required positional and optional named arguments into task inputs", () => {
     const plan = buildPiprPlan(
       definePipr((pipr) => {
-        const task = pipr.task<{ finding: string; scope: "changed" | "full" }>("explain", () => {});
-        pipr.command(
-          "@pipr explain <finding> [--scope <scope>]",
-          {
-            permission: "read",
-            parse(arguments_) {
-              const scope = arguments_.scope ?? "changed";
-              if (scope !== "changed" && scope !== "full") {
-                throw new Error("scope must be changed or full");
-              }
-              const narrowedScope: "changed" | "full" = scope;
-              return { finding: arguments_.finding, scope: narrowedScope };
-            },
-          },
+        const task = pipr.task<{ finding: string; scope: "changed" | "full" }>({
+          name: "explain",
+          run() {},
+        });
+        pipr.command({
+          pattern: "@pipr explain <finding> [--scope <scope>]",
+          permission: "read",
           task,
-        );
+          parse(arguments_) {
+            const scope = arguments_.scope ?? "changed";
+            if (scope !== "changed" && scope !== "full") {
+              throw new Error("scope must be changed or full");
+            }
+            const narrowedScope: "changed" | "full" = scope;
+            return { finding: arguments_.finding, scope: narrowedScope };
+          },
+        });
       }),
     );
 
@@ -64,8 +65,8 @@ describe("plan command routing", () => {
   it("ignores non-pipr comments and renders permission denial help", () => {
     const plan = buildPiprPlan(
       definePipr((pipr) => {
-        const task = pipr.task("review", () => {});
-        pipr.command("@pipr review", {}, task);
+        const task = pipr.task({ name: "review", run() {} });
+        pipr.command({ pattern: "@pipr review", task });
       }),
     );
 
@@ -79,10 +80,10 @@ describe("plan command routing", () => {
   it("matches a later longer command when an earlier prefix command rejects extra args", () => {
     const plan = buildPiprPlan(
       definePipr((pipr) => {
-        const review = pipr.task("review", () => {});
-        const explain = pipr.task("explain", () => {});
-        pipr.command("@pipr review", {}, review);
-        pipr.command("@pipr review <finding>", { permission: "read" }, explain);
+        const review = pipr.task({ name: "review", run() {} });
+        const explain = pipr.task({ name: "explain", run() {} });
+        pipr.command({ pattern: "@pipr review", task: review });
+        pipr.command({ pattern: "@pipr review <finding>", permission: "read", task: explain });
       }),
     );
 

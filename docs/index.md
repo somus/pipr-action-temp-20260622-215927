@@ -28,9 +28,10 @@ The config is the only public authoring surface. Do not put runtime settings in 
 import { definePipr } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const model = pipr.model("deepseek/deepseek-v4-pro", {
-    name: "deepseek",
-    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  const model = pipr.model({
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
     options: { thinking: "high" },
   });
 

@@ -15,16 +15,21 @@ export type SecretRef = {
   readonly name: string;
 };
 
+export type SecretOptions = {
+  name: string;
+};
+
 export type ModelOptions = {
-  name?: string;
+  id?: string;
+  provider: string;
+  model: string;
   apiKey?: SecretRef;
   options?: Record<string, unknown>;
 };
 
 export type ModelProfile = {
   readonly kind: "pipr.model";
-  readonly id: symbol;
-  readonly name: string;
+  readonly id: string;
   readonly provider: string;
   readonly model: string;
   readonly apiKey?: SecretRef;
@@ -171,9 +176,24 @@ export type Agent<Input = unknown, Output = unknown> = {
 
 export type TaskHandler<Input> = (context: TaskContext, input: Input) => void | Promise<void>;
 
+export type TaskCheckOptions =
+  | false
+  | {
+      enabled?: boolean;
+      name?: string;
+      required?: boolean;
+    };
+
+export type TaskDefinition<Input> = {
+  name: string;
+  check?: TaskCheckOptions;
+  run: TaskHandler<Input>;
+};
+
 export type Task<Input = void> = {
   readonly kind: "pipr.task";
   readonly name: string;
+  readonly check?: TaskCheckOptions;
   readonly handler: TaskHandler<Input>;
 };
 
@@ -181,6 +201,16 @@ export type CommandOptions<Input> = {
   permission?: RepositoryPermission;
   description?: string;
   parse?: (arguments_: Record<string, string>) => Input;
+};
+
+export type CommandRegistrationOptions<Input> = CommandOptions<Input> & {
+  pattern: string;
+  task: Task<Input>;
+};
+
+export type LocalRegistrationOptions<Input> = {
+  name: string;
+  task: Task<Input>;
 };
 
 export type ReviewerOptions = {
@@ -214,10 +244,6 @@ export type ReviewEntrypoints = {
 type ReviewRecipeEntrypointOptions = {
   id: string;
   entrypoints?: ReviewEntrypoints;
-  on?: ChangeRequestAction[] | false;
-  command?: string | false;
-  commandPermission?: RepositoryPermission;
-  localName?: string | false;
   inlineComments?:
     | false
     | {
@@ -229,6 +255,7 @@ type ReviewRecipeEntrypointOptions = {
         result: ReviewResult,
         context: ReviewCommentContext,
       ) => CommentValue | Promise<CommentValue>);
+  check?: TaskCheckOptions;
   timeout?: DurationInput;
   paths?: PathFilter;
 };
@@ -269,25 +296,58 @@ export type ToolRunOptions<Input> = {
   signal?: AbortSignal;
 };
 
+export type ChangeRequestRegistrationOptions<Input> = {
+  actions: ChangeRequestAction[];
+  task: Task<Input>;
+};
+
+export type SchemaDefinition<T> = {
+  id: string;
+  schema: ZodSchema<T>;
+};
+
+export type JsonSchemaDefinition = {
+  id: string;
+  schema: JsonSchema;
+};
+
+export type AggregateCheckOptions =
+  | false
+  | {
+      enabled?: boolean;
+      name?: string;
+    };
+
+export type ChecksOptions = {
+  aggregate?: AggregateCheckOptions;
+};
+
+export type CheckHandle = {
+  pass(summary?: string): void;
+  fail(summary?: string): void;
+  neutral(summary?: string): void;
+};
+
 export type PiprBuilder = {
   readonly tools: BuiltinToolCatalog;
   readonly schemas: BuiltinSchemaCatalog;
   readonly on: {
-    changeRequest<Input = void>(actions: ChangeRequestAction[], task: Task<Input>): void;
+    changeRequest<Input = void>(options: ChangeRequestRegistrationOptions<Input>): void;
   };
-  secret(name: string): SecretRef;
-  model(specification: string, options?: ModelOptions): ModelProfile;
+  secret(options: SecretOptions): SecretRef;
+  model(options: ModelOptions): ModelProfile;
   agent<Input, Output>(definition: AgentDefinition<Input, Output>): Agent<Input, Output>;
-  task<Input = void>(name: string, handler: TaskHandler<Input>): Task<Input>;
+  task<Input = void>(definition: TaskDefinition<Input>): Task<Input>;
   reviewer(options: ReviewerOptions): Reviewer;
   review(options: ReviewRecipeOptions): void;
-  command<Input = void>(pattern: string, options: CommandOptions<Input>, task: Task<Input>): void;
-  local<Input = void>(name: string, task: Task<Input>): void;
+  command<Input = void>(options: CommandRegistrationOptions<Input>): void;
+  local<Input = void>(options: LocalRegistrationOptions<Input>): void;
+  checks(options: ChecksOptions): void;
   limits(options: RuntimeLimits): void;
   use<Handle>(plugin: PiprPlugin<Handle>): Handle;
   tool<Input, Output>(definition: PluginToolDefinition<Input, Output>): AgentTool<Input, Output>;
-  schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T>;
-  jsonSchema<T>(id: string, jsonSchema: JsonSchema): Schema<T>;
+  schema<T>(definition: SchemaDefinition<T>): Schema<T>;
+  jsonSchema<T>(definition: JsonSchemaDefinition): Schema<T>;
   prompt(strings: TemplateStringsArray, ...values: PromptValue[]): PromptText;
   section(title: string, value: PromptValue): PromptText;
   json(value: unknown, options?: JsonPromptOptions): PromptText;
@@ -310,6 +370,7 @@ export type RuntimePlan = {
   publication: {
     maxInlineComments?: number;
   };
+  checks?: ChecksOptions;
   limits?: RuntimeLimits;
 };
 
@@ -408,6 +469,7 @@ export type TaskContext = {
   readonly review: {
     prior(): Promise<PriorReview>;
   };
+  readonly check: CheckHandle;
   comment(value: CommentValue): Promise<void>;
   readonly log: {
     info(message: string): void;
@@ -493,16 +555,22 @@ export function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): P
 }
 
 /** Defines a typed schema from a Zod schema. */
-export function schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T> {
-  assertUserSchemaId(id);
-  return createZodSchema(id, zodSchema);
+export function schema<T>(definition: SchemaDefinition<T>): Schema<T> {
+  if (!definition || typeof definition.id !== "string") {
+    throw new Error("pipr.schema requires { id, schema }");
+  }
+  assertUserSchemaId(definition.id);
+  return createZodSchema(definition.id, definition.schema);
 }
 
 /** Defines a typed schema from JSON Schema. The generic type is caller supplied. */
-export function jsonSchema<T>(id: string, schemaDefinition: JsonSchema): Schema<T> {
-  assertUserSchemaId(id);
-  const zodSchema = z.fromJSONSchema(schemaDefinition);
-  return createSchema(id, (value) => zodSchema.parse(value) as T, schemaDefinition);
+export function jsonSchema<T>(definition: JsonSchemaDefinition): Schema<T> {
+  if (!definition || typeof definition.id !== "string") {
+    throw new Error("pipr.jsonSchema requires { id, schema }");
+  }
+  assertUserSchemaId(definition.id);
+  const zodSchema = z.fromJSONSchema(definition.schema);
+  return createSchema(definition.id, (value) => zodSchema.parse(value) as T, definition.schema);
 }
 
 export const schemas: BuiltinSchemaCatalog = {
@@ -530,6 +598,7 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
   const locals: RuntimePlan["locals"] = [];
   const tools: AgentTool[] = [];
   const publication: RuntimePlan["publication"] = {};
+  let checks: ChecksOptions | undefined;
   let limits: RuntimeLimits | undefined;
 
   const api: PiprBuilder = {
@@ -544,28 +613,38 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
     },
     schemas,
     on: {
-      changeRequest(actions, task) {
-        changeRequestTriggers.push({ actions, task: task as Task<unknown> });
+      changeRequest(options) {
+        if (!Array.isArray(options.actions) || !options.task) {
+          throw new Error("pipr.on.changeRequest requires { actions, task }");
+        }
+        changeRequestTriggers.push({
+          actions: options.actions,
+          task: options.task as Task<unknown>,
+        });
       },
     },
-    secret(name) {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
-        throw new Error(`Secret '${name}' must be an environment variable name`);
+    secret(options) {
+      if (!options || typeof options.name !== "string") {
+        throw new Error("pipr.secret requires { name }");
       }
-      return { kind: "pipr.secret", name };
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(options.name)) {
+        throw new Error(`Secret '${options.name}' must be an environment variable name`);
+      }
+      return { kind: "pipr.secret", name: options.name };
     },
-    model(specification, options = {}) {
-      const [provider, ...modelParts] = specification.split("/");
-      const model = modelParts.join("/");
-      if (!provider || !model) {
-        throw new Error(`Model specification '${specification}' must use <provider>/<model>`);
+    model(options) {
+      if (!options || typeof options.provider !== "string" || typeof options.model !== "string") {
+        throw new Error("pipr.model requires { provider, model }");
       }
+      if (!options.provider || !options.model) {
+        throw new Error("pipr.model requires provider and model");
+      }
+      const id = options.id ?? `${options.provider}/${options.model}`;
       const profile: ModelProfile = {
         kind: "pipr.model",
-        id: Symbol(options.name ?? specification),
-        name: options.name ?? model.replace(/[^a-zA-Z0-9_-]/g, "-"),
-        provider,
-        model,
+        id,
+        provider: options.provider,
+        model: options.model,
         apiKey: options.apiKey,
         options: options.options,
       };
@@ -577,8 +656,16 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       agents.push(agent);
       return agent;
     },
-    task(name, handler) {
-      const task = { kind: "pipr.task" as const, name, handler };
+    task(definition) {
+      if (!definition.name || typeof definition.run !== "function") {
+        throw new Error("pipr.task requires { name, run }");
+      }
+      const task = {
+        kind: "pipr.task" as const,
+        name: definition.name,
+        check: definition.check,
+        handler: definition.run,
+      };
       tasks.push(task as Task<unknown>);
       return task;
     },
@@ -586,9 +673,14 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       return createReviewer(api, options);
     },
     review(options) {
+      assertKnownReviewRecipeOptions(options);
       registerReviewRecipe(api, publication, options);
     },
-    command(pattern, options, task) {
+    command(options) {
+      if (typeof options.pattern !== "string" || !options.task) {
+        throw new Error("pipr.command requires { pattern, task }");
+      }
+      const pattern = options.pattern;
       const tokens = pattern.trim().split(/\s+/).filter(Boolean);
       if (tokens.length === 0) {
         throw new Error("Command pattern must not be empty");
@@ -601,11 +693,17 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         permission: options.permission ?? "write",
         description: options.description,
         parse: options.parse as ((arguments_: Record<string, string>) => unknown) | undefined,
-        task: task as Task<unknown>,
+        task: options.task as Task<unknown>,
       });
     },
-    local(name, task) {
-      locals.push({ name, task: task as Task<unknown> });
+    local(options) {
+      if (!options.name || !options.task) {
+        throw new Error("pipr.local requires { name, task }");
+      }
+      locals.push({ name: options.name, task: options.task as Task<unknown> });
+    },
+    checks(options) {
+      checks = options;
     },
     limits(options) {
       limits = {
@@ -691,6 +789,7 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         locals.map((local) => local.name),
         "local",
       );
+      assertModelIdentity(models);
       return {
         models,
         agents,
@@ -700,6 +799,7 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         locals,
         tools,
         publication,
+        checks,
         limits,
       };
     },
@@ -717,6 +817,30 @@ function registerReviewRecipe(
   const task = createReviewRecipeTask(api, id, agent, options);
   registerReviewRecipeEntrypoints(api, task, options);
   updateReviewRecipePublication(publication, options);
+}
+
+const reviewRecipeOptionKeys = new Set([
+  "id",
+  "entrypoints",
+  "inlineComments",
+  "comment",
+  "check",
+  "timeout",
+  "paths",
+  "reviewer",
+  "name",
+  "model",
+  "fallbacks",
+  "instructions",
+  "prompt",
+  "tools",
+]);
+
+function assertKnownReviewRecipeOptions(options: ReviewRecipeOptions): void {
+  const unknownKeys = Object.keys(options).filter((key) => !reviewRecipeOptionKeys.has(key));
+  if (unknownKeys.length > 0) {
+    throw new Error(`pipr.review received unsupported option fields: ${unknownKeys.join(", ")}.`);
+  }
 }
 
 function reviewRecipeReviewerOptions(
@@ -761,30 +885,38 @@ function createReviewRecipeTask(
   agent: Agent<DefaultReviewInput, ReviewResult>,
   options: ReviewRecipeOptions,
 ): Task {
-  return api.task(id, async (context) => {
-    const manifest = await context.change.diffManifest({ compressed: true, paths: options.paths });
-    if (options.paths && manifest.files.length === 0) {
-      await context.comment({ main: "No changed files matched this review's path scope." });
-      return;
-    }
-    const result = await context.pi.run(
-      agent,
-      { manifest, change: context.change },
-      {
-        timeout: options.timeout,
+  return api.task({
+    name: id,
+    check: options.check,
+    async run(context) {
+      const manifest = await context.change.diffManifest({
+        compressed: true,
         paths: options.paths,
-      },
-    );
-    const source =
-      typeof options.comment === "function"
-        ? await options.comment(result, {
-            review: { id },
-            repository: context.repository,
-            change: context.change,
-            platform: context.platform,
-          })
-        : (options.comment ?? defaultReviewComment(result, options.inlineComments !== false));
-    await context.comment(source);
+      });
+      if (options.paths && manifest.files.length === 0) {
+        context.check.neutral("No changed files matched this review's path scope.");
+        await context.comment({ main: "No changed files matched this review's path scope." });
+        return;
+      }
+      const result = await context.pi.run(
+        agent,
+        { manifest, change: context.change },
+        {
+          timeout: options.timeout,
+          paths: options.paths,
+        },
+      );
+      const source =
+        typeof options.comment === "function"
+          ? await options.comment(result, {
+              review: { id },
+              repository: context.repository,
+              change: context.change,
+              platform: context.platform,
+            })
+          : (options.comment ?? defaultReviewComment(result, options.inlineComments !== false));
+      await context.comment(source);
+    },
   });
 }
 
@@ -810,22 +942,22 @@ function registerReviewRecipeEntrypoints(
 ): void {
   const changeRequest = reviewChangeRequestEntrypoint(options);
   if (changeRequest) {
-    api.on.changeRequest(changeRequest, task);
+    api.on.changeRequest({ actions: changeRequest, task });
   }
   const command = reviewCommandEntrypoint(options);
   if (command) {
-    api.command(command.pattern, command.options, task);
+    api.command({ pattern: command.pattern, ...command.options, task });
   }
   const local = reviewLocalEntrypoint(options);
   if (local) {
-    api.local(local, task);
+    api.local({ name: local, task });
   }
 }
 
 function reviewChangeRequestEntrypoint(
   options: ReviewRecipeOptions,
 ): ChangeRequestAction[] | undefined {
-  const entrypoint = options.entrypoints?.changeRequest ?? options.on;
+  const entrypoint = options.entrypoints?.changeRequest;
   return entrypoint === false
     ? undefined
     : (entrypoint ?? ["opened", "updated", "reopened", "ready"]);
@@ -837,41 +969,37 @@ function reviewCommandEntrypoint(options: ReviewRecipeOptions):
       options: CommandOptions<unknown>;
     }
   | undefined {
-  const entrypoint = options.entrypoints?.command ?? options.command;
+  const entrypoint = options.entrypoints?.command;
   if (entrypoint === false) {
     return undefined;
   }
   if (typeof entrypoint === "object") {
-    return reviewObjectCommandEntrypoint(entrypoint, options.commandPermission);
+    return reviewObjectCommandEntrypoint(entrypoint);
   }
-  return reviewStringCommandEntrypoint(entrypoint, options.commandPermission);
+  return reviewStringCommandEntrypoint(entrypoint);
 }
 
 function reviewObjectCommandEntrypoint(
   entrypoint: Exclude<ReviewEntrypoints["command"], string | false | undefined>,
-  fallbackPermission: RepositoryPermission | undefined,
 ) {
   return {
     pattern: entrypoint.pattern ?? "@pipr review",
     options: {
-      permission: entrypoint.permission ?? fallbackPermission ?? "write",
+      permission: entrypoint.permission ?? "write",
       description: entrypoint.description,
     },
   };
 }
 
-function reviewStringCommandEntrypoint(
-  entrypoint: string | undefined,
-  fallbackPermission: RepositoryPermission | undefined,
-) {
+function reviewStringCommandEntrypoint(entrypoint: string | undefined) {
   return {
     pattern: entrypoint ?? "@pipr review",
-    options: { permission: fallbackPermission ?? "write" },
+    options: { permission: "write" as const },
   };
 }
 
 function reviewLocalEntrypoint(options: ReviewRecipeOptions): string | undefined {
-  const entrypoint = options.entrypoints?.local ?? options.localName;
+  const entrypoint = options.entrypoints?.local;
   return entrypoint === false ? undefined : (entrypoint ?? "review");
 }
 
@@ -1028,4 +1156,95 @@ function assertUnique(values: string[], label: string): void {
     }
     seen.add(value);
   }
+}
+
+function assertModelIdentity(models: ModelProfile[]): void {
+  const ids = new Set<string>();
+  const effectiveConfigs = new Map<string, string>();
+  const providerModels = new Map<string, string>();
+
+  for (const model of models) {
+    const effectiveConfig = stableJson({
+      provider: model.provider,
+      model: model.model,
+      apiKeyEnv: model.apiKey?.name,
+      options: model.options,
+    });
+    const providerModel = `${model.provider}/${model.model}`;
+
+    assertUniqueModelId({ model, providerModel, effectiveConfig, ids, effectiveConfigs });
+    ids.add(model.id);
+
+    const existingConfigId = effectiveConfigs.get(effectiveConfig);
+    if (existingConfigId) {
+      throw new Error(
+        `Duplicate model config for '${model.id}'. Reuse model '${existingConfigId}' instead.`,
+      );
+    }
+    effectiveConfigs.set(effectiveConfig, model.id);
+
+    assertExplicitIdForRepeatedProviderModel(model, providerModel, providerModels);
+    providerModels.set(providerModel, model.id);
+  }
+}
+
+function assertUniqueModelId(options: {
+  model: ModelProfile;
+  providerModel: string;
+  effectiveConfig: string;
+  ids: Set<string>;
+  effectiveConfigs: Map<string, string>;
+}): void {
+  if (!options.ids.has(options.model.id)) {
+    return;
+  }
+  if (options.model.id !== options.providerModel) {
+    throw new Error(`Duplicate model id '${options.model.id}'`);
+  }
+  const existingConfigId = options.effectiveConfigs.get(options.effectiveConfig);
+  if (existingConfigId) {
+    throw new Error(
+      `Duplicate model config for '${options.model.id}'. Reuse model '${existingConfigId}' instead.`,
+    );
+  }
+  throw explicitModelIdError(options.providerModel);
+}
+
+function assertExplicitIdForRepeatedProviderModel(
+  model: ModelProfile,
+  providerModel: string,
+  providerModels: Map<string, string>,
+): void {
+  const existingProviderModelId = providerModels.get(providerModel);
+  if (
+    existingProviderModelId &&
+    (model.id === providerModel || existingProviderModelId === providerModel)
+  ) {
+    throw explicitModelIdError(providerModel);
+  }
+}
+
+function explicitModelIdError(providerModel: string): Error {
+  return new Error(
+    `Model '${providerModel}' is configured more than once with different options. Add an explicit id.`,
+  );
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(stableJsonValue(value));
+}
+
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stableJsonValue);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .toSorted(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, stableJsonValue(item)]),
+    );
+  }
+  return value;
 }

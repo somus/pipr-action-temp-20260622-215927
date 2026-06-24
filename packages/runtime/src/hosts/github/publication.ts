@@ -133,9 +133,15 @@ const pullRequestHeadSchema = z.looseObject({
   }),
 });
 
+const githubCheckRunSchema = z.looseObject({
+  id: z.number().int().positive(),
+  name: z.string().min(1),
+});
+
 export type GitHubIssueComment = z.infer<typeof githubIssueCommentSchema>;
 export type GitHubReviewComment = z.infer<typeof githubReviewCommentSchema>;
 export type GitHubReviewThread = z.infer<typeof githubReviewThreadSchema>;
+export type GitHubCheckRun = z.infer<typeof githubCheckRunSchema>;
 
 export type GitHubPublicationClient = {
   getAuthenticatedUserLogin(): Promise<string>;
@@ -177,6 +183,19 @@ export type GitHubPublicationClient = {
     body: string;
   }): Promise<{ id: number }>;
   resolveReviewThread(options: { threadId: string }): Promise<void>;
+  createCheckRun(options: {
+    repo: string;
+    name: string;
+    headSha: string;
+    summary?: string;
+  }): Promise<GitHubCheckRun>;
+  updateCheckRun(options: {
+    repo: string;
+    checkRunId: number;
+    name: string;
+    conclusion: "success" | "failure" | "neutral";
+    summary?: string;
+  }): Promise<void>;
 };
 
 export function createGitHubPublicationClient(
@@ -292,7 +311,47 @@ export function createGitHubPublicationClient(
         threadId: options.threadId,
       });
     },
+    async createCheckRun(options) {
+      const repo = parseRepoSlug(options.repo);
+      const { data } = await octokit.rest.checks.create({
+        ...repo,
+        name: options.name,
+        head_sha: options.headSha,
+        status: "in_progress",
+        output: {
+          title: options.name,
+          summary: options.summary ?? "pipr is running.",
+        },
+      });
+      return githubCheckRunSchema.parse(data);
+    },
+    async updateCheckRun(options) {
+      const repo = parseRepoSlug(options.repo);
+      await octokit.rest.checks.update({
+        ...repo,
+        check_run_id: options.checkRunId,
+        name: options.name,
+        status: "completed",
+        conclusion: options.conclusion,
+        completed_at: new Date().toISOString(),
+        output: {
+          title: options.name,
+          summary: options.summary ?? checkRunSummary(options.conclusion),
+        },
+      });
+    },
   };
+}
+
+function checkRunSummary(conclusion: "success" | "failure" | "neutral"): string {
+  switch (conclusion) {
+    case "success":
+      return "pipr completed successfully.";
+    case "failure":
+      return "pipr failed.";
+    case "neutral":
+      return "pipr skipped this check.";
+  }
 }
 
 const githubReviewThreadsQuery = /* GraphQL */ `

@@ -37,6 +37,13 @@ export type LoadedChangeRequest = {
 
 export type RepositoryPermission = CommandPermissionLevel | "none";
 
+export type CodeHostCheckConclusion = "success" | "failure" | "neutral";
+
+export type CodeHostCheckRun = {
+  id: number | string;
+  name: string;
+};
+
 export type CodeHostAdapter = {
   id: string;
   parseEvent(options: HostEventParseOptions): Promise<ChangeRequestEventContext>;
@@ -64,6 +71,17 @@ export type CodeHostAdapter = {
   loadPriorMainComment?(options: {
     change: ChangeRequestEventContext;
   }): Promise<string | undefined>;
+  createCheckRun?(options: {
+    change: ChangeRequestEventContext;
+    name: string;
+    summary?: string;
+  }): Promise<CodeHostCheckRun>;
+  updateCheckRun?(options: {
+    change: ChangeRequestEventContext;
+    checkRun: CodeHostCheckRun;
+    conclusion: CodeHostCheckConclusion;
+    summary?: string;
+  }): Promise<void>;
   mapInlineLocation(item: InlinePublicationItem, change: ChangeRequestEventContext): unknown;
   ensureWorkspaceSafeDirectory?(options: { rootDir: string; env?: NodeJS.ProcessEnv }): void;
 };

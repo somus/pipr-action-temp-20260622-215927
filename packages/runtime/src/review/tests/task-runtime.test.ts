@@ -17,7 +17,7 @@ import {
 } from "../task-runtime.js";
 
 const provider: ProviderConfig = {
-  id: "deepseek",
+  id: "deepseek/deepseek-v4-pro",
   provider: "deepseek",
   model: "deepseek-v4-pro",
   apiKeyEnv: "DEEPSEEK_API_KEY",
@@ -39,7 +39,7 @@ const overrideProvider: ProviderConfig = {
 };
 
 const config: PiprConfig = {
-  defaultProvider: "deepseek",
+  defaultProvider: "deepseek/deepseek-v4-pro",
   providers: [provider],
   publication: {
     maxInlineComments: 5,
@@ -54,8 +54,8 @@ const fallbackConfig: PiprConfig = {
 describe("runTaskRuntime", () => {
   it("skips cleanly when no task matches the change request action", async () => {
     const plan = testPlan((pipr) => {
-      const task = pipr.task("review", () => {});
-      pipr.on.changeRequest(["reopened"], task);
+      const task = pipr.task({ name: "review", run() {} });
+      pipr.on.changeRequest({ actions: ["reopened"], task });
     });
 
     const result = await runRuntime({
@@ -72,16 +72,22 @@ describe("runTaskRuntime", () => {
   it("selects tasks from normalized change request actions", async () => {
     const seen: string[] = [];
     const plan = testPlan((pipr) => {
-      const updated = pipr.task("updated", async (ctx) => {
-        seen.push("updated");
-        await ctx.comment("updated");
+      const updated = pipr.task({
+        name: "updated",
+        async run(ctx) {
+          seen.push("updated");
+          await ctx.comment("updated");
+        },
       });
-      const ready = pipr.task("ready", async (ctx) => {
-        seen.push("ready");
-        await ctx.comment("ready");
+      const ready = pipr.task({
+        name: "ready",
+        async run(ctx) {
+          seen.push("ready");
+          await ctx.comment("ready");
+        },
       });
-      pipr.on.changeRequest(["updated"], updated);
-      pipr.on.changeRequest(["ready"], ready);
+      pipr.on.changeRequest({ actions: ["updated"], task: updated });
+      pipr.on.changeRequest({ actions: ["ready"], task: ready });
     });
 
     await runRuntime({
@@ -103,11 +109,14 @@ describe("runTaskRuntime", () => {
   it("passes local or command task input to the selected task", async () => {
     let observedInput: unknown;
     const plan = testPlan((pipr) => {
-      const task = pipr.task("explain", async (ctx, input) => {
-        observedInput = input;
-        await ctx.comment("explained");
+      const task = pipr.task({
+        name: "explain",
+        async run(ctx, input) {
+          observedInput = input;
+          await ctx.comment("explained");
+        },
       });
-      pipr.local("explain", task);
+      pipr.local({ name: "explain", task });
     });
 
     await runRuntime({
@@ -121,14 +130,20 @@ describe("runTaskRuntime", () => {
 
   it("rejects multiple final comments across selected tasks", async () => {
     const plan = testPlan((pipr) => {
-      const slow = pipr.task("slow", async (ctx) => {
-        await ctx.comment({ inlineFindings: [finding("slow", "range-1", 10)] });
+      const slow = pipr.task({
+        name: "slow",
+        async run(ctx) {
+          await ctx.comment({ inlineFindings: [finding("slow", "range-1", 10)] });
+        },
       });
-      const fast = pipr.task("fast", async (ctx) => {
-        await ctx.comment({ inlineFindings: [finding("fast", "range-2", 20)] });
+      const fast = pipr.task({
+        name: "fast",
+        async run(ctx) {
+          await ctx.comment({ inlineFindings: [finding("fast", "range-2", 20)] });
+        },
       });
-      pipr.on.changeRequest(["opened"], slow);
-      pipr.on.changeRequest(["opened"], fast);
+      pipr.on.changeRequest({ actions: ["opened"], task: slow });
+      pipr.on.changeRequest({ actions: ["opened"], task: fast });
     });
 
     await expect(
@@ -142,12 +157,15 @@ describe("runTaskRuntime", () => {
 
   it("caps inline findings from one final comment", async () => {
     const plan = testPlan((pipr) => {
-      const task = pipr.task("review", async (ctx) => {
-        await ctx.comment({
-          inlineFindings: [finding("slow", "range-1", 10), finding("fast", "range-2", 20)],
-        });
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          await ctx.comment({
+            inlineFindings: [finding("slow", "range-1", 10), finding("fast", "range-2", 20)],
+          });
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     const result = await runRuntime({
@@ -160,14 +178,13 @@ describe("runTaskRuntime", () => {
   });
 
   it("collects markdown and inline findings through ctx.comment", async () => {
-    const plan = testPlan((pipr) => {
-      const task = pipr.task("review", async (ctx) => {
+    const plan = singleTaskPlan({
+      async run(ctx) {
         await ctx.comment({
           main: "Review summary.",
           inlineFindings: [finding("inline", "range-1", 10)],
         });
-      });
-      pipr.on.changeRequest(["opened"], task);
+      },
     });
 
     const result = await runRuntime({
@@ -178,13 +195,84 @@ describe("runTaskRuntime", () => {
     expect(result.inlineCommentDrafts.map((item) => item.finding.body)).toEqual(["inline body"]);
   });
 
+  it("records explicit ctx.check outcomes without failing the review", async () => {
+    const plan = testPlan((pipr) => {
+      const task = pipr.task({
+        name: "review",
+        check: { name: "pipr / review" },
+        async run(ctx) {
+          ctx.check.fail("Security gate failed.");
+          await ctx.comment("Review completed.");
+        },
+      });
+      pipr.on.changeRequest({ actions: ["opened"], task });
+    });
+
+    const result = await runRuntime({ plan });
+
+    expect(result.taskChecks).toEqual([
+      { taskName: "review", conclusion: "failure", summary: "Security gate failed." },
+    ]);
+    expect(result.mainComment).toContain("Review completed.");
+  });
+
+  it("rejects multiple ctx.check outcomes from one task", async () => {
+    const outcomes: unknown[] = [];
+    const plan = singleTaskPlan({
+      check: { name: "pipr / review" },
+      async run(ctx) {
+        ctx.check.pass("Done.");
+        ctx.check.fail("Too late.");
+        await ctx.comment("Review completed.");
+      },
+    });
+
+    await expect(
+      runRuntime({
+        plan,
+        checkSink: recordingCheckSink(outcomes),
+      }),
+    ).rejects.toThrow("ctx.check may be completed at most once per task");
+    expect(outcomes).toEqual([
+      {
+        taskName: "review",
+        conclusion: "failure",
+        summary: "Task failed; see logs for details.",
+      },
+    ]);
+  });
+
+  it("publishes failed task checks when a task throws", async () => {
+    const outcomes: unknown[] = [];
+    const plan = singleTaskPlan({
+      check: { name: "pipr / review" },
+      async run(ctx) {
+        ctx.check.pass("Started.");
+        throw new Error("Task failed.");
+      },
+    });
+
+    await expect(
+      runRuntime({
+        plan,
+        checkSink: recordingCheckSink(outcomes),
+      }),
+    ).rejects.toThrow("Task failed.");
+    expect(outcomes).toEqual([
+      { taskName: "review", conclusion: "failure", summary: "Task failed; see logs for details." },
+    ]);
+  });
+
   it("rejects multiple ctx.comment calls from one task", async () => {
     const plan = testPlan((pipr) => {
-      const task = pipr.task("review", async (ctx) => {
-        await ctx.comment("First.");
-        await ctx.comment("Second.");
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          await ctx.comment("First.");
+          await ctx.comment("Second.");
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     await expect(runRuntime({ plan })).rejects.toThrow(
@@ -194,8 +282,8 @@ describe("runTaskRuntime", () => {
 
   it("rejects selected tasks that do not emit a final comment", async () => {
     const plan = testPlan((pipr) => {
-      const task = pipr.task("review", () => {});
-      pipr.on.changeRequest(["opened"], task);
+      const task = pipr.task({ name: "review", run() {} });
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     await expect(runRuntime({ plan })).rejects.toThrow(
@@ -213,11 +301,14 @@ describe("runTaskRuntime", () => {
       "Old review summary.",
     ].join("\n");
     const plan = testPlan((pipr) => {
-      const task = pipr.task("review", async (ctx) => {
-        observedPrior = await ctx.review.prior();
-        await ctx.comment("New review summary.");
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          observedPrior = await ctx.review.prior();
+          await ctx.comment("New review summary.");
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     const result = await runRuntime({
@@ -248,21 +339,24 @@ describe("runTaskRuntime", () => {
   it("applies Diff Manifest options exposed on task context", async () => {
     const manifest = reviewTestManifestWithContext();
     const plan = testPlan((pipr) => {
-      const task = pipr.task("review", async (ctx) => {
-        const scoped = await ctx.change.diffManifest({
-          compressed: true,
-          maxPreviewLines: 1,
-        });
-        const file = scoped.files[0] as DiffManifest["files"][number];
-        await ctx.comment(
-          JSON.stringify({
-            preview: file.commentableRanges[0]?.preview,
-            hasSignals: "signals" in file,
-            hasChangedSymbols: "changedSymbols" in file,
-          }),
-        );
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          const scoped = await ctx.change.diffManifest({
+            compressed: true,
+            maxPreviewLines: 1,
+          });
+          const file = scoped.files[0] as DiffManifest["files"][number];
+          await ctx.comment(
+            JSON.stringify({
+              preview: file.commentableRanges[0]?.preview,
+              hasSignals: "signals" in file,
+              hasChangedSymbols: "changedSymbols" in file,
+            }),
+          );
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     const result = await runRuntime({
@@ -277,11 +371,14 @@ describe("runTaskRuntime", () => {
 
   it("filters Diff Manifest files by configured paths", async () => {
     const plan = testPlan((pipr) => {
-      const task = pipr.task("review", async (ctx) => {
-        const manifest = await ctx.change.diffManifest({ paths: { include: ["docs/**"] } });
-        await ctx.comment(JSON.stringify({ paths: manifest.files.map((file) => file.path) }));
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          const manifest = await ctx.change.diffManifest({ paths: { include: ["docs/**"] } });
+          await ctx.comment(JSON.stringify({ paths: manifest.files.map((file) => file.path) }));
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     const result = await runRuntime({
@@ -314,17 +411,20 @@ describe("runTaskRuntime", () => {
         name: "notes",
         model: deepseekModel(pipr),
         instructions: "Collect notes.",
-        output: pipr.schema(
-          "custom/notes",
-          z.strictObject({ inlineFindings: z.array(z.string()) }),
-        ),
+        output: pipr.schema({
+          id: "custom/notes",
+          schema: z.strictObject({ inlineFindings: z.array(z.string()) }),
+        }),
         prompt: () => "Collect notes.",
       });
-      const task = pipr.task("review", async (ctx) => {
-        await ctx.pi.run(agent, {}, { paths: { include: ["src/**"] } });
-        await ctx.comment("Notes collected.");
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          await ctx.pi.run(agent, {}, { paths: { include: ["src/**"] } });
+          await ctx.comment("Notes collected.");
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     const result = await runRuntime({
@@ -345,19 +445,22 @@ describe("runTaskRuntime", () => {
     const plan = testPlan((pipr) => {
       const paths = { include: ["src/**"] };
       const agent = defaultReviewAgent(pipr);
-      const task = pipr.task("review", async (ctx) => {
-        const result = await ctx.pi.run(
-          agent,
-          { manifest: await ctx.change.diffManifest() },
-          { paths },
-        );
-        const mapped = result.inlineFindings.map((item) => ({
-          ...item,
-          body: `mapped: ${item.body}`,
-        }));
-        await ctx.comment({ inlineFindings: mapped });
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          const result = await ctx.pi.run(
+            agent,
+            { manifest: await ctx.change.diffManifest() },
+            { paths },
+          );
+          const mapped = result.inlineFindings.map((item) => ({
+            ...item,
+            body: `mapped: ${item.body}`,
+          }));
+          await ctx.comment({ inlineFindings: mapped });
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     const result = await runRuntime({
@@ -386,19 +489,26 @@ describe("runTaskRuntime", () => {
       const sourcePaths = { include: ["src/**"] };
       const docsPaths = { include: ["docs/**"] };
       const agent = defaultReviewAgent(pipr);
-      const task = pipr.task("review", async (ctx) => {
-        const [source, docs] = await Promise.all([
-          ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() }, { paths: sourcePaths }),
-          ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() }, { paths: docsPaths }),
-        ]);
-        await ctx.comment({
-          inlineFindings: [...source.inlineFindings, ...docs.inlineFindings].map((item) => ({
-            ...item,
-            body: `mapped: ${item.body}`,
-          })),
-        });
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          const [source, docs] = await Promise.all([
+            ctx.pi.run(
+              agent,
+              { manifest: await ctx.change.diffManifest() },
+              { paths: sourcePaths },
+            ),
+            ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() }, { paths: docsPaths }),
+          ]);
+          await ctx.comment({
+            inlineFindings: [...source.inlineFindings, ...docs.inlineFindings].map((item) => ({
+              ...item,
+              body: `mapped: ${item.body}`,
+            })),
+          });
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     let calls = 0;
@@ -429,15 +539,14 @@ describe("runTaskRuntime", () => {
   });
 
   it("keeps the internal Diff Manifest immutable from task handlers", async () => {
-    const plan = testPlan((pipr) => {
-      const task = pipr.task("review", async (ctx) => {
+    const plan = singleTaskPlan({
+      async run(ctx) {
         const manifest = await ctx.change.diffManifest();
         const file = manifest.files[0] as DiffManifest["files"][number];
         const range = file.commentableRanges[0] as { startLine: number };
         range.startLine = 999;
         await ctx.comment({ inlineFindings: [finding("uses original range", "range-1", 10)] });
-      });
-      pipr.on.changeRequest(["opened"], task);
+      },
     });
 
     const result = await runRuntime({
@@ -457,11 +566,14 @@ describe("runTaskRuntime", () => {
           return "Review.";
         },
       });
-      const task = pipr.task("review", async (ctx) => {
-        await ctx.comment(`${ctx.change.title}:${ctx.change.description}`);
-        await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
+      const task = pipr.task({
+        name: "review",
+        async run(ctx) {
+          await ctx.comment(`${ctx.change.title}:${ctx.change.description}`);
+          await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     const result = await runRuntime({
@@ -564,11 +676,14 @@ describe("runTaskRuntime", () => {
         },
         prompt: () => "Summarize.",
       });
-      const task = pipr.task("notes", async (ctx) => {
-        const result = await ctx.pi.run(agent, { manifest: "release-notes" });
-        await ctx.comment(JSON.stringify(result));
+      const task = pipr.task({
+        name: "notes",
+        async run(ctx) {
+          const result = await ctx.pi.run(agent, { manifest: "release-notes" });
+          await ctx.comment(JSON.stringify(result));
+        },
       });
-      pipr.on.changeRequest(["opened"], task);
+      pipr.on.changeRequest({ actions: ["opened"], task });
     });
 
     await runCustomOkPlan(plan, (prompt) => {
@@ -649,12 +764,12 @@ describe("runTaskRuntime", () => {
   it("includes custom schema details in agent prompts", async () => {
     let observedPrompt = "";
     const plan = testPlan((pipr) => {
-      const output = pipr.schema(
-        "custom/release-notes",
-        z.strictObject({
+      const output = pipr.schema({
+        id: "custom/release-notes",
+        schema: z.strictObject({
           ok: z.boolean(),
         }),
-      );
+      });
       const agent = pipr.agent({
         name: "release-notes",
         model: deepseekModel(pipr),
@@ -678,11 +793,14 @@ describe("runTaskRuntime", () => {
   it("uses repair prompts with the same contract and validation error for custom schemas", async () => {
     const prompts: string[] = [];
     const plan = testPlan((pipr) => {
-      const output = pipr.jsonSchema<{ ok: boolean }>("custom/json-output", {
-        type: "object",
-        additionalProperties: false,
-        required: ["ok"],
-        properties: { ok: { type: "boolean" } },
+      const output = pipr.jsonSchema<{ ok: boolean }>({
+        id: "custom/json-output",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["ok"],
+          properties: { ok: { type: "boolean" } },
+        },
       });
       const agent = pipr.agent({
         name: "custom-json",
@@ -845,7 +963,7 @@ describe("runTaskRuntime", () => {
       plan,
       piRunner: async (options) => {
         calls.push(options.provider.model);
-        return options.provider.id === "deepseek"
+        return options.provider.id === "deepseek/deepseek-v4-pro"
           ? { exitCode: 0, stdout: "{", stderr: "", durationMs: 1 }
           : noFindingsPiResult();
       },
@@ -921,11 +1039,11 @@ describe("runTaskRuntime", () => {
   });
 
   it("renders custom task details through ctx.comment markdown", async () => {
-    const plan = testPlan((pipr) => {
-      const task = pipr.task("metadata", async (ctx) => {
+    const plan = singleTaskPlan({
+      name: "metadata",
+      async run(ctx) {
         await ctx.comment(JSON.stringify({ status: "ok" }));
-      });
-      pipr.on.changeRequest(["opened"], task);
+      },
     });
 
     const result = await runRuntime({
@@ -942,15 +1060,13 @@ describe("runTaskRuntime", () => {
         id: "correctness",
         model,
         instructions: "Review correctness.",
-        command: false,
-        localName: false,
+        entrypoints: { command: false, local: false },
       });
       pipr.review({
         id: "security",
         model,
         instructions: "Review security.",
-        command: false,
-        localName: false,
+        entrypoints: { command: false, local: false },
       });
     });
 
@@ -966,8 +1082,7 @@ describe("runTaskRuntime", () => {
         model: deepseekModel(pipr),
         instructions: "Review docs.",
         paths: { include: ["docs/**"] },
-        command: false,
-        localName: false,
+        entrypoints: { command: false, local: false },
       });
     });
 
@@ -988,6 +1103,13 @@ describe("runTaskRuntime", () => {
     expect(result.review.inlineFindings).toEqual([]);
     expect(result.mainComment).not.toContain("Stale scoped review.");
     expect(result.publicationPlan.metadata.providerModels).toEqual([provider.model]);
+    expect(result.taskChecks).toEqual([
+      {
+        taskName: "review",
+        conclusion: "neutral",
+        summary: "No changed files matched this review's path scope.",
+      },
+    ]);
   });
 
   it("enforces pipr.review paths against model findings", async () => {
@@ -997,8 +1119,7 @@ describe("runTaskRuntime", () => {
         model: deepseekModel(pipr),
         instructions: "Review source.",
         paths: { include: ["src/**"] },
-        command: false,
-        localName: false,
+        entrypoints: { command: false, local: false },
       });
     });
 
@@ -1014,8 +1135,7 @@ describe("runTaskRuntime", () => {
         model: deepseekModel(pipr),
         instructions: "Review source.",
         inlineComments: false,
-        command: false,
-        localName: false,
+        entrypoints: { command: false, local: false },
       });
     });
 
@@ -1063,17 +1183,42 @@ function testPlan(configure: (pipr: PiprApi) => void) {
   return buildPiprPlan(definePipr(configure));
 }
 
+function singleTaskPlan(options: {
+  name?: string;
+  check?: Parameters<PiprApi["task"]>[0]["check"];
+  run: Parameters<PiprApi["task"]>[0]["run"];
+}) {
+  return testPlan((pipr) => {
+    const task = pipr.task({
+      name: options.name ?? "review",
+      check: options.check,
+      run: options.run,
+    });
+    pipr.on.changeRequest({ actions: ["opened"], task });
+  });
+}
+
+function recordingCheckSink(outcomes: unknown[]): RunTaskRuntimeOptions["checkSink"] {
+  return {
+    setTaskResult(result) {
+      outcomes.push(result);
+    },
+  };
+}
+
 function deepseekModel(pipr: PiprApi, name = "deepseek", model = "deepseek-v4-pro") {
-  return pipr.model(`deepseek/${model}`, {
-    name,
-    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  return pipr.model({
+    id: name === "deepseek" && model === "deepseek-v4-pro" ? undefined : name,
+    provider: "deepseek",
+    model,
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
   });
 }
 
 function defaultReviewAgent(pipr: PiprApi, options: Partial<Parameters<PiprApi["agent"]>[0]> = {}) {
   return pipr.agent({
     name: "reviewer",
-    model: deepseekModel(pipr),
+    model: options.model ?? deepseekModel(pipr),
     instructions: "Review.",
     output: pipr.schemas.review,
     prompt: () => "Review.",
@@ -1096,15 +1241,18 @@ function registerPiReviewTask(
     ? Args[2]
     : never,
 ): void {
-  const task = pipr.task("review", async (ctx) => {
-    const result = await ctx.pi.run(
-      agent,
-      { manifest: await ctx.change.diffManifest() },
-      runOptions,
-    );
-    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  const task = pipr.task({
+    name: "review",
+    async run(ctx) {
+      const result = await ctx.pi.run(
+        agent,
+        { manifest: await ctx.change.diffManifest() },
+        runOptions,
+      );
+      await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+    },
   });
-  pipr.on.changeRequest(["opened"], task);
+  pipr.on.changeRequest({ actions: ["opened"], task });
 }
 
 function fallbackReviewPlan(
@@ -1136,11 +1284,14 @@ function registerCommentingAgentTask(
   taskName: string,
   agent: Agent<{ manifest: unknown }, unknown>,
 ): void {
-  const task = pipr.task(taskName, async (ctx) => {
-    const result = await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
-    await ctx.comment(JSON.stringify(result));
+  const task = pipr.task({
+    name: taskName,
+    async run(ctx) {
+      const result = await ctx.pi.run(agent, { manifest: await ctx.change.diffManifest() });
+      await ctx.comment(JSON.stringify(result));
+    },
   });
-  pipr.on.changeRequest(["opened"], task);
+  pipr.on.changeRequest({ actions: ["opened"], task });
 }
 
 function scopedPiReviewPlan() {
@@ -1327,7 +1478,7 @@ function noFindingsPiRunner(): PiRunner {
 function providerFailurePiRunner(calls: string[]): PiRunner {
   return async (options) => {
     calls.push(options.provider.model);
-    return options.provider.id === "deepseek"
+    return options.provider.id === "deepseek/deepseek-v4-pro"
       ? { exitCode: 1, stdout: "", stderr: "temporary failure", durationMs: 1 }
       : noFindingsPiResult();
   };

@@ -16,6 +16,7 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  checks: write
 
 jobs:
   review:
@@ -45,7 +46,7 @@ jobs:
 
 Trusted provider options come from workflow YAML, not from pull request code. The provider profile's `thinking` option stays in the base-commit `.pipr/config.ts`.
 
-`pull-requests: write` publishes Inline Review Comments and enables best-effort stale inline thread resolution after a finding disappears. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
+`checks: write` lets pipr publish task and aggregate Check Runs when enabled by config. `pull-requests: write` publishes Inline Review Comments and enables best-effort stale inline thread resolution after a finding disappears. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
 
 ## Outputs
 

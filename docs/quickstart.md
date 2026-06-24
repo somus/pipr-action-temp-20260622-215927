@@ -50,7 +50,7 @@ repo/
 The default config uses DeepSeek:
 
 ```ts
-apiKey: pipr.secret("DEEPSEEK_API_KEY");
+apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" });
 ```
 
 Create a GitHub Actions secret named `DEEPSEEK_API_KEY`.
@@ -71,6 +71,7 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  checks: write
 
 jobs:
   review:
@@ -89,7 +90,7 @@ jobs:
           api-key-env: DEEPSEEK_API_KEY
 ```
 
-`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit. `pull-requests: write` lets pipr attempt best-effort stale review thread cleanup after findings are fixed.
+`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit. `checks: write` lets pipr publish Check Runs when your config enables them. `pull-requests: write` lets pipr attempt best-effort stale review thread cleanup after findings are fixed.
 
 ## 4. Trigger a review
 

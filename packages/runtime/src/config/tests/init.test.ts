@@ -24,7 +24,7 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).toContain('declare module "@pipr/sdk"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/review"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/tools"');
-    expect(sdkTypes).toContain("readonly id: symbol;");
+    expect(sdkTypes).toContain("readonly id: string;");
     expect(sdkTypes).toContain("readonly apiKey?: SecretRef;");
     expect(sdkTypes).toContain("readonly options?: Record<string, unknown>;");
     expect(sdkTypes).toContain("const z:");
@@ -35,6 +35,7 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).not.toContain("z.ZodType");
     const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
     expect(workflow).toContain("uses: somus/pipr@main");
+    expect(workflow).toContain("checks: write");
     expect(workflow).not.toContain("config-dir:");
     expect(workflow).not.toContain("provider-id:");
     expect(workflow).toContain("provider: deepseek");
@@ -54,7 +55,7 @@ describe("initOfficialMinimalProject", () => {
       "types/pipr-sdk.d.ts",
     ]);
     expect(validation.kind).toBe("typescript");
-    expect(validation.settings.config.defaultProvider).toBe("deepseek");
+    expect(validation.settings.config.defaultProvider).toBe("deepseek/deepseek-v4-pro");
     expect(validation.settings.config.publication.maxInlineComments).toBe(5);
   });
 
@@ -66,18 +67,19 @@ describe("initOfficialMinimalProject", () => {
       `import { definePipr, z } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  pipr.model("deepseek/deepseek-v4-pro", {
-    name: "deepseek",
-    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  pipr.model({
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
   });
 
-  const summary = pipr.schema(
-    "custom/summary",
-    z.strictObject({
+  const summary = pipr.schema({
+    id: "custom/summary",
+    schema: z.strictObject({
       title: z.string().optional(),
       body: z.string(),
     }),
-  );
+  });
 
   const validSummary: ReturnType<typeof summary.parse> = { body: "ok" };
   void validSummary;

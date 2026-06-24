@@ -61,7 +61,7 @@ export async function validateProject(
 export function inspectRuntimePlan(plan: RuntimePlan, source: string): InspectRuntimePlan {
   return {
     source,
-    models: plan.models.map((model) => model.name),
+    models: plan.models.map((model) => model.id),
     agents: plan.agents.map((agent) => agent.name ?? "anonymous-agent"),
     tasks: plan.tasks.map((task) => task.name),
     events: plan.changeRequestTriggers.map((trigger) => ({
@@ -106,11 +106,11 @@ function planToRuntimeSettings(
 
 function modelToProvider(model: ModelProfile): ProviderConfig {
   if (!model.apiKey) {
-    throw new Error(`Model '${model.name}' must declare apiKey: pipr.secret("ENV_NAME")`);
+    throw new Error(`Model '${model.id}' must declare apiKey: pipr.secret({ name: "ENV_NAME" })`);
   }
   const thinking = model.options?.thinking;
   return parseProviderConfig({
-    id: model.name,
+    id: model.id,
     provider: model.provider,
     model: model.model,
     apiKeyEnv: model.apiKey.name,
@@ -122,7 +122,7 @@ function assertUniqueProviders(providers: ProviderConfig[], source: string): voi
   const seen = new Set<string>();
   for (const provider of providers) {
     if (seen.has(provider.id)) {
-      throw new Error(`${source}: duplicate model name '${provider.id}'`);
+      throw new Error(`${source}: duplicate model id '${provider.id}'`);
     }
     seen.add(provider.id);
   }

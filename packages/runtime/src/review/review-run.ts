@@ -275,8 +275,8 @@ function selectProviders(
   const primary = runOptions?.model ?? agent.definition.model;
   const fallbacks = runOptions?.fallbacks ?? agent.definition.fallbacks ?? [];
   const providers = [
-    primary ? resolveProvider(runtime.config, primary.name) : runtime.provider,
-    ...fallbacks.map((model) => resolveProvider(runtime.config, model.name)),
+    primary ? resolveProvider(runtime.config, primary.id) : runtime.provider,
+    ...fallbacks.map((model) => resolveProvider(runtime.config, model.id)),
   ];
   return uniqBy(providers, (provider) => provider.id);
 }

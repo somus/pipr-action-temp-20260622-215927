@@ -16,9 +16,10 @@ npm install -D @pipr/sdk
 import { definePipr } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const model = pipr.model("deepseek/deepseek-v4-pro", {
-    name: "deepseek",
-    apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+  const model = pipr.model({
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
     options: { thinking: "high" },
   });
 
@@ -75,17 +76,18 @@ entrypoints: {
 
 ## Models
 
-Use `<provider>/<model>` for model profiles:
+Model ids default to `<provider>/<model>`:
 
 ```ts
-const primary = pipr.model("deepseek/deepseek-v4-pro", {
-  name: "deepseek",
-  apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+const primary = pipr.model({
+  provider: "deepseek",
+  model: "deepseek-v4-pro",
+  apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
   options: { thinking: "high" },
 });
 ```
 
-Provider secrets are env-only. `pipr.secret("DEEPSEEK_API_KEY")` records the env var name and does not put raw secret values in the runtime plan.
+Provider secrets are env-only. `pipr.secret({ name: "DEEPSEEK_API_KEY" })` records the env var name and does not put raw secret values in the runtime plan.
 
 ## Diff Manifest limits
 
@@ -119,14 +121,18 @@ const security = pipr.agent({
   `,
 });
 
-const task = pipr.task("security-review", async (ctx) => {
-  const paths = { include: ["packages/runtime/**"] };
-  const manifest = await ctx.change.diffManifest({ compressed: true, paths });
-  const result = await ctx.pi.run(security, { manifest }, { paths });
-  await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+const task = pipr.task({
+  name: "security-review",
+  check: { name: "pipr / security" },
+  async run(ctx) {
+    const paths = { include: ["packages/runtime/**"] };
+    const manifest = await ctx.change.diffManifest({ compressed: true, paths });
+    const result = await ctx.pi.run(security, { manifest }, { paths });
+    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  },
 });
 
-pipr.on.changeRequest(["opened", "updated"], task);
+pipr.on.changeRequest({ actions: ["opened", "updated"], task });
 ```
 
 Pass `manifest` to `ctx.pi.run(...)`. pipr injects the full or condensed Diff Manifest into the Pi prompt and attaches read-only diff tools when needed.
@@ -143,20 +149,23 @@ Use SDK-owned Zod for typed agent outputs:
 import { definePipr, z } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const specialistOutput = pipr.schema(
-    "security/specialist-output",
-    z.strictObject({
+  const specialistOutput = pipr.schema({
+    id: "security/specialist-output",
+    schema: z.strictObject({
       summary: z.string(),
       risks: z.array(z.string()),
     }),
-  );
+  });
 
-  const jsonBacked = pipr.jsonSchema<{ summary: string }>("security/summary", {
-    type: "object",
-    additionalProperties: false,
-    required: ["summary"],
-    properties: {
-      summary: { type: "string" },
+  const jsonBacked = pipr.jsonSchema<{ summary: string }>({
+    id: "security/summary",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["summary"],
+      properties: {
+        summary: { type: "string" },
+      },
     },
   });
 
@@ -176,7 +185,7 @@ Schema metadata is model-visible prompt content. Do not put secrets, private dat
 Commands run from pull request issue comments:
 
 ```ts
-pipr.command("@pipr security", { permission: "write" }, task);
+pipr.command({ pattern: "@pipr security", permission: "write", task });
 ```
 
 Permission levels are provider-neutral:
@@ -190,7 +199,7 @@ The active code host adapter maps native roles into these levels.
 Local entrypoints run the same task logic without GitHub publishing:
 
 ```ts
-pipr.local("security", task);
+pipr.local({ name: "security", task });
 ```
 
 Run local entrypoints with an explicit base commit:

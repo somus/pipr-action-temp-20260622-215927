@@ -23,7 +23,7 @@ export const piRequiredCliFlags = [
 ] as const;
 
 const nonEmptyStringSchema = z.string().min(1);
-const piProviderIdSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/);
+const piProviderIdSchema = z.string().regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/);
 const piApiKeyEnvNameSchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
 
 const piThinkingLevelSchema = z.enum(piThinkingLevels);

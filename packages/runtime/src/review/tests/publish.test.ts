@@ -492,6 +492,63 @@ describe("createGitHubPublicationClient", () => {
       "https://api.github.test/graphql",
     ]);
   });
+
+  it("creates and finalizes GitHub check runs", async () => {
+    const requests: Array<{ url: string; body: string; method: string }> = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const request = {
+        url: input instanceof Request ? input.url : String(input),
+        body: await gitHubRequestBody(input, init),
+        method: input instanceof Request ? input.method : (init?.method ?? "GET"),
+      };
+      requests.push(request);
+      if (request.url.endsWith("/repos/local/pipr/check-runs") && request.method === "POST") {
+        return jsonResponse({ id: 123, name: "pipr / review" });
+      }
+      if (request.url.endsWith("/repos/local/pipr/check-runs/123") && request.method === "PATCH") {
+        return jsonResponse({ id: 123, name: "pipr / review" });
+      }
+      throw new Error(`unexpected request ${request.method} ${request.url}`);
+    }) as typeof fetch;
+
+    const client = createGitHubPublicationClient({
+      GITHUB_API_URL: "https://api.github.test",
+      GITHUB_TOKEN: "actions-token",
+    });
+
+    await expect(
+      client.createCheckRun({
+        repo: "local/pipr",
+        name: "pipr / review",
+        headSha: "head",
+        summary: "Running.",
+      }),
+    ).resolves.toEqual({ id: 123, name: "pipr / review" });
+    await client.updateCheckRun({
+      repo: "local/pipr",
+      checkRunId: 123,
+      name: "pipr / review",
+      conclusion: "failure",
+      summary: "Failed.",
+    });
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://api.github.test/repos/local/pipr/check-runs",
+      "https://api.github.test/repos/local/pipr/check-runs/123",
+    ]);
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      name: "pipr / review",
+      head_sha: "head",
+      status: "in_progress",
+      output: { title: "pipr / review", summary: "Running." },
+    });
+    expect(JSON.parse(requests[1]?.body ?? "{}")).toMatchObject({
+      name: "pipr / review",
+      conclusion: "failure",
+      output: { title: "pipr / review", summary: "Failed." },
+    });
+    expect(JSON.parse(requests[1]?.body ?? "{}").completed_at).toEqual(expect.any(String));
+  });
 });
 
 function addExistingInlineComment(
@@ -837,4 +894,10 @@ class FakePublicationClient implements GitHubPublicationClient {
     thread.isResolved = true;
     this.resolvedThreadIds.push(options.threadId);
   }
+
+  async createCheckRun(options: { name: string }) {
+    return { id: 100, name: options.name };
+  }
+
+  async updateCheckRun() {}
 }

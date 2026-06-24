@@ -27,17 +27,18 @@ The callback must be synchronous. Runtime work belongs in `pipr.task(...)`, not 
 
 ## Models and secrets
 
-Models use `<provider>/<model>`:
+Model ids default to `<provider>/<model>`:
 
 ```ts
-const model = pipr.model("deepseek/deepseek-v4-pro", {
-  name: "deepseek",
-  apiKey: pipr.secret("DEEPSEEK_API_KEY"),
+const model = pipr.model({
+  provider: "deepseek",
+  model: "deepseek-v4-pro",
+  apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
   options: { thinking: "high" },
 });
 ```
 
-`pipr.secret(name)` stores only the environment variable name. It does not read or serialize the secret during plan creation.
+Use `id` only when you configure the same provider and model with different API keys or options. `pipr.secret({ name })` stores only the environment variable name. It does not read or serialize the secret during plan creation.
 
 ## Review recipe
 
@@ -152,17 +153,21 @@ const strictSecurity = security.extend({
 Tasks are the executable review units. They receive a `TaskContext` and optional parsed input.
 
 ```ts
-const task = pipr.task("security-review", async (ctx) => {
-  const paths = { include: ["packages/runtime/**"] };
-  const manifest = await ctx.change.diffManifest({ compressed: true, paths });
-  const result = await ctx.pi.run(security, { manifest }, { paths });
+const task = pipr.task({
+  name: "security-review",
+  check: { name: "pipr / security" },
+  async run(ctx) {
+    const paths = { include: ["packages/runtime/**"] };
+    const manifest = await ctx.change.diffManifest({ compressed: true, paths });
+    const result = await ctx.pi.run(security, { manifest }, { paths });
 
-  await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  },
 });
 
-pipr.on.changeRequest(["opened", "updated"], task);
-pipr.command("@pipr security", { permission: "write" }, task);
-pipr.local("security", task);
+pipr.on.changeRequest({ actions: ["opened", "updated"], task });
+pipr.command({ pattern: "@pipr security", permission: "write", task });
+pipr.local({ name: "security", task });
 ```
 
 ## Task context
@@ -175,12 +180,40 @@ pipr.local("security", task);
 | `ctx.change` | Provider-neutral change request metadata plus diff helpers. |
 | `ctx.pi.run(agent, input, options?)` | Execute a Pi-backed agent and validate structured output. |
 | `ctx.review.prior()` | Read prior review state: `main?`, `reviewedHeadSha?`, and `inlineFindings[]` with `id`, `status`, `path`, `rangeId`, `side`, `startLine`, and `endLine`. |
+| `ctx.check.pass/fail/neutral(summary?)` | Set one explicit task check result. Check failure does not fail the Action process by itself. |
 | `ctx.comment(value)` | Emit the selected run's final Main Review Comment markdown and Inline Review Comments. |
 | `ctx.log` | Write runtime logs. |
 
 `ctx.change.diffManifest(...)` returns commentable file ranges. Findings must reference those ranges by `rangeId`.
 
 When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)` and `ctx.pi.run(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops findings from that scoped Pi result when they are outside the scope. That scope is preserved when passing returned findings or cloning them with object spread.
+
+## Check Runs
+
+Task-level `check` controls individual GitHub Check Runs and aggregate participation:
+
+```ts
+const task = pipr.task({
+  name: "security",
+  check: { enabled: true, name: "pipr / security", required: true },
+  async run(ctx) {
+    ctx.check.pass("Security review completed.");
+    await ctx.comment("## Security review\n\nNo blocking findings.");
+  },
+});
+```
+
+When `check` is an object, the individual task Check Run is enabled by default. `required` defaults to `true`. Use `check: false` to opt a task out of both its individual Check Run and the aggregate Check Run. A task without `check` does not get an individual Check Run, but still participates in the aggregate when aggregate checks are enabled.
+
+Enable the aggregate Check Run explicitly:
+
+```ts
+pipr.checks({
+  aggregate: { enabled: true, name: "pipr / all" },
+});
+```
+
+Checks publish only on GitHub `pull_request` Action runs. They do not publish for `issue_comment`, local runs, or dry runs. `ctx.check.pass/fail/neutral(...)` can be called at most once per task. `ctx.check.fail(...)` fails the task Check Run but does not fail the Action process by itself.
 
 ## Comment output
 
@@ -258,20 +291,23 @@ Custom schemas are useful for intermediate agents and workflows that map their f
 import { definePipr, z } from "@pipr/sdk";
 
 export default definePipr((pipr) => {
-  const specialistOutput = pipr.schema(
-    "security/specialist-output",
-    z.strictObject({
+  const specialistOutput = pipr.schema({
+    id: "security/specialist-output",
+    schema: z.strictObject({
       summary: z.string(),
       risks: z.array(z.string()),
     }),
-  );
+  });
 
-  const summaryOutput = pipr.jsonSchema<{ summary: string }>("security/summary", {
-    type: "object",
-    additionalProperties: false,
-    required: ["summary"],
-    properties: {
-      summary: { type: "string" },
+  const summaryOutput = pipr.jsonSchema<{ summary: string }>({
+    id: "security/summary",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["summary"],
+      properties: {
+        summary: { type: "string" },
+      },
     },
   });
 

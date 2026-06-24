@@ -1,4 +1,5 @@
 import type {
+  CheckHandle,
   CommentValue,
   DiffManifestOptions,
   PathFilter,
@@ -28,6 +29,19 @@ import { type PiRunner, resolveProvider, runReviewAgent } from "./review-run.js"
 
 export type { PiRunner } from "./review-run.js";
 export type DiffManifestBuilder = (options: BuildDiffManifestOptions) => DiffManifest;
+export type RuntimeCheckConclusion = "success" | "failure" | "neutral";
+
+export type RuntimeTaskCheckResult = {
+  taskName: string;
+  conclusion: RuntimeCheckConclusion;
+  summary?: string;
+};
+
+export type RuntimeCheckSink = {
+  setTaskResult(result: RuntimeTaskCheckResult): void;
+};
+
+const genericTaskFailureSummary = "Task failed; see logs for details.";
 
 export type RunTaskRuntimeOptions = {
   workspace: string;
@@ -47,6 +61,7 @@ export type RunTaskRuntimeOptions = {
   priorMainComment?: string;
   loadPriorReviewState?: () => Promise<PriorReviewState | undefined>;
   loadPriorMainComment?: () => Promise<string | undefined>;
+  checkSink?: RuntimeCheckSink;
 };
 
 export type ReviewRuntimeResult = {
@@ -59,6 +74,7 @@ export type ReviewRuntimeResult = {
   publicationPlan: PublicationPlan;
   mainComment: string;
   inlineCommentDrafts: InlineCommentDraft[];
+  taskChecks: RuntimeTaskCheckResult[];
   repairAttempted: boolean;
 };
 
@@ -68,6 +84,7 @@ type OutputState = {
   findingScopes: WeakMap<readonly ReviewFinding[], PathFilter>;
   providerModels: string[];
   repairAttempted: boolean;
+  check?: Omit<RuntimeTaskCheckResult, "taskName">;
 };
 
 type CommentContribution = {
@@ -89,6 +106,7 @@ type ScopedReviewFinding = ReviewFinding & {
 type TaskRunResult = {
   taskName: string;
   output: OutputState;
+  error?: unknown;
 };
 
 export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<ReviewRuntimeResult> {
@@ -132,22 +150,42 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   const taskResults = await Promise.all(
     tasks.map(async (task, taskOrder) => {
       const output = createOutputState();
-      await task.handler(
-        createTaskContext({
-          ...runtimeOptions,
-          config,
-          provider,
-          diffManifest,
-          manifestCache,
-          output,
-          taskName: task.name,
-          taskOrder,
-        }),
-        task.name === options.taskName ? (options.taskInput as never) : (undefined as never),
-      );
-      return { taskName: task.name, output };
+      try {
+        await task.handler(
+          createTaskContext({
+            ...runtimeOptions,
+            config,
+            provider,
+            diffManifest,
+            manifestCache,
+            output,
+            taskName: task.name,
+            taskOrder,
+          }),
+          task.name === options.taskName ? (options.taskInput as never) : (undefined as never),
+        );
+        publishTaskCheckResult(
+          options.checkSink,
+          task.name,
+          output.check ?? { conclusion: "success" },
+        );
+        return { taskName: task.name, output };
+      } catch (error) {
+        const check = {
+          conclusion: "failure" as const,
+          summary: genericTaskFailureSummary,
+        };
+        publishTaskCheckResult(options.checkSink, task.name, check);
+        return { taskName: task.name, output: { ...output, check }, error };
+      }
     }),
   );
+  const failedTask = taskResults.find((result) => result.error !== undefined);
+  if (failedTask) {
+    throw failedTask.error instanceof Error
+      ? failedTask.error
+      : new Error(String(failedTask.error));
+  }
   const output = mergeTaskOutputs(taskResults);
   if (!output.comment) {
     throw new Error("ctx.comment(...) must be called exactly once per selected run");
@@ -192,6 +230,9 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     publicationPlan,
     mainComment: publicationPlan.mainComment,
     inlineCommentDrafts: publishing.inlineCommentDrafts,
+    taskChecks: taskResults.map((result) =>
+      runtimeTaskCheckResult(result.taskName, result.output.check ?? { conclusion: "success" }),
+    ),
     repairAttempted: output.repairAttempted,
   };
 }
@@ -265,6 +306,7 @@ function createTaskContext(
         return priorReviewForTask(options.priorMainComment, options.priorReviewState);
       },
     },
+    check: createCheckHandle(options.output),
     async comment(value) {
       collectComment(options.output, value, options.taskName);
     },
@@ -377,6 +419,48 @@ function createOutputState(): OutputState {
     providerModels: [],
     repairAttempted: false,
   };
+}
+
+function createCheckHandle(state: OutputState): CheckHandle {
+  return {
+    pass(summary) {
+      setCheckResult(state, "success", summary);
+    },
+    fail(summary) {
+      setCheckResult(state, "failure", summary);
+    },
+    neutral(summary) {
+      setCheckResult(state, "neutral", summary);
+    },
+  };
+}
+
+function setCheckResult(
+  state: OutputState,
+  conclusion: RuntimeCheckConclusion,
+  summary: string | undefined,
+): void {
+  if (state.check) {
+    throw new Error("ctx.check may be completed at most once per task");
+  }
+  state.check = summary ? { conclusion, summary } : { conclusion };
+}
+
+function publishTaskCheckResult(
+  sink: RuntimeCheckSink | undefined,
+  taskName: string,
+  check: Omit<RuntimeTaskCheckResult, "taskName">,
+): void {
+  sink?.setTaskResult(runtimeTaskCheckResult(taskName, check));
+}
+
+function runtimeTaskCheckResult(
+  taskName: string,
+  check: Omit<RuntimeTaskCheckResult, "taskName">,
+): RuntimeTaskCheckResult {
+  return check.summary
+    ? { taskName, conclusion: check.conclusion, summary: check.summary }
+    : { taskName, conclusion: check.conclusion };
 }
 
 function collectComment(state: OutputState, value: CommentValue, taskName: string): void {
@@ -535,6 +619,7 @@ function skippedTaskRuntimeResult(options: {
     publicationPlan,
     mainComment: publicationPlan.mainComment,
     inlineCommentDrafts: [],
+    taskChecks: [],
     repairAttempted: false,
   };
 }

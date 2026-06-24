@@ -8,7 +8,10 @@ import { runGit as runGitCommand } from "../../diff/git.js";
 import type { GitHubCommandClient } from "../../hosts/github/command.js";
 import type { RepositoryPermission } from "../../hosts/types.js";
 import type { GitHubPublicationClient } from "../../review/publish.js";
-import { runActionCommandWithDependencies } from "../commands.js";
+import {
+  type ActionCommandDependencyOptions,
+  runActionCommandWithDependencies,
+} from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {
   it("ignores issue comments that are not pull request comments", async () => {
@@ -176,6 +179,28 @@ describe("runActionCommand issue_comment dispatch", () => {
       await removeWorkspace(workspace.rootDir);
     }
   });
+
+  it("does not create check runs for issue_comment command dispatch", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ checks: true }),
+      checkoutBaseBeforeRun: true,
+    });
+    const checks: FakeCheckRuns = { created: [], updated: [] };
+    try {
+      const result = await runIssueCommentCommand(
+        workspace,
+        "@pipr review --scope full",
+        "write",
+        checks,
+      );
+
+      expect(result).toMatchObject({ kind: "review", command: "review" });
+      expect(checks.created).toEqual([]);
+      expect(checks.updated).toEqual([]);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
 });
 
 describe("runActionCommand pull_request dispatch", () => {
@@ -260,19 +285,8 @@ describe("runActionCommand pull_request dispatch", () => {
   it("checks out the PR head before running the review task", async () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     try {
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writePullRequestEvent(eventPath, workspace);
-
       expect(currentGitHead(workspace.rootDir)).toBe(workspace.baseSha);
-      const result = await runActionCommandWithDependencies({
-        rootDir: workspace.rootDir,
-        configDir: ".pipr",
-        eventPath,
-        dryRun: false,
-        env: pullRequestEnv(workspace.rootDir, eventPath),
-        githubPublicationClient: fakeGitHubPublicationClient(workspace),
-        piExecutable: workspace.piExecutable,
-      });
+      const result = await runPullRequestAction(workspace);
 
       expect(result).toMatchObject({ kind: "review" });
       await expectReviewRanAtHead(result, workspace);
@@ -281,18 +295,151 @@ describe("runActionCommand pull_request dispatch", () => {
     }
   });
 
+  it("creates and finalizes pull_request check runs around review publication", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ checks: true }),
+      checkoutBaseBeforeRun: true,
+    });
+    const checks: FakeCheckRuns = { created: [], updated: [] };
+    try {
+      const result = await runPullRequestAction(workspace, {
+        githubPublicationClient: fakeGitHubPublicationClient(workspace, [], checks),
+      });
+
+      expect(result).toMatchObject({ kind: "review" });
+      expect(checks.created.map((check) => check.name)).toEqual(["pipr / review", "pipr / all"]);
+      expect(checks.created.map((check) => check.headSha)).toEqual([
+        workspace.headSha,
+        workspace.headSha,
+      ]);
+      expect(checks.updated.map((check) => check.conclusion)).toEqual(["success", "success"]);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("resolves trusted provider input through configured model ids", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: explicitModelIdConfigTs(),
+      checkoutBaseBeforeRun: true,
+    });
+    try {
+      const result = await runPullRequestAction(workspace, {
+        trustedProvider: {
+          provider: "fast",
+          model: "deepseek-v4-pro",
+          apiKeyEnv: "DEEPSEEK_API_KEY",
+        },
+      });
+
+      expect(result).toMatchObject({ kind: "review" });
+      expect(result.kind === "review" ? result.review.provider : undefined).toMatchObject({
+        id: "fast",
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        apiKeyEnv: "FAST_DEEPSEEK_API_KEY",
+      });
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("fails before Pi when GitHub check creation lacks checks write permission", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ checks: true }),
+      checkoutBaseBeforeRun: true,
+    });
+    try {
+      const client = fakeGitHubPublicationClient(workspace);
+      client.createCheckRun = async () => {
+        throw new Error("Resource not accessible by integration");
+      };
+
+      await expect(
+        runPullRequestAction(workspace, { githubPublicationClient: client }),
+      ).rejects.toThrow("checks: write");
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("preserves successful task check outcomes when another selected task throws", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: multiTaskCheckConfigTs(),
+      checkoutBaseBeforeRun: true,
+    });
+    const checks: FakeCheckRuns = { created: [], updated: [] };
+    try {
+      await expect(
+        runPullRequestAction(workspace, {
+          githubPublicationClient: fakeGitHubPublicationClient(workspace, [], checks),
+        }),
+      ).rejects.toThrow("Sensitive task failure");
+
+      expect(checks.updated).toEqual([
+        {
+          checkRunId: 4,
+          name: "pipr / summary",
+          conclusion: "success",
+          summary: undefined,
+        },
+        {
+          checkRunId: 5,
+          name: "pipr / gate",
+          conclusion: "failure",
+          summary: "Task failed; see logs for details.",
+        },
+        {
+          checkRunId: 6,
+          name: "pipr / all",
+          conclusion: "failure",
+          summary: "pipr failed; see Action logs for details.",
+        },
+      ]);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("finalizes started check runs when later check creation fails", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ checks: true }),
+      checkoutBaseBeforeRun: true,
+    });
+    const checks: FakeCheckRuns = { created: [], updated: [] };
+    try {
+      const client = fakeGitHubPublicationClient(workspace, [], checks);
+      client.createCheckRun = async (options) => {
+        if (options.name === "pipr / all") {
+          throw new Error("Resource not accessible by integration");
+        }
+        return fakeGitHubPublicationClient(workspace, [], checks).createCheckRun(options);
+      };
+
+      await expect(
+        runPullRequestAction(workspace, { githubPublicationClient: client }),
+      ).rejects.toThrow("checks: write");
+
+      expect(checks.created.map((check) => check.name)).toEqual(["pipr / review"]);
+      expect(checks.updated).toEqual([
+        {
+          checkRunId: 4,
+          name: "pipr / review",
+          conclusion: "failure",
+          summary: "pipr failed; see Action logs for details.",
+        },
+      ]);
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
   it("does not carry prior main comment body during pull_request publication", async () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     try {
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writePullRequestEvent(eventPath, workspace);
-
-      const result = await runActionCommandWithDependencies({
-        rootDir: workspace.rootDir,
-        configDir: ".pipr",
-        eventPath,
-        dryRun: false,
-        env: pullRequestEnv(workspace.rootDir, eventPath),
+      const result = await runPullRequestAction(workspace, {
         githubPublicationClient: fakeGitHubPublicationClient(workspace, [
           {
             id: 10,
@@ -300,7 +447,6 @@ describe("runActionCommand pull_request dispatch", () => {
             authorLogin: "github-actions[bot]",
           },
         ]),
-        piExecutable: workspace.piExecutable,
       });
 
       expect(result).toMatchObject({ kind: "review" });
@@ -318,17 +464,8 @@ describe("runActionCommand pull_request dispatch", () => {
       checkoutBaseBeforeRun: true,
     });
     try {
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writePullRequestEvent(eventPath, workspace);
-
-      const result = await runActionCommandWithDependencies({
-        rootDir: workspace.rootDir,
-        configDir: ".pipr",
-        eventPath,
-        dryRun: false,
-        env: pullRequestEnv(workspace.rootDir, eventPath),
+      const result = await runPullRequestAction(workspace, {
         githubPublicationClient: failingGitHubPublishingClient(),
-        piExecutable: workspace.piExecutable,
       });
 
       expect(result).toMatchObject({ kind: "ignored" });
@@ -347,6 +484,11 @@ type CommandWorkspace = {
   baseSha: string;
   headSha: string;
   piExecutable: string;
+};
+
+type FakeCheckRuns = {
+  created: Array<{ id: number; name: string; headSha: string; summary?: string }>;
+  updated: Array<{ checkRunId: number; name: string; conclusion: string; summary?: string }>;
 };
 
 async function createCommandWorkspace(
@@ -396,6 +538,7 @@ async function runIssueCommentCommand(
   workspace: CommandWorkspace,
   body: string,
   permission: RepositoryPermission,
+  checks?: FakeCheckRuns,
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
   await writeIssueCommentEvent(eventPath, body);
@@ -406,7 +549,29 @@ async function runIssueCommentCommand(
     dryRun: false,
     env: issueCommentEnv(workspace.rootDir, eventPath),
     githubClient: fakeGitHubClient(workspace, permission),
-    githubPublicationClient: fakeGitHubPublicationClient(workspace),
+    githubPublicationClient: fakeGitHubPublicationClient(workspace, [], checks),
+    piExecutable: workspace.piExecutable,
+  });
+}
+
+async function runPullRequestAction(
+  workspace: CommandWorkspace,
+  options: {
+    githubPublicationClient?: GitHubPublicationClient;
+    trustedProvider?: ActionCommandDependencyOptions["trustedProvider"];
+  } = {},
+) {
+  const eventPath = path.join(workspace.rootDir, "event.json");
+  await writePullRequestEvent(eventPath, workspace);
+  return await runActionCommandWithDependencies({
+    rootDir: workspace.rootDir,
+    configDir: ".pipr",
+    eventPath,
+    dryRun: false,
+    env: pullRequestEnv(workspace.rootDir, eventPath),
+    githubPublicationClient:
+      options.githubPublicationClient ?? fakeGitHubPublicationClient(workspace),
+    trustedProvider: options.trustedProvider,
     piExecutable: workspace.piExecutable,
   });
 }
@@ -429,16 +594,17 @@ async function expectReviewRanAtHead(
 }
 
 function reviewConfigTs(
-  options: { command?: boolean; event?: boolean; parseSideEffect?: boolean } = {},
+  options: { command?: boolean; event?: boolean; parseSideEffect?: boolean; checks?: boolean } = {},
 ): string {
   const template = "$";
   return [
     'import { definePipr } from "@pipr/sdk";',
     "",
     "export default definePipr((pipr) => {",
-    '  const model = pipr.model("deepseek/deepseek-v4-pro", {',
-    '    name: "deepseek",',
-    '    apiKey: pipr.secret("DEEPSEEK_API_KEY"),',
+    "  const model = pipr.model({",
+    '    provider: "deepseek",',
+    '    model: "deepseek-reasoner",',
+    '    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),',
     '    options: { thinking: "high" },',
     "  });",
     "  const reviewer = pipr.agent({",
@@ -448,17 +614,24 @@ function reviewConfigTs(
     "    output: pipr.schemas.review,",
     `    prompt: (input) => pipr.prompt\`Review scope: ${template}{input.scope}\`,`,
     "  });",
-    "  const task = pipr.task('review', async (ctx, input = {}) => {",
+    "  const task = pipr.task({",
+    "    name: 'review',",
+    options.checks ? '    check: { name: "pipr / review" },' : "",
+    "    async run(ctx, input = {}) {",
     "    const manifest = await ctx.change.diffManifest({ compressed: true });",
     "    const result = await ctx.pi.run(reviewer, { manifest, scope: input.scope ?? 'changed' });",
     "    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });",
+    "    },",
     "  });",
-    options.event === false ? "" : '  pipr.on.changeRequest(["opened"], task);',
+    options.event === false ? "" : '  pipr.on.changeRequest({ actions: ["opened"], task });',
+    options.checks ? '  pipr.checks({ aggregate: { name: "pipr / all" } });' : "",
     options.command === false
       ? ""
       : [
-          '  pipr.command("@pipr review [--scope <scope>]", {',
+          "  pipr.command({",
+          '    pattern: "@pipr review [--scope <scope>]",',
           '    permission: "write",',
+          "    task,",
           "    parse(args) {",
           options.parseSideEffect ? "      globalThis.__piprParseCalled = true;" : "",
           "      const scope = args.scope ?? 'changed';",
@@ -467,7 +640,7 @@ function reviewConfigTs(
           "      }",
           "      return { scope };",
           "    },",
-          "  }, task);",
+          "  });",
         ].join("\n"),
     "});",
   ]
@@ -480,13 +653,78 @@ function headOnlyConfigTs(): string {
     'import { definePipr } from "@pipr/sdk";',
     "",
     "export default definePipr((pipr) => {",
-    '  const model = pipr.model("deepseek/deepseek-v4-pro", {',
-    '    name: "deepseek",',
-    '    apiKey: pipr.secret("DEEPSEEK_API_KEY"),',
+    "  const model = pipr.model({",
+    '    provider: "deepseek",',
+    '    model: "deepseek-reasoner",',
+    '    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),',
     "  });",
-    "  const task = pipr.task('head-only', async () => {});",
-    '  pipr.command("@pipr head-only", { permission: "write" }, task);',
+    "  const task = pipr.task({ name: 'head-only', async run() {} });",
+    '  pipr.command({ pattern: "@pipr head-only", permission: "write", task });',
     "  void model;",
+    "});",
+  ].join("\n");
+}
+
+function multiTaskCheckConfigTs(): string {
+  return [
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "export default definePipr((pipr) => {",
+    "  const model = pipr.model({",
+    '    provider: "deepseek",',
+    '    model: "deepseek-v4-pro",',
+    '    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),',
+    "  });",
+    "  const summary = pipr.task({",
+    '    name: "summary",',
+    '    check: { name: "pipr / summary" },',
+    "    async run(ctx) {",
+    '      await ctx.comment("Summary completed.");',
+    "    },",
+    "  });",
+    "  const gate = pipr.task({",
+    '    name: "gate",',
+    '    check: { name: "pipr / gate" },',
+    "    async run() {",
+    '      throw new Error("Sensitive task failure");',
+    "    },",
+    "  });",
+    '  pipr.on.changeRequest({ actions: ["opened"], task: summary });',
+    '  pipr.on.changeRequest({ actions: ["opened"], task: gate });',
+    '  pipr.checks({ aggregate: { name: "pipr / all" } });',
+    "  void model;",
+    "});",
+  ].join("\n");
+}
+
+function explicitModelIdConfigTs(): string {
+  return [
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "export default definePipr((pipr) => {",
+    "  const model = pipr.model({",
+    '    id: "fast",',
+    '    provider: "deepseek",',
+    '    model: "deepseek-reasoner",',
+    '    apiKey: pipr.secret({ name: "FAST_DEEPSEEK_API_KEY" }),',
+    '    options: { thinking: "high" },',
+    "  });",
+    "  const reviewer = pipr.agent({",
+    '    name: "reviewer",',
+    "    model,",
+    '    instructions: "Review this change.",',
+    "    output: pipr.schemas.review,",
+    '    prompt: () => "Review.",',
+    "  });",
+    "  const task = pipr.task({",
+    '    name: "review",',
+    "    async run(ctx) {",
+    "      const manifest = await ctx.change.diffManifest({ compressed: true });",
+    "      const result = await ctx.pi.run(reviewer, { manifest });",
+    "      await ctx.comment(result.summary.body);",
+    "    },",
+    "  });",
+    '  pipr.on.changeRequest({ actions: ["opened"], task });',
     "});",
   ].join("\n");
 }
@@ -501,8 +739,8 @@ function maliciousHeadConfigTs(): string {
     "}",
     "",
     "export default definePipr((pipr) => {",
-    "  const task = pipr.task('head-only', async () => {});",
-    '  pipr.command("@pipr head-only", { permission: "write" }, task);',
+    "  const task = pipr.task({ name: 'head-only', async run() {} });",
+    '  pipr.command({ pattern: "@pipr head-only", permission: "write", task });',
     "});",
   ].join("\n");
 }
@@ -584,6 +822,7 @@ function failingGitHubClient(): GitHubCommandClient {
 function fakeGitHubPublicationClient(
   workspace: CommandWorkspace,
   issueComments: Awaited<ReturnType<GitHubPublicationClient["listIssueComments"]>> = [],
+  checks?: FakeCheckRuns,
 ): GitHubPublicationClient {
   return {
     async getAuthenticatedUserLogin() {
@@ -614,6 +853,24 @@ function fakeGitHubPublicationClient(
       return { id: 3 };
     },
     async resolveReviewThread() {},
+    async createCheckRun(options) {
+      const checkRun = {
+        id: (checks?.created.length ?? 0) + 4,
+        name: options.name,
+        headSha: options.headSha,
+        summary: options.summary,
+      };
+      checks?.created.push(checkRun);
+      return { id: checkRun.id, name: checkRun.name };
+    },
+    async updateCheckRun(options) {
+      checks?.updated.push({
+        checkRunId: options.checkRunId,
+        name: options.name,
+        conclusion: options.conclusion,
+        summary: options.summary,
+      });
+    },
   };
 }
 
@@ -668,6 +925,12 @@ function failingGitHubPublishingClient(): GitHubPublicationClient {
     async resolveReviewThread() {
       throw new Error("GitHub publishing should not be called");
     },
+    async createCheckRun() {
+      throw new Error("GitHub publishing should not be called");
+    },
+    async updateCheckRun() {
+      throw new Error("GitHub publishing should not be called");
+    },
   };
 }
 
@@ -683,6 +946,7 @@ function issueCommentEnv(rootDir: string, eventPath: string): NodeJS.ProcessEnv 
 function pullRequestEnv(rootDir: string, eventPath: string): NodeJS.ProcessEnv {
   return {
     DEEPSEEK_API_KEY: "provider-key",
+    FAST_DEEPSEEK_API_KEY: "provider-key",
     GITHUB_EVENT_NAME: "pull_request",
     GITHUB_EVENT_PATH: eventPath,
     GITHUB_WORKSPACE: rootDir,

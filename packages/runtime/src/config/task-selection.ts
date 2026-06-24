@@ -20,14 +20,17 @@ export function selectRuntimeTasks(options: {
   plan: RuntimePlan;
   event: { action?: string };
   taskName?: string;
-}): Task[] {
+}): Task<unknown>[] {
   if (options.taskName) {
     return options.plan.tasks.filter((task) => task.name === options.taskName);
   }
   return selectChangeRequestTasks(options.plan, options.event);
 }
 
-export function selectChangeRequestTasks(plan: RuntimePlan, event: { action?: string }): Task[] {
+export function selectChangeRequestTasks(
+  plan: RuntimePlan,
+  event: { action?: string },
+): Task<unknown>[] {
   const action = changeRequestActionForEvent(event.action);
   if (!action) {
     return [];

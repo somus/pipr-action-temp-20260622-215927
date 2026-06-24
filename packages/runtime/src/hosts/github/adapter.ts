@@ -68,6 +68,23 @@ export function createGitHubHostAdapter(options: GitHubHostAdapterOptions = {}):
         change: options.change,
       });
     },
+    createCheckRun(options) {
+      return publicationClient.createCheckRun({
+        repo: options.change.repository.slug,
+        name: options.name,
+        headSha: options.change.change.head.sha,
+        summary: options.summary,
+      });
+    },
+    updateCheckRun(options) {
+      return publicationClient.updateCheckRun({
+        repo: options.change.repository.slug,
+        checkRunId: Number(options.checkRun.id),
+        name: options.checkRun.name,
+        conclusion: options.conclusion,
+        summary: options.summary,
+      });
+    },
     mapInlineLocation(item: InlinePublicationItem, _change: ChangeRequestEventContext) {
       return mapFindingToGithubReviewCommentLocation({
         finding: item.finding,

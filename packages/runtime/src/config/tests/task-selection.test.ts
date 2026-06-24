@@ -57,20 +57,18 @@ describe("Task Selection", () => {
 function testPlan() {
   return buildPiprPlan(
     definePipr((pipr) => {
-      const review = pipr.task("review", () => {});
-      const audit = pipr.task("audit", () => {});
-      const ready = pipr.task("ready", () => {});
-      pipr.on.changeRequest(["updated"], review);
-      pipr.on.changeRequest(["updated"], audit);
-      pipr.on.changeRequest(["ready"], ready);
-      pipr.local("review", review);
-      pipr.command(
-        "@pipr review --focus <focus>",
-        {
-          parse: (values) => ({ focus: values.focus }),
-        },
-        review,
-      );
+      const review = pipr.task({ name: "review", run() {} });
+      const audit = pipr.task({ name: "audit", run() {} });
+      const ready = pipr.task({ name: "ready", run() {} });
+      pipr.on.changeRequest({ actions: ["updated"], task: review });
+      pipr.on.changeRequest({ actions: ["updated"], task: audit });
+      pipr.on.changeRequest({ actions: ["ready"], task: ready });
+      pipr.local({ name: "review", task: review });
+      pipr.command({
+        pattern: "@pipr review --focus <focus>",
+        task: review,
+        parse: (values) => ({ focus: values.focus }),
+      });
     }),
   );
 }

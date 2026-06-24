@@ -28,7 +28,11 @@ const z: {
   record<T extends ZodAny>(key: ZodType<string>, value: T): ZodType<Record<string, ZodInfer<T>>>;
   strictObject<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T>>;
   object<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T>>;
+  looseObject<T extends Record<string, ZodAny>>(shape: T): ZodType<ZodObjectOutput<T> & Record<string, unknown>>;
   union<const T extends readonly [ZodAny, ZodAny, ...ZodAny[]]>(schemas: T): ZodType<ZodInfer<T[number]>>;
+  json(): ZodType<JsonValue>;
+  fromJSONSchema(schema: JsonSchema): ZodType<unknown>;
+  toJSONSchema(schema: ZodAny): JsonSchema;
 };
 
 //#region src/index.d.ts
@@ -40,15 +44,19 @@ type SecretRef = {
   readonly kind: "pipr.secret";
   readonly name: string;
 };
+type SecretOptions = {
+  name: string;
+};
 type ModelOptions = {
-  name?: string;
+  id?: string;
+  provider: string;
+  model: string;
   apiKey?: SecretRef;
   options?: Record<string, unknown>;
 };
 type ModelProfile = {
   readonly kind: "pipr.model";
-  readonly id: symbol;
-  readonly name: string;
+  readonly id: string;
   readonly provider: string;
   readonly model: string;
   readonly apiKey?: SecretRef;
@@ -174,15 +182,34 @@ type Agent<Input = unknown, Output = unknown> = {
   extend(patch: AgentExtension<Input, Output>): Agent<Input, Output>;
 };
 type TaskHandler<Input> = (context: TaskContext, input: Input) => void | Promise<void>;
+type TaskCheckOptions = false | {
+  enabled?: boolean;
+  name?: string;
+  required?: boolean;
+};
+type TaskDefinition<Input> = {
+  name: string;
+  check?: TaskCheckOptions;
+  run: TaskHandler<Input>;
+};
 type Task<Input = void> = {
   readonly kind: "pipr.task";
   readonly name: string;
+  readonly check?: TaskCheckOptions;
   readonly handler: TaskHandler<Input>;
 };
 type CommandOptions<Input> = {
   permission?: RepositoryPermission;
   description?: string;
   parse?: (arguments_: Record<string, string>) => Input;
+};
+type CommandRegistrationOptions<Input> = CommandOptions<Input> & {
+  pattern: string;
+  task: Task<Input>;
+};
+type LocalRegistrationOptions<Input> = {
+  name: string;
+  task: Task<Input>;
 };
 type ReviewerOptions = {
   name?: string;
@@ -206,14 +233,11 @@ type ReviewEntrypoints = {
 type ReviewRecipeEntrypointOptions = {
   id: string;
   entrypoints?: ReviewEntrypoints;
-  on?: ChangeRequestAction[] | false;
-  command?: string | false;
-  commandPermission?: RepositoryPermission;
-  localName?: string | false;
-  inlineComments?: {
+  inlineComments?: false | {
     max?: number;
   };
   comment?: CommentValue | ((result: ReviewResult, context: ReviewCommentContext) => CommentValue | Promise<CommentValue>);
+  check?: TaskCheckOptions;
   timeout?: DurationInput;
   paths?: PathFilter;
 };
@@ -251,25 +275,50 @@ type ToolRunOptions<Input> = {
   ctx: unknown;
   signal?: AbortSignal;
 };
+type ChangeRequestRegistrationOptions<Input> = {
+  actions: ChangeRequestAction[];
+  task: Task<Input>;
+};
+type SchemaDefinition<T> = {
+  id: string;
+  schema: ZodSchema<T>;
+};
+type JsonSchemaDefinition = {
+  id: string;
+  schema: JsonSchema;
+};
+type AggregateCheckOptions = false | {
+  enabled?: boolean;
+  name?: string;
+};
+type ChecksOptions = {
+  aggregate?: AggregateCheckOptions;
+};
+type CheckHandle = {
+  pass(summary?: string): void;
+  fail(summary?: string): void;
+  neutral(summary?: string): void;
+};
 type PiprBuilder = {
   readonly tools: BuiltinToolCatalog;
   readonly schemas: BuiltinSchemaCatalog;
   readonly on: {
-    changeRequest<Input = void>(actions: ChangeRequestAction[], task: Task<Input>): void;
+    changeRequest<Input = void>(options: ChangeRequestRegistrationOptions<Input>): void;
   };
-  secret(name: string): SecretRef;
-  model(specification: string, options?: ModelOptions): ModelProfile;
+  secret(options: SecretOptions): SecretRef;
+  model(options: ModelOptions): ModelProfile;
   agent<Input, Output>(definition: AgentDefinition<Input, Output>): Agent<Input, Output>;
-  task<Input = void>(name: string, handler: TaskHandler<Input>): Task<Input>;
+  task<Input = void>(definition: TaskDefinition<Input>): Task<Input>;
   reviewer(options: ReviewerOptions): Reviewer;
   review(options: ReviewRecipeOptions): void;
-  command<Input = void>(pattern: string, options: CommandOptions<Input>, task: Task<Input>): void;
-  local<Input = void>(name: string, task: Task<Input>): void;
+  command<Input = void>(options: CommandRegistrationOptions<Input>): void;
+  local<Input = void>(options: LocalRegistrationOptions<Input>): void;
+  checks(options: ChecksOptions): void;
   limits(options: RuntimeLimits): void;
   use<Handle>(plugin: PiprPlugin<Handle>): Handle;
   tool<Input, Output>(definition: PluginToolDefinition<Input, Output>): AgentTool<Input, Output>;
-  schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T>;
-  jsonSchema<T>(id: string, jsonSchema: JsonSchema): Schema<T>;
+  schema<T>(definition: SchemaDefinition<T>): Schema<T>;
+  jsonSchema<T>(definition: JsonSchemaDefinition): Schema<T>;
   prompt(strings: TemplateStringsArray, ...values: PromptValue[]): PromptText;
   section(title: string, value: PromptValue): PromptText;
   json(value: unknown, options?: JsonPromptOptions): PromptText;
@@ -297,6 +346,7 @@ type RuntimePlan = {
   publication: {
     maxInlineComments?: number;
   };
+  checks?: ChecksOptions;
   limits?: RuntimeLimits;
 };
 type PiprConfigFactory = {
@@ -394,6 +444,7 @@ type TaskContext = {
   readonly review: {
     prior(): Promise<PriorReview>;
   };
+  readonly check: CheckHandle;
   comment(value: CommentValue): Promise<void>;
   readonly log: {
     info(message: string): void;
@@ -410,10 +461,11 @@ function buildPiprPlan(factory: PiprConfigFactory): RuntimePlan;
 /** Defines a typed pipr plugin installer. */
 function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle>;
 /** Defines a typed schema from a Zod schema. */
-function schema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T>;
+function schema<T>(definition: SchemaDefinition<T>): Schema<T>;
 /** Defines a typed schema from JSON Schema. The generic type is caller supplied. */
-function jsonSchema<T>(id: string, schemaDefinition: JsonSchema): Schema<T>;
+function jsonSchema<T>(definition: JsonSchemaDefinition): Schema<T>;
 const schemas: BuiltinSchemaCatalog;
+function md(strings: TemplateStringsArray, ...values: unknown[]): Markdown;
 /** Parses model output for pipr's main pull request review schema. */
 function parseReviewResult(value: unknown): ReviewResult;
 /** Parses a review summary value. */
@@ -422,11 +474,10 @@ function parseReviewSummary(value: unknown): ReviewSummary;
 function parseReviewFinding(value: unknown): ReviewFinding;
 /** Returns a small valid example for the main pull request review schema. */
 function reviewSchemaExample(): ReviewResult;
-function md(strings: TemplateStringsArray, ...values: unknown[]): Markdown;
 /** Renders a prompt source/value into plain text for Pi prompts. */
 function renderPromptValue(value: PromptValue): string;
 //#endregion
-export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, CommentValue, CommandOptions, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonValue, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PriorInlineFinding, PriorReview, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaParseResult, SecretRef, Task, TaskContext, TaskHandler, ToolRunOptions, ZodSchema, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schema, schemas, z };
+export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, AggregateCheckOptions, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, ChangeRequestRegistrationOptions, CheckHandle, ChecksOptions, CommandOptions, CommandRegistrationOptions, CommentValue, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonSchemaDefinition, JsonValue, LocalRegistrationOptions, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PriorInlineFinding, PriorReview, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaDefinition, SchemaParseResult, SecretOptions, SecretRef, Task, TaskCheckOptions, TaskContext, TaskDefinition, TaskHandler, ToolRunOptions, ZodSchema, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schema, schemas, z };
 }
 declare module "@pipr/sdk/review" {
 export { type AgentPromptContext, type ChangeRequestAction, type CommentValue, type DefaultReviewInput, type Markdown, type PathFilter, type PriorInlineFinding, type PriorReview, type ReviewCommentContext, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, md, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewSchemaExample, schemas } from "@pipr/sdk";
