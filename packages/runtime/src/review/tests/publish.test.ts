@@ -351,6 +351,23 @@ describe("publishPublicationPlan", () => {
     expect(client.reviewThreads[0]?.isResolved).toBe(true);
   });
 
+  it("resolves stale inline threads by parent comment when verifier action lacks a thread id", async () => {
+    const { client, publicationPlan } = staleResolutionFixture({ resolved: false });
+    if (publicationPlan.threadActions[0]) {
+      publicationPlan.threadActions[0] = {
+        ...publicationPlan.threadActions[0],
+        threadId: undefined,
+      };
+    }
+
+    const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+
+    expect(result.metadata.inlineResolutionErrors).toEqual([]);
+    expect(client.reviewReplies).toHaveLength(1);
+    expect(client.resolvedThreadIds).toEqual(["thread-1"]);
+    expect(client.reviewThreads[0]?.isResolved).toBe(true);
+  });
+
   it("does not duplicate stale inline resolution replies", async () => {
     const { client, publicationPlan } = staleResolutionFixture({
       resolved: true,

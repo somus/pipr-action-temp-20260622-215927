@@ -720,10 +720,12 @@ async function publishThreadActions(options: {
       options.existingReviewComments.map((comment) => comment.body ?? ""),
     ),
     threadById: new Map<string, GitHubReviewThread>(),
+    threadByCommentId: new Map<number, GitHubReviewThread>(),
   };
   const errors: string[] = [];
   const threadLoad = await loadThreadActionThreads(context, actions);
   context.threadById = threadLoad.threads;
+  context.threadByCommentId = threadLoad.threadsByCommentId;
   if (threadLoad.error) {
     errors.push(threadLoad.error);
   }
@@ -753,6 +755,7 @@ type ThreadActionContext = {
   resolvedKeys: Set<string>;
   responseMarkers: Set<string>;
   threadById: Map<string, GitHubReviewThread>;
+  threadByCommentId: Map<number, GitHubReviewThread>;
 };
 
 async function publishThreadAction(
@@ -768,10 +771,6 @@ async function publishThreadAction(
     errors.push(replyError);
   }
   if (action.kind === "resolve") {
-    if (!action.threadId) {
-      errors.push(`GitHub review thread not found for pipr finding '${action.findingId}'`);
-      return errors;
-    }
     const resolveError = await resolveReviewThread(context, action);
     if (resolveError) {
       errors.push(resolveError);
@@ -784,10 +783,7 @@ function threadActionAlreadyResolved(
   context: ThreadActionContext,
   action: PublicationPlan["threadActions"][number],
 ): boolean {
-  return (
-    action.kind === "resolve" &&
-    Boolean(action.threadId && context.threadById.get(action.threadId)?.isResolved)
-  );
+  return action.kind === "resolve" && Boolean(threadForAction(context, action)?.isResolved);
 }
 
 async function postThreadActionReplyIfNeeded(
@@ -820,19 +816,30 @@ function escapeGeneratedThreadReply(body: string): string {
 async function loadThreadActionThreads(
   context: ThreadActionContext,
   actions: PublicationPlan["threadActions"],
-): Promise<{ threads: Map<string, GitHubReviewThread>; error?: string }> {
-  if (!actions.some((action) => action.kind === "resolve" && action.threadId)) {
-    return { threads: new Map() };
+): Promise<{
+  threads: Map<string, GitHubReviewThread>;
+  threadsByCommentId: Map<number, GitHubReviewThread>;
+  error?: string;
+}> {
+  if (!actions.some((action) => action.kind === "resolve")) {
+    return { threads: new Map(), threadsByCommentId: new Map() };
   }
   try {
     const threads = await context.client.listReviewThreads({
       repo: context.change.repository.slug,
       pullRequestNumber: context.change.change.number,
     });
-    return { threads: new Map(threads.map((thread) => [thread.id, thread])) };
+    return {
+      threads: new Map(threads.map((thread) => [thread.id, thread])),
+      threadsByCommentId: reviewThreadByCommentId(threads),
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { threads: new Map(), error: `list review threads for verifier actions: ${message}` };
+    return {
+      threads: new Map(),
+      threadsByCommentId: new Map(),
+      error: `list review threads for verifier actions: ${message}`,
+    };
   }
 }
 
@@ -878,16 +885,34 @@ async function resolveReviewThread(
   context: ThreadActionContext,
   action: PublicationPlan["threadActions"][number],
 ): Promise<string | undefined> {
+  const thread = threadForAction(context, action);
+  const threadId = action.threadId ?? thread?.id;
+  if (!threadId) {
+    return `GitHub review thread not found for pipr finding '${action.findingId}'`;
+  }
   try {
-    if (action.threadId && context.threadById.get(action.threadId)?.isResolved) {
+    if (thread?.isResolved) {
       return undefined;
     }
-    await context.client.resolveReviewThread({ threadId: action.threadId ?? "" });
+    await context.client.resolveReviewThread({ threadId });
     return undefined;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return `resolve thread '${action.threadId}' for finding '${action.findingId}': ${message}`;
+    return `resolve thread '${threadId}' for finding '${action.findingId}': ${message}`;
   }
+}
+
+function threadForAction(
+  context: ThreadActionContext,
+  action: PublicationPlan["threadActions"][number],
+): GitHubReviewThread | undefined {
+  if (action.kind !== "resolve") {
+    return undefined;
+  }
+  return (
+    (action.threadId ? context.threadById.get(action.threadId) : undefined) ??
+    context.threadByCommentId.get(action.commentId)
+  );
 }
 
 function reviewThreadByCommentId(threads: GitHubReviewThread[]): Map<number, GitHubReviewThread> {
