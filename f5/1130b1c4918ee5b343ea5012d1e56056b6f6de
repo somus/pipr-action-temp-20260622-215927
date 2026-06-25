@@ -1,0 +1,42 @@
+packages/runtime/src/action/commands.ts
+  s_9827e0e2b3b13f::t_ce6d8c1612d2aa 76
+packages/runtime/src/index.ts
+  s_9827e0e2b3b13f::t_b61d622b9a7552 21-22
+packages/runtime/src/config/tests/init.test.ts
+  s_9827e0e2b3b13f::t_a1b6176848d152 8-13,80,187
+  s_9827e0e2b3b13f::t_acca7d3b646fe9 180-186,188-207
+  s_9827e0e2b3b13f::t_e1538fe609e389 51,154
+  s_9827e0e2b3b13f::t_81bfc2582f7725 74-79,81-89
+README.md
+  s_9827e0e2b3b13f::t_96a8a6303b0eb0 11,19-20
+packages/cli/src/tests/main.test.ts
+  s_9827e0e2b3b13f::t_98f3b59dbd9e70 26-29,99-134
+  s_9827e0e2b3b13f::t_6ab4068b3c619c 6,9-12
+packages/runtime/src/action/types.ts
+  s_9827e0e2b3b13f::t_8e213bb66696c0 19
+packages/cli/src/main.ts
+  s_9827e0e2b3b13f::t_f727b3497a4bb6 14,24,48-52,258,266-267
+docs/quickstart.md
+  s_9827e0e2b3b13f::t_e34bc962fe1150 35-37
+docs/index.md
+  s_9827e0e2b3b13f::t_737378b876bc8f 23-25
+packages/runtime/src/config/init.ts
+  s_9827e0e2b3b13f::t_b05b34a540877b 13,22-25,31-34,36-62,67-77,84,86,116-120,127-129,132-134
+  s_9827e0e2b3b13f::t_efe4ca6c09bb01 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "f51130b1c4918ee5b343ea5012d1e56056b6f6de",
+  "prompts": {},
+  "sessions": {
+    "s_9827e0e2b3b13f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eff23-cade-7173-ae9a-18753731cce8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
