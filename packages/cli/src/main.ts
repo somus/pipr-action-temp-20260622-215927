@@ -116,7 +116,10 @@ function writeActionResult(result: ActionCommandResult): void {
     core.info(`pipr ignored event: ${result.reason}`);
     return;
   }
+  writeLoadedActionResult(result);
+}
 
+function writeLoadedActionResult(result: Exclude<ActionCommandResult, { kind: "ignored" }>): void {
   core.info(
     `pipr loaded change #${result.event.change.number} for ${result.event.repository.slug}`,
   );
@@ -133,7 +136,21 @@ function writeActionResult(result: ActionCommandResult): void {
     return;
   }
 
+  if (result.kind === "verifier") {
+    writeVerifierActionResult(result);
+    return;
+  }
+
   writeReviewActionResult(result);
+}
+
+function writeVerifierActionResult(
+  result: Extract<ActionCommandResult, { kind: "verifier" }>,
+): void {
+  core.info(
+    `pipr verifier processed review comment reply with ${result.errors.length} publication error(s)`,
+  );
+  core.setOutput("publication", JSON.stringify({ inlineResolutionErrors: result.errors }));
 }
 
 function writeReviewActionResult(result: Extract<ActionCommandResult, { kind: "review" }>): void {

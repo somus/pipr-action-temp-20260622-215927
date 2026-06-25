@@ -37,6 +37,16 @@ describe("runtime boundary schemas", () => {
       ],
       publication: {
         maxInlineComments: 5,
+        autoResolve: {
+          enabled: true,
+          model: "deepseek",
+          synchronize: true,
+          userReplies: {
+            enabled: true,
+            respondWhenStillValid: true,
+            allowedActors: "author-or-write",
+          },
+        },
       },
     });
 

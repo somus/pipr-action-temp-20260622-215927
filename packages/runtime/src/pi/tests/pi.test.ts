@@ -192,6 +192,24 @@ describe("buildPiArgs", () => {
     expect(expectPiTools(args)).not.toContain("write");
   });
 
+  it("preserves an explicit empty built-in tool list", () => {
+    const args = buildPiArgs(
+      {
+        id: "backup",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        thinking: "high",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+      },
+      "Verify this finding.",
+      "/tmp/pipr-session",
+      undefined,
+      [],
+    );
+
+    expect(expectPiTools(args)).toBe("");
+  });
+
   it("adds registered custom tools through the same explicit extension", () => {
     const args = buildPiArgs(
       {

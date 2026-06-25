@@ -10,7 +10,7 @@ import type {
 import { isBuiltinReadOnlyTool, renderPromptValue } from "@pipr/sdk";
 import { compact, uniqBy } from "lodash-es";
 import { z } from "zod";
-import { piReadOnlyToolNames } from "../pi/contract.js";
+import { type PiReadOnlyToolName, piReadOnlyToolNames } from "../pi/contract.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../pi/runner.js";
 import { piRuntimeReadToolNames } from "../pi/runtime-tools.js";
 import type {
@@ -30,6 +30,7 @@ export type RunReviewAgentOptions = {
   agent: Agent;
   input: unknown;
   runOptions: Parameters<TaskContext["pi"]["run"]>[2];
+  toolMode?: "read-only" | "none";
   runtime: {
     workspace: string;
     config: PiprConfig;
@@ -289,11 +290,14 @@ async function renderAgentPrompt(
   });
   return compact([
     promptSection("Role", "You are pipr's read-only change request agent."),
-    promptSection("Tools", toolsPrompt(options.manifestPrompt)),
+    promptSection("Tools", toolsPrompt(options.manifestPrompt, options.toolMode ?? "read-only")),
     customToolPrompt(options.agentTools),
     pathScopePrompt(options.runOptions?.paths),
     promptSection("Output", outputPrompt(options.agent.definition.output)),
-    promptSection("Diff Manifest", diffManifestPrompt(options.manifestPrompt)),
+    promptSection(
+      "Diff Manifest",
+      diffManifestPrompt(options.manifestPrompt, options.toolMode ?? "read-only"),
+    ),
     promptSection("Instructions", renderPromptValue(options.agent.definition.instructions)),
     options.runOptions?.instructions
       ? promptSection("Run Instructions", renderPromptValue(options.runOptions.instructions))
@@ -310,7 +314,16 @@ function promptSection(title: string, body: string | undefined): string | undefi
   return `${title}:\n${body}`;
 }
 
-function toolsPrompt(manifestPrompt: PreparedDiffManifestPrompt | undefined): string {
+function toolsPrompt(
+  manifestPrompt: PreparedDiffManifestPrompt | undefined,
+  toolMode: "read-only" | "none",
+): string {
+  if (toolMode === "none") {
+    return [
+      "Available tools: none.",
+      "Use only the prompt context. Do not request repository, filesystem, network, platform, or shell access.",
+    ].join("\n");
+  }
   const toolNames =
     manifestPrompt?.mode === "condensed"
       ? [...piReadOnlyToolNames, ...piRuntimeReadToolNames]
@@ -399,7 +412,11 @@ async function runPiForPrompt(
     prompt,
     env: options.runtime.env,
     piExecutable: options.runtime.piExecutable,
-    runtimeTools: runtimeToolsForPrompt(options.manifest, options.manifestPrompt),
+    builtinTools: builtinToolsForPrompt(options.toolMode ?? "read-only"),
+    runtimeTools:
+      options.toolMode === "none"
+        ? undefined
+        : runtimeToolsForPrompt(options.manifest, options.manifestPrompt),
     timeoutSeconds: effectiveTimeoutSeconds(
       options.runOptions?.timeout ?? options.agent.definition.timeout,
       options.runtime.config.limits?.timeoutSeconds,
@@ -407,6 +424,10 @@ async function runPiForPrompt(
   });
   assertSuccessfulPiResult(result);
   return result;
+}
+
+function builtinToolsForPrompt(toolMode: "read-only" | "none"): readonly PiReadOnlyToolName[] {
+  return toolMode === "none" ? [] : piReadOnlyToolNames;
 }
 
 function effectiveTimeoutSeconds(
@@ -450,6 +471,7 @@ function runtimeToolsForPrompt(
 
 function diffManifestPrompt(
   manifestPrompt: PreparedDiffManifestPrompt | undefined,
+  toolMode: "read-only" | "none",
 ): string | undefined {
   if (!manifestPrompt) {
     return undefined;
@@ -472,7 +494,9 @@ function diffManifestPrompt(
     "",
     "Manifest:",
     JSON.stringify(manifestPrompt.manifest, null, 2),
-    manifestPrompt.mode === "condensed" ? condensedManifestToolsPrompt() : undefined,
+    manifestPrompt.mode === "condensed" && toolMode === "read-only"
+      ? condensedManifestToolsPrompt()
+      : undefined,
   ]).join("\n");
 }
 

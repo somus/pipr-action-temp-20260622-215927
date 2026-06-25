@@ -45,11 +45,25 @@ const diffManifestLimitsConfigSchema = z.strictObject({
   toolResponseMaxBytes: z.number().int().positive().optional(),
 });
 
+const autoResolveAllowedActorsSchema = z.enum(["author-or-write", "write", "any"]);
+
+const autoResolveConfigSchema = z.strictObject({
+  enabled: z.boolean(),
+  model: nonEmptyStringSchema.optional(),
+  synchronize: z.boolean(),
+  userReplies: z.strictObject({
+    enabled: z.boolean(),
+    respondWhenStillValid: z.boolean(),
+    allowedActors: autoResolveAllowedActorsSchema,
+  }),
+});
+
 const piprConfigSchema = z.strictObject({
   defaultProvider: nonEmptyStringSchema,
   providers: z.array(providerConfigSchema).min(1),
   publication: z.strictObject({
     maxInlineComments: z.number().int().min(0).max(50).optional(),
+    autoResolve: autoResolveConfigSchema,
   }),
   limits: z
     .strictObject({
@@ -174,6 +188,7 @@ const commandPermissionLevelSchema = z.enum(["read", "triage", "write", "maintai
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export type PathFilter = z.infer<typeof pathFilterSchema>;
 export type DiffManifestLimitsConfig = z.infer<typeof diffManifestLimitsConfigSchema>;
+export type AutoResolveConfig = z.infer<typeof autoResolveConfigSchema>;
 export type PiprConfig = z.infer<typeof piprConfigSchema>;
 export type RuntimeSettings = z.infer<typeof runtimeSettingsSchema>;
 export type PlatformInfo = z.infer<typeof platformInfoSchema>;

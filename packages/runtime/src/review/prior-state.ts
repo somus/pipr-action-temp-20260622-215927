@@ -6,6 +6,7 @@ import { reviewSideSchema } from "../types.js";
 export const mainCommentMarker = "pipr:main-comment";
 const inlineFindingMarkerPrefix = "pipr:finding";
 const resolvedFindingMarkerPrefix = "pipr:resolved";
+const verifierResponseMarkerPrefix = "pipr:verifier-response";
 const maxStoredFindings = 100;
 
 export const findingIdSchema = z
@@ -93,11 +94,7 @@ export function buildPriorReviewState(options: {
     if (nextFindings.has(prior.id)) {
       continue;
     }
-    const status =
-      prior.status === "open" && scopedPriorState?.reviewedHeadSha !== options.reviewedHeadSha
-        ? "resolved"
-        : prior.status;
-    nextFindings.set(prior.id, priorFindingRecordSchema.parse({ ...prior, status }));
+    nextFindings.set(prior.id, priorFindingRecordSchema.parse(prior));
   }
 
   return {
@@ -108,6 +105,20 @@ export function buildPriorReviewState(options: {
       findings: cappedFindings([...nextFindings.values()], currentFindingIds),
     }),
   };
+}
+
+export function resolvePriorFindings(
+  state: PriorReviewState,
+  findingIds: Iterable<string>,
+): PriorReviewState {
+  const resolved = new Set(findingIds);
+  return priorReviewStateSchema.parse({
+    ...state,
+    findings: state.findings.map((finding) => ({
+      ...finding,
+      status: resolved.has(finding.id) ? "resolved" : finding.status,
+    })),
+  });
 }
 
 export function priorReviewStateForSelectedTasks(
@@ -197,6 +208,10 @@ export function renderResolvedFindingMarker(findingId: string, reviewedHeadSha: 
   return `<!-- ${resolvedFindingMarkerPrefix} id=${findingId} head=${reviewedHeadSha} -->`;
 }
 
+export function renderVerifierResponseMarker(findingId: string, responseKey: string): string {
+  return `<!-- ${verifierResponseMarkerPrefix} id=${findingId} key=${responseKey} -->`;
+}
+
 export function extractInlineFindingMarkerRecords(commentBodies: string[]): FindingMarkerRecord[] {
   return extractFindingMarkerRecords(commentBodies, inlineFindingMarkerPrefix);
 }
@@ -209,6 +224,43 @@ export function extractResolvedFindingMarkerRecords(
   commentBodies: string[],
 ): FindingMarkerRecord[] {
   return extractFindingMarkerRecords(commentBodies, resolvedFindingMarkerPrefix);
+}
+
+export function applyResolvedFindingMarkers(
+  state: PriorReviewState,
+  commentBodies: string[],
+): PriorReviewState {
+  const resolvedMarkers = new Set(
+    extractResolvedFindingMarkerRecords(commentBodies).map(
+      (record) => `${record.id}:${record.head}`,
+    ),
+  );
+  return priorReviewStateSchema.parse({
+    ...state,
+    findings: state.findings.map((finding) => ({
+      ...finding,
+      status:
+        finding.lastCommentedHeadSha &&
+        resolvedMarkers.has(`${finding.id}:${finding.lastCommentedHeadSha}`)
+          ? "resolved"
+          : finding.status,
+    })),
+  });
+}
+
+export function extractVerifierResponseMarkers(commentBodies: string[]): Set<string> {
+  return new Set(
+    extractFindingMarkerRecords(commentBodies, verifierResponseMarkerPrefix).map(
+      (record) => record.marker,
+    ),
+  );
+}
+
+export function isPiprThreadActionReplyBody(body: string | null | undefined): boolean {
+  const parsed = parsePiprMarker(firstNonEmptyLine(body));
+  return (
+    parsed?.name === resolvedFindingMarkerPrefix || parsed?.name === verifierResponseMarkerPrefix
+  );
 }
 
 export function applyInlineFindingMarkers(
@@ -325,19 +377,22 @@ function extractFindingMarkerRecords(
   prefix: string,
 ): FindingMarkerRecord[] {
   return commentBodies.flatMap((body) =>
-    [...body.matchAll(/<!--\s*pipr:[A-Za-z0-9:_-]+\s+[^>]*-->/g)]
-      .map((match) => parseFindingHeadMarker(match[0], prefix))
-      .filter((marker): marker is FindingMarkerRecord => marker !== undefined),
+    [parseFindingHeadMarker(firstNonEmptyLine(body), prefix)].filter(
+      (marker): marker is FindingMarkerRecord => marker !== undefined,
+    ),
   );
 }
 
-function parseFindingHeadMarker(comment: string, prefix: string): FindingMarkerRecord | undefined {
+function parseFindingHeadMarker(
+  comment: string | undefined,
+  prefix: string,
+): FindingMarkerRecord | undefined {
   const parsed = parsePiprMarker(comment);
   if (!parsed || parsed.name !== prefix) {
     return undefined;
   }
   const id = parsed.attrs.id;
-  const head = parsed.attrs.head;
+  const head = parsed.attrs.head ?? parsed.attrs.key;
   if (!id || !head || !findingIdSchema.safeParse(id).success) {
     return undefined;
   }
@@ -347,7 +402,9 @@ function parseFindingHeadMarker(comment: string, prefix: string): FindingMarkerR
     marker:
       prefix === inlineFindingMarkerPrefix
         ? inlineFindingMarker(id, head)
-        : resolvedFindingMarker(id, head),
+        : prefix === resolvedFindingMarkerPrefix
+          ? resolvedFindingMarker(id, head)
+          : `${verifierResponseMarkerPrefix}:${id}:${head}`,
   };
 }
 

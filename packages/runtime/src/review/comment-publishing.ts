@@ -5,6 +5,7 @@ import {
   type PublicationMetadata,
   type PublicationPlan,
   prepareInlinePublicationItems,
+  type ThreadAction,
 } from "./comment.js";
 import { buildPriorReviewState, type PriorReviewState } from "./prior-state.js";
 
@@ -16,6 +17,7 @@ export type BuildCommentPublishingPlanOptions = {
   metadata: Omit<PublicationMetadata, "cappedInlineFindings">;
   maxInlineComments?: number;
   priorReviewState?: PriorReviewState;
+  threadActions?: ThreadAction[];
 };
 
 export type CommentPublishingPlan = {
@@ -45,6 +47,7 @@ export function buildCommentPublishingPlan(
     maxInlineComments: options.maxInlineComments,
     metadata: options.metadata,
     reviewState,
+    threadActions: options.threadActions,
   });
   return {
     publicationPlan,

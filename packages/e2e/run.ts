@@ -87,6 +87,8 @@ function dryRunWorkflow(item: Scenario): string {
     "  pull_request:",
     "  issue_comment:",
     "    types: [created]",
+    "  pull_request_review_comment:",
+    "    types: [created]",
     "",
     "permissions:",
     "  contents: read",

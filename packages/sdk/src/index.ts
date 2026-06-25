@@ -322,6 +322,34 @@ export type ChecksOptions = {
   aggregate?: AggregateCheckOptions;
 };
 
+export type AutoResolveAllowedActors = "author-or-write" | "write" | "any";
+
+export type AutoResolveUserRepliesOptions = {
+  enabled?: boolean;
+  respondWhenStillValid?: boolean;
+  allowedActors?: AutoResolveAllowedActors;
+};
+
+export type AutoResolveOptions =
+  | false
+  | {
+      enabled?: boolean;
+      model?: ModelProfile;
+      synchronize?: boolean;
+      userReplies?: boolean | AutoResolveUserRepliesOptions;
+    };
+
+export type PublicationOptions = {
+  maxInlineComments?: number;
+  autoResolve?: AutoResolveOptions;
+};
+
+export type PiprConfigOptions = {
+  publication?: PublicationOptions;
+  checks?: ChecksOptions;
+  limits?: RuntimeLimits;
+};
+
 export type CheckHandle = {
   pass(summary?: string): void;
   fail(summary?: string): void;
@@ -340,6 +368,7 @@ export type PiprBuilder = {
   task<Input = void>(definition: TaskDefinition<Input>): Task<Input>;
   reviewer(options: ReviewerOptions): Reviewer;
   review(options: ReviewRecipeOptions): void;
+  config(options: PiprConfigOptions): void;
   command<Input = void>(options: CommandRegistrationOptions<Input>): void;
   local<Input = void>(options: LocalRegistrationOptions<Input>): void;
   checks(options: ChecksOptions): void;
@@ -367,9 +396,7 @@ export type RuntimePlan = {
   }>;
   locals: Array<{ name: string; task: Task<unknown> }>;
   tools: AgentTool[];
-  publication: {
-    maxInlineComments?: number;
-  };
+  publication: PublicationOptions;
   checks?: ChecksOptions;
   limits?: RuntimeLimits;
 };
@@ -676,6 +703,14 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       assertKnownReviewRecipeOptions(options);
       registerReviewRecipe(api, publication, options);
     },
+    config(options) {
+      if (!options || typeof options !== "object") {
+        throw new Error("pipr.config requires an options object");
+      }
+      mergePublicationConfig(publication, options.publication);
+      checks = mergeConfigField("checks", checks, options.checks);
+      limits = mergeLimits(limits, options.limits);
+    },
     command(options) {
       if (typeof options.pattern !== "string" || !options.task) {
         throw new Error("pipr.command requires { pattern, task }");
@@ -703,17 +738,10 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       locals.push({ name: options.name, task: options.task as Task<unknown> });
     },
     checks(options) {
-      checks = options;
+      checks = mergeConfigField("checks", checks, options);
     },
     limits(options) {
-      limits = {
-        ...limits,
-        ...options,
-        diffManifest:
-          (options.diffManifest ?? limits?.diffManifest)
-            ? { ...limits?.diffManifest, ...options.diffManifest }
-            : undefined,
-      };
+      limits = mergeLimits(limits, options);
     },
     use(plugin) {
       return plugin.setup(api);
@@ -1016,6 +1044,99 @@ function updateReviewRecipePublication(
     throw new Error("pipr.review inlineComments settings must match across review recipes");
   }
   publication.maxInlineComments = maxInlineComments;
+}
+
+function mergePublicationConfig(
+  target: RuntimePlan["publication"],
+  next: PublicationOptions | undefined,
+): void {
+  if (!next) {
+    return;
+  }
+  if (next.maxInlineComments !== undefined) {
+    if (
+      target.maxInlineComments !== undefined &&
+      target.maxInlineComments !== next.maxInlineComments
+    ) {
+      throw new Error("pipr.config publication.maxInlineComments conflicts with existing value");
+    }
+    target.maxInlineComments = next.maxInlineComments;
+  }
+  if (next.autoResolve !== undefined) {
+    if (
+      target.autoResolve !== undefined &&
+      stableJson(target.autoResolve) !== stableJson(next.autoResolve)
+    ) {
+      throw new Error("pipr.config publication.autoResolve conflicts with existing value");
+    }
+    target.autoResolve = next.autoResolve;
+  }
+}
+
+function mergeConfigField<T>(
+  name: string,
+  current: T | undefined,
+  next: T | undefined,
+): T | undefined {
+  if (next === undefined) {
+    return current;
+  }
+  if (current !== undefined && stableJson(current) !== stableJson(next)) {
+    throw new Error(`pipr.config ${name} conflicts with existing value`);
+  }
+  return next;
+}
+
+function mergeLimits(current: RuntimeLimits | undefined, next: RuntimeLimits | undefined) {
+  if (!next) {
+    return current;
+  }
+  assertRuntimeLimitConflicts(current, next);
+  return {
+    ...current,
+    ...next,
+    diffManifest:
+      (next.diffManifest ?? current?.diffManifest)
+        ? { ...current?.diffManifest, ...next.diffManifest }
+        : undefined,
+  };
+}
+
+function assertRuntimeLimitConflicts(
+  current: RuntimeLimits | undefined,
+  next: RuntimeLimits,
+): void {
+  const currentRecord = current as Record<string, unknown> | undefined;
+  for (const [key, value] of Object.entries(next)) {
+    if (key === "diffManifest") {
+      continue;
+    }
+    if (
+      value !== undefined &&
+      currentRecord?.[key] !== undefined &&
+      stableJson(currentRecord[key]) !== stableJson(value)
+    ) {
+      throw new Error(`pipr.config limits.${key} conflicts with existing value`);
+    }
+  }
+  assertDiffManifestLimitConflicts(current, next);
+}
+
+function assertDiffManifestLimitConflicts(
+  current: RuntimeLimits | undefined,
+  next: RuntimeLimits,
+): void {
+  if (current?.diffManifest && next.diffManifest) {
+    for (const [key, value] of Object.entries(next.diffManifest)) {
+      if (
+        value !== undefined &&
+        (current.diffManifest as Record<string, unknown>)[key] !== undefined &&
+        (current.diffManifest as Record<string, unknown>)[key] !== value
+      ) {
+        throw new Error(`pipr.config limits.diffManifest.${key} conflicts with existing value`);
+      }
+    }
+  }
 }
 
 /** Parses model output for pipr's main pull request review schema. */

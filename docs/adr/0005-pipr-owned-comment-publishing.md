@@ -13,8 +13,9 @@ Comment Publishing:
 - upserts the Main Review Comment by hidden marker and stores pipr-owned review state on that marker
 - caps Inline Review Comments only when `publication.maxInlineComments` is configured
 - dedupes Inline Review Comments by stable finding id, reviewed head SHA, and pipr-owned same-head location overlap
-- passes open prior findings into rerun prompts so the reviewer can reuse prior finding ids or let fixed findings become resolved
-- replies to stale GitHub Inline Review Comments with the resolving commit link and resolves their review threads when prior findings are fixed
+- passes open prior finding locations into rerun prompts so reviewers can keep prior finding ids without resolving by omission
+- resolves fixed prior findings only through explicit verifier output and thread actions
+- replies to stale GitHub Inline Review Comments with the resolving commit link and resolves their review threads when the verifier marks prior findings fixed
 - leaves provider-specific inline comment payload mapping to the code host adapter
 - reports comment publishing failures in metadata and fails the Action for the MVP
 

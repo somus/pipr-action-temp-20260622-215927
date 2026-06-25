@@ -26,6 +26,7 @@ import { buildCommentPublishingPlan } from "./comment-publishing.js";
 import { type PriorReviewState, priorReviewStateForSelectedTasks } from "./prior-state.js";
 import { validatePrReview } from "./review.js";
 import { type PiRunner, resolveProvider, runReviewAgent } from "./review-run.js";
+import { runInternalVerifier } from "./verifier.js";
 
 export type { PiRunner } from "./review-run.js";
 export type DiffManifestBuilder = (options: BuildDiffManifestOptions) => DiffManifest;
@@ -61,6 +62,7 @@ export type RunTaskRuntimeOptions = {
   priorMainComment?: string;
   loadPriorReviewState?: () => Promise<PriorReviewState | undefined>;
   loadPriorMainComment?: () => Promise<string | undefined>;
+  loadInlineThreadContexts?: () => Promise<import("../hosts/types.js").InlineThreadContext[]>;
   checkSink?: RuntimeCheckSink;
 };
 
@@ -196,6 +198,13 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     expectedHeadSha: options.event.change.head.sha,
     pathScopeForFinding: (_finding, index) => output.findings[index]?.paths,
   });
+  const verifier = await runSynchronizeVerifier({
+    options,
+    config,
+    provider,
+    diffManifest,
+    priorReviewState,
+  });
   const publishing = buildCommentPublishingPlan({
     event: options.event,
     main:
@@ -205,14 +214,17 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     validated,
     manifest: diffManifest,
     maxInlineComments: config.publication.maxInlineComments,
-    priorReviewState,
+    priorReviewState: verifier.priorReviewState,
+    threadActions: verifier.threadActions,
     metadata: {
       runtimeVersion,
       trustedConfigSha: options.trustedConfigSha,
       trustedConfigHash: options.trustedConfigHash,
       reviewedHeadSha: options.event.change.head.sha,
       providerModels:
-        output.providerModels.length > 0 ? uniq(output.providerModels) : [provider.model],
+        output.providerModels.length + verifier.providerModels.length > 0
+          ? uniq([...output.providerModels, ...verifier.providerModels])
+          : [provider.model],
       selectedTasks,
       failedTasks: [],
       validFindings: validated.validFindings.length,
@@ -235,6 +247,41 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     ),
     repairAttempted: output.repairAttempted,
   };
+}
+
+async function runSynchronizeVerifier(options: {
+  options: RunTaskRuntimeOptions;
+  config: PiprConfig;
+  provider: ProviderConfig;
+  diffManifest: DiffManifest;
+  priorReviewState: PriorReviewState | undefined;
+}): Promise<Awaited<ReturnType<typeof runInternalVerifier>>> {
+  if (options.options.event.rawAction !== "synchronize") {
+    return {
+      priorReviewState: options.priorReviewState,
+      threadActions: [],
+      providerModels: [],
+    };
+  }
+  const config = options.config;
+  return await runInternalVerifier({
+    workspace: options.options.workspace,
+    config,
+    event: options.options.event,
+    provider: options.provider,
+    verifierProvider: resolveProvider(
+      config,
+      config.publication.autoResolve.model ?? config.defaultProvider,
+    ),
+    plan: options.options.plan,
+    env: options.options.env,
+    piExecutable: options.options.piExecutable,
+    piRunner: options.options.piRunner,
+    diffManifest: options.diffManifest,
+    priorReviewState: options.priorReviewState,
+    threadContexts: (await options.options.loadInlineThreadContexts?.()) ?? [],
+    mode: { kind: "synchronize" },
+  });
 }
 
 function createTaskContext(

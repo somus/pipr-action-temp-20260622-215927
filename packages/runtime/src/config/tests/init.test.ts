@@ -36,6 +36,8 @@ describe("initOfficialMinimalProject", () => {
     const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
     expect(workflow).toContain("uses: somus/pipr@main");
     expect(workflow).toContain("checks: write");
+    expect(workflow).toContain("pull_request_review_comment:");
+    expect(workflow).toContain("types: [created]");
     expect(workflow).not.toContain("config-dir:");
     expect(workflow).not.toContain("provider-id:");
     expect(workflow).not.toContain("provider: deepseek");

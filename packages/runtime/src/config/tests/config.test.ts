@@ -47,6 +47,84 @@ describe("loadRuntimeProject", () => {
     expect(settings.config.publication.maxInlineComments).toBe(5);
   });
 
+  it("defaults publication autoResolve to verifier-enabled defaults", async () => {
+    const rootDir = await newInitializedProject();
+
+    const settings = await loadRuntimeConfig({ rootDir });
+
+    expect(settings.config.publication.autoResolve).toEqual({
+      enabled: true,
+      model: "deepseek/deepseek-v4-pro",
+      synchronize: true,
+      userReplies: {
+        enabled: true,
+        respondWhenStillValid: true,
+        allowedActors: "author-or-write",
+      },
+    });
+  });
+
+  it("normalizes disabled publication autoResolve", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(rootDir, configWithAutoResolve("false"));
+
+    const settings = await loadRuntimeConfig({ rootDir });
+
+    expect(settings.config.publication.autoResolve).toEqual({
+      enabled: false,
+      synchronize: false,
+      userReplies: {
+        enabled: false,
+        respondWhenStillValid: true,
+        allowedActors: "author-or-write",
+      },
+    });
+  });
+
+  it("normalizes partial publication autoResolve options and selected model", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(
+      rootDir,
+      configWithAutoResolve(`{
+        model: fastModel,
+        synchronize: false,
+        userReplies: {
+          enabled: true,
+          respondWhenStillValid: false,
+          allowedActors: "write",
+        },
+      }`),
+    );
+
+    const settings = await loadRuntimeConfig({ rootDir });
+
+    expect(settings.config.publication.autoResolve).toEqual({
+      enabled: true,
+      model: "fast-verifier",
+      synchronize: false,
+      userReplies: {
+        enabled: true,
+        respondWhenStillValid: false,
+        allowedActors: "write",
+      },
+    });
+  });
+
+  it("rejects publication autoResolve model when disabled", async () => {
+    const rootDir = await newInitializedProject();
+    await writePiprConfig(
+      rootDir,
+      configWithAutoResolve(`{
+        enabled: false,
+        model: fastModel,
+      }`),
+    );
+
+    await expect(loadRuntimeConfig({ rootDir })).rejects.toThrow(
+      "publication.autoResolve.model cannot be set when autoResolve is disabled",
+    );
+  });
+
   it("checks provider env vars only when requested", async () => {
     const rootDir = await newInitializedProject();
 
@@ -273,4 +351,35 @@ async function newInitializedProject(): Promise<string> {
 
 async function writePiprConfig(rootDir: string, contents: string): Promise<void> {
   await Bun.write(path.join(rootDir, ".pipr", "config.ts"), contents);
+}
+
+function configWithAutoResolve(autoResolve: string): string {
+  return `import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+  const model = pipr.model({
+    id: "deepseek/deepseek-v4-pro",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
+  });
+  const fastModel = pipr.model({
+    id: "fast-verifier",
+    provider: "deepseek",
+    model: "deepseek-v4",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
+  });
+  pipr.config({
+    publication: {
+      autoResolve: ${autoResolve},
+    },
+  });
+  pipr.review({
+    id: "review",
+    model,
+    instructions: "Review this change.",
+  });
+  void fastModel;
+});
+`;
 }

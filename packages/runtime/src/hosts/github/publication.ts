@@ -4,18 +4,21 @@ import { firstNonEmptyLine } from "../../commands/grammar.js";
 import type { PublicationPlan } from "../../review/comment.js";
 import {
   applyInlineFindingMarkers,
+  applyResolvedFindingMarkers,
   extractInlineFindingMarkerRecords,
   extractPriorReviewState,
   extractResolvedFindingMarkerRecords,
+  extractVerifierResponseMarkers,
   mainCommentMarker,
-  type PriorFindingRecord,
   type PriorReviewState,
   parseMainCommentIdentity,
   renderResolvedFindingMarker,
+  renderVerifierResponseMarker,
 } from "../../review/prior-state.js";
 import { PublicationError, type PublicationResult } from "../../review/publication-result.js";
 import { githubApiVersion, parseRepoSlug } from "../../shared/github.js";
 import type { ChangeRequestEventContext } from "../../types.js";
+import type { InlineThreadContext } from "../types.js";
 import { mapFindingToGithubReviewCommentLocation } from "./inline.js";
 
 const githubCommentFields = {
@@ -407,7 +410,56 @@ export async function loadGitHubPriorReviewState(options: {
   )
     .filter((comment) => comment.authorLogin === ownerLogin)
     .map((comment) => comment.body ?? "");
-  return applyInlineFindingMarkers(state, inlineBodies);
+  return applyResolvedFindingMarkers(applyInlineFindingMarkers(state, inlineBodies), inlineBodies);
+}
+
+export async function loadGitHubInlineThreadContexts(options: {
+  client: GitHubPublicationClient;
+  change: ChangeRequestEventContext;
+}): Promise<InlineThreadContext[]> {
+  const ownerLogin = await options.client.getAuthenticatedUserLogin();
+  const comments = await options.client.listReviewComments({
+    repo: options.change.repository.slug,
+    pullRequestNumber: options.change.change.number,
+  });
+  const ownerComments = comments.filter((comment) => comment.authorLogin === ownerLogin);
+  const threads = await options.client.listReviewThreads({
+    repo: options.change.repository.slug,
+    pullRequestNumber: options.change.change.number,
+  });
+  const threadByCommentId = reviewThreadByCommentId(threads);
+  const commentById = new Map(comments.map((comment) => [comment.id, comment]));
+
+  return ownerComments.flatMap((comment) => {
+    const marker = extractInlineFindingMarkerRecords([comment.body ?? ""])[0];
+    if (!marker) {
+      return [];
+    }
+    const thread = threadByCommentId.get(comment.id);
+    return [
+      {
+        findingId: marker.id,
+        findingHeadSha: marker.head,
+        parentCommentId: comment.id,
+        parentBody: comment.body ?? "",
+        threadId: thread?.id,
+        threadResolved: thread?.isResolved ?? false,
+        comments:
+          thread?.commentIds.flatMap((id) => {
+            const item = commentById.get(id);
+            return item
+              ? [
+                  {
+                    id: item.id,
+                    body: item.body ?? "",
+                    authorLogin: item.authorLogin,
+                  },
+                ]
+              : [];
+          }) ?? [],
+      },
+    ];
+  });
 }
 
 export async function loadGitHubPriorMainComment(options: {
@@ -433,27 +485,13 @@ export async function publishGitHubPublicationPlan(options: {
   change: ChangeRequestEventContext;
   plan: PublicationPlan;
 }): Promise<PublicationResult> {
-  const currentHeadSha = await options.client.getPullRequestHeadSha({
-    repo: options.change.repository.slug,
-    pullRequestNumber: options.change.change.number,
-  });
-  if (currentHeadSha !== options.plan.metadata.reviewedHeadSha) {
-    throw new PublicationError(
-      `Change request head changed from '${options.plan.metadata.reviewedHeadSha}' to '${currentHeadSha}' before publication`,
-      undefined,
-    );
-  }
+  await assertCurrentHeadSha(options.client, options.change, options.plan.metadata.reviewedHeadSha);
 
   const ownerLogin = await options.client.getAuthenticatedUserLogin();
   const mainComment = await upsertMainComment({ ...options, ownerLogin });
-  const existingReviewComments = (
-    await options.client.listReviewComments({
-      repo: options.change.repository.slug,
-      pullRequestNumber: options.change.change.number,
-    })
-  ).filter((comment) => comment.authorLogin === ownerLogin);
+  const existingReviewComments = await listOwnedReviewComments({ ...options, ownerLogin });
   const inline = await publishInlineComments({ ...options, ownerLogin, existingReviewComments });
-  const resolvedInline = await resolveStaleInlineThreads({
+  const threadActions = await publishThreadActions({
     ...options,
     existingReviewComments,
   });
@@ -467,7 +505,7 @@ export async function publishGitHubPublicationPlan(options: {
     metadata: {
       ...options.plan.metadata,
       inlinePublicationErrors: inline.errors,
-      inlineResolutionErrors: resolvedInline.errors,
+      inlineResolutionErrors: threadActions.errors,
     },
   };
   if (inline.errors.length > 0) {
@@ -477,6 +515,66 @@ export async function publishGitHubPublicationPlan(options: {
     });
   }
   return result;
+}
+
+export async function publishGitHubThreadActions(options: {
+  client: GitHubPublicationClient;
+  change: ChangeRequestEventContext;
+  actions: PublicationPlan["threadActions"];
+  reviewedHeadSha: string;
+}): Promise<{ errors: string[] }> {
+  if (options.actions.length === 0) {
+    return { errors: [] };
+  }
+  const headMismatch = await currentHeadShaMismatch(
+    options.client,
+    options.change,
+    options.reviewedHeadSha,
+  );
+  if (headMismatch) {
+    return { errors: [headMismatch] };
+  }
+  const ownerLogin = await options.client.getAuthenticatedUserLogin();
+  const existingReviewComments = await listOwnedReviewComments({ ...options, ownerLogin });
+  return await publishThreadActions({ ...options, existingReviewComments });
+}
+
+async function assertCurrentHeadSha(
+  client: GitHubPublicationClient,
+  change: ChangeRequestEventContext,
+  reviewedHeadSha: string,
+): Promise<void> {
+  const headMismatch = await currentHeadShaMismatch(client, change, reviewedHeadSha);
+  if (headMismatch) {
+    throw new PublicationError(headMismatch, undefined);
+  }
+}
+
+async function currentHeadShaMismatch(
+  client: GitHubPublicationClient,
+  change: ChangeRequestEventContext,
+  reviewedHeadSha: string,
+): Promise<string | undefined> {
+  const currentHeadSha = await client.getPullRequestHeadSha({
+    repo: change.repository.slug,
+    pullRequestNumber: change.change.number,
+  });
+  return currentHeadSha === reviewedHeadSha
+    ? undefined
+    : `Change request head changed from '${reviewedHeadSha}' to '${currentHeadSha}' before publication`;
+}
+
+async function listOwnedReviewComments(options: {
+  client: GitHubPublicationClient;
+  change: ChangeRequestEventContext;
+  ownerLogin: string;
+}): Promise<GitHubReviewComment[]> {
+  return (
+    await options.client.listReviewComments({
+      repo: options.change.repository.slug,
+      pullRequestNumber: options.change.change.number,
+    })
+  ).filter((comment) => comment.authorLogin === options.ownerLogin);
 }
 
 async function upsertMainComment(options: {
@@ -596,165 +694,200 @@ async function publishInlineCommentItem(options: {
   }
 }
 
-async function resolveStaleInlineThreads(options: {
+async function publishThreadActions(options: {
   client: GitHubPublicationClient;
   change: ChangeRequestEventContext;
-  plan: PublicationPlan;
+  actions?: PublicationPlan["threadActions"];
+  plan?: PublicationPlan;
+  reviewedHeadSha?: string;
   existingReviewComments: GitHubReviewComment[];
 }): Promise<{ errors: string[] }> {
-  const candidates = staleInlineResolutionCandidates({
-    findings: options.plan.reviewState.findings,
-    comments: options.existingReviewComments,
-  });
-  if (candidates.length === 0) {
+  const actions = options.actions ?? options.plan?.threadActions ?? [];
+  if (actions.length === 0) {
     return { errors: [] };
   }
-
-  const context = {
+  const context: ThreadActionContext = {
     client: options.client,
     change: options.change,
-    reviewedHeadSha: options.plan.metadata.reviewedHeadSha,
-    commitUrl: commitUrlFor(options.change, options.plan.metadata.reviewedHeadSha),
-    resolvedFindingKeys: new Set(
+    reviewedHeadSha: threadActionHeadSha(options),
+    commitUrl: commitUrlFor(options.change, threadActionHeadSha(options)),
+    resolvedKeys: new Set(
       extractResolvedFindingMarkerRecords(
         options.existingReviewComments.map((comment) => comment.body ?? ""),
       ).map((record) => `${record.id}:${record.head}`),
     ),
-    threadByCommentId: new Map<number, GitHubReviewThread>(),
+    responseMarkers: extractVerifierResponseMarkers(
+      options.existingReviewComments.map((comment) => comment.body ?? ""),
+    ),
+    threadById: new Map<string, GitHubReviewThread>(),
   };
   const errors: string[] = [];
-  try {
-    context.threadByCommentId = reviewThreadByCommentId(
-      await options.client.listReviewThreads({
-        repo: options.change.repository.slug,
-        pullRequestNumber: options.change.change.number,
-      }),
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    errors.push(`list review threads for resolved findings: ${message}`);
+  const threadLoad = await loadThreadActionThreads(context, actions);
+  context.threadById = threadLoad.threads;
+  if (threadLoad.error) {
+    errors.push(threadLoad.error);
   }
-
-  for (const candidate of candidates) {
-    errors.push(...(await resolveStaleInlineCandidate(context, candidate)));
+  for (const action of actions) {
+    errors.push(...(await publishThreadAction(context, action)));
   }
-
   return { errors };
 }
 
-type StaleInlineResolutionCandidate = {
-  finding: PriorFindingRecord;
-  comment: GitHubReviewComment;
-};
+function threadActionHeadSha(options: {
+  plan?: PublicationPlan;
+  reviewedHeadSha?: string;
+  change: ChangeRequestEventContext;
+}): string {
+  return (
+    options.reviewedHeadSha ??
+    options.plan?.metadata.reviewedHeadSha ??
+    options.change.change.head.sha
+  );
+}
 
-type StaleInlineResolutionContext = {
+type ThreadActionContext = {
   client: GitHubPublicationClient;
   change: ChangeRequestEventContext;
   reviewedHeadSha: string;
   commitUrl: string;
-  resolvedFindingKeys: Set<string>;
-  threadByCommentId: Map<number, GitHubReviewThread>;
+  resolvedKeys: Set<string>;
+  responseMarkers: Set<string>;
+  threadById: Map<string, GitHubReviewThread>;
 };
 
-function staleInlineResolutionCandidates(options: {
-  findings: PriorFindingRecord[];
-  comments: GitHubReviewComment[];
-}): StaleInlineResolutionCandidate[] {
-  return options.findings
-    .filter(
-      (finding) => finding.status === "resolved" && finding.lastCommentedHeadSha !== undefined,
-    )
-    .flatMap((finding) => {
-      const comment = findInlineCommentForFinding(options.comments, finding);
-      return comment ? [{ finding, comment }] : [];
-    });
-}
-
-async function resolveStaleInlineCandidate(
-  context: StaleInlineResolutionContext,
-  candidate: StaleInlineResolutionCandidate,
+async function publishThreadAction(
+  context: ThreadActionContext,
+  action: PublicationPlan["threadActions"][number],
 ): Promise<string[]> {
-  const thread = context.threadByCommentId.get(candidate.comment.id);
-  if (thread?.isResolved) {
-    return [];
-  }
   const errors: string[] = [];
-  const replyError = await postResolutionReplyIfNeeded(context, candidate);
+  if (action.kind === "resolve" && threadActionAlreadyResolved(context, action)) {
+    return errors;
+  }
+  const replyError = await postThreadActionReplyIfNeeded(context, action);
   if (replyError) {
     errors.push(replyError);
   }
-  if (!thread) {
-    errors.push(`GitHub review thread not found for pipr finding '${candidate.finding.id}'`);
-    return errors;
-  }
-  const resolveError = await resolveReviewThreadIfOpen(context, candidate.finding, thread);
-  if (resolveError) {
-    errors.push(resolveError);
+  if (action.kind === "resolve") {
+    if (!action.threadId) {
+      errors.push(`GitHub review thread not found for pipr finding '${action.findingId}'`);
+      return errors;
+    }
+    const resolveError = await resolveReviewThread(context, action);
+    if (resolveError) {
+      errors.push(resolveError);
+    }
   }
   return errors;
 }
 
-async function postResolutionReplyIfNeeded(
-  context: StaleInlineResolutionContext,
-  candidate: StaleInlineResolutionCandidate,
+function threadActionAlreadyResolved(
+  context: ThreadActionContext,
+  action: PublicationPlan["threadActions"][number],
+): boolean {
+  return (
+    action.kind === "resolve" &&
+    Boolean(action.threadId && context.threadById.get(action.threadId)?.isResolved)
+  );
+}
+
+async function postThreadActionReplyIfNeeded(
+  context: ThreadActionContext,
+  action: PublicationPlan["threadActions"][number],
 ): Promise<string | undefined> {
-  const commentedHeadSha = candidate.finding.lastCommentedHeadSha;
-  if (!commentedHeadSha) {
-    return undefined;
-  }
-  const resolutionKey = `${candidate.finding.id}:${commentedHeadSha}`;
-  if (context.resolvedFindingKeys.has(resolutionKey)) {
+  const marker = threadActionReplyMarker(action);
+  if (threadActionReplyExists(context, action, marker.key)) {
     return undefined;
   }
   try {
     await context.client.createReviewCommentReply({
       repo: context.change.repository.slug,
       pullRequestNumber: context.change.change.number,
-      commentId: candidate.comment.id,
-      body: [
-        renderResolvedFindingMarker(candidate.finding.id, commentedHeadSha),
-        "",
-        `Resolved in ${context.commitUrl}.`,
-      ].join("\n"),
+      commentId: action.commentId,
+      body: [marker.body, "", escapeGeneratedThreadReply(action.body)].join("\n"),
     });
-    context.resolvedFindingKeys.add(resolutionKey);
+    recordThreadActionReply(context, action, marker.key);
     return undefined;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return `reply to resolved finding '${candidate.finding.id}': ${message}`;
+    return `reply to verifier action '${action.findingId}': ${message}`;
   }
 }
 
-async function resolveReviewThreadIfOpen(
-  context: StaleInlineResolutionContext,
-  finding: PriorFindingRecord,
-  thread: GitHubReviewThread,
-): Promise<string | undefined> {
-  if (thread.isResolved) {
-    return undefined;
+function escapeGeneratedThreadReply(body: string): string {
+  return body.replaceAll("<!--", "&lt;!--");
+}
+
+async function loadThreadActionThreads(
+  context: ThreadActionContext,
+  actions: PublicationPlan["threadActions"],
+): Promise<{ threads: Map<string, GitHubReviewThread>; error?: string }> {
+  if (!actions.some((action) => action.kind === "resolve" && action.threadId)) {
+    return { threads: new Map() };
   }
   try {
-    await context.client.resolveReviewThread({ threadId: thread.id });
-    return undefined;
+    const threads = await context.client.listReviewThreads({
+      repo: context.change.repository.slug,
+      pullRequestNumber: context.change.change.number,
+    });
+    return { threads: new Map(threads.map((thread) => [thread.id, thread])) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return `resolve thread '${thread.id}' for finding '${finding.id}': ${message}`;
+    return { threads: new Map(), error: `list review threads for verifier actions: ${message}` };
   }
 }
 
-function findInlineCommentForFinding(
-  comments: GitHubReviewComment[],
-  finding: PriorFindingRecord,
-): GitHubReviewComment | undefined {
-  const candidates = comments.flatMap((comment) =>
-    extractInlineFindingMarkerRecords([comment.body ?? ""])
-      .filter((marker) => marker.id === finding.id)
-      .map((marker) => ({ marker, comment })),
-  );
-  const sameHead = candidates.find(
-    (candidate) => candidate.marker.head === finding.lastCommentedHeadSha,
-  );
-  return sameHead?.comment ?? candidates.at(-1)?.comment;
+function threadActionReplyMarker(action: PublicationPlan["threadActions"][number]): {
+  body: string;
+  key: string;
+} {
+  if (action.kind === "resolve") {
+    return {
+      body: renderResolvedFindingMarker(action.findingId, action.findingHeadSha),
+      key: `${action.findingId}:${action.findingHeadSha}`,
+    };
+  }
+  return {
+    body: renderVerifierResponseMarker(action.findingId, action.responseKey),
+    key: `pipr:verifier-response:${action.findingId}:${action.responseKey}`,
+  };
+}
+
+function threadActionReplyExists(
+  context: ThreadActionContext,
+  action: PublicationPlan["threadActions"][number],
+  markerKey: string,
+): boolean {
+  return action.kind === "resolve"
+    ? context.resolvedKeys.has(markerKey)
+    : context.responseMarkers.has(markerKey);
+}
+
+function recordThreadActionReply(
+  context: ThreadActionContext,
+  action: PublicationPlan["threadActions"][number],
+  markerKey: string,
+): void {
+  if (action.kind === "resolve") {
+    context.resolvedKeys.add(markerKey);
+    return;
+  }
+  context.responseMarkers.add(markerKey);
+}
+
+async function resolveReviewThread(
+  context: ThreadActionContext,
+  action: PublicationPlan["threadActions"][number],
+): Promise<string | undefined> {
+  try {
+    if (action.threadId && context.threadById.get(action.threadId)?.isResolved) {
+      return undefined;
+    }
+    await context.client.resolveReviewThread({ threadId: action.threadId ?? "" });
+    return undefined;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `resolve thread '${action.threadId}' for finding '${action.findingId}': ${message}`;
+  }
 }
 
 function reviewThreadByCommentId(threads: GitHubReviewThread[]): Map<number, GitHubReviewThread> {

@@ -359,6 +359,63 @@ describe("definePipr", () => {
     expect(plan.publication).toEqual({ maxInlineComments: 3 });
   });
 
+  it("registers typed global config", () => {
+    const factory = definePipr((pipr) => {
+      const model = pipr.model({
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
+      });
+      const verifier = pipr.model({
+        id: "verifier",
+        provider: "deepseek",
+        model: "deepseek-v4",
+        apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
+      });
+      pipr.config({
+        publication: {
+          maxInlineComments: 3,
+          autoResolve: {
+            model: verifier,
+            synchronize: true,
+            userReplies: {
+              enabled: true,
+              respondWhenStillValid: false,
+              allowedActors: "write",
+            },
+          },
+        },
+        checks: { aggregate: { enabled: true } },
+        limits: { timeoutSeconds: 300 },
+      });
+      pipr.review({ id: "review", model, instructions: "Review.", inlineComments: { max: 3 } });
+    });
+
+    const plan = buildPiprPlan(factory);
+
+    expect(plan.publication).toMatchObject({
+      maxInlineComments: 3,
+      autoResolve: {
+        model: expect.objectContaining({ id: "verifier" }),
+        synchronize: true,
+        userReplies: { respondWhenStillValid: false, allowedActors: "write" },
+      },
+    });
+    expect(plan.checks).toEqual({ aggregate: { enabled: true } });
+    expect(plan.limits).toEqual({ timeoutSeconds: 300 });
+  });
+
+  it("rejects conflicting global config values", () => {
+    expect(() =>
+      buildPiprPlan(
+        definePipr((pipr) => {
+          pipr.config({ publication: { autoResolve: false } });
+          pipr.config({ publication: { autoResolve: { synchronize: true } } });
+        }),
+      ),
+    ).toThrow("publication.autoResolve conflicts");
+  });
+
   it("lets explicit plugins install typed helpers without adding plan modules", () => {
     const factory = definePipr((pipr) => {
       const helper = pipr.use(

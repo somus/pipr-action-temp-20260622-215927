@@ -43,6 +43,16 @@ const config: PiprConfig = {
   providers: [provider],
   publication: {
     maxInlineComments: 5,
+    autoResolve: {
+      enabled: true,
+      model: "deepseek/deepseek-v4-pro",
+      synchronize: true,
+      userReplies: {
+        enabled: true,
+        respondWhenStillValid: true,
+        allowedActors: "author-or-write",
+      },
+    },
   },
 };
 
@@ -169,7 +179,7 @@ describe("runTaskRuntime", () => {
     });
 
     const result = await runRuntime({
-      config: { ...config, publication: { maxInlineComments: 1 } },
+      config: { ...config, publication: { ...config.publication, maxInlineComments: 1 } },
       plan,
     });
 
@@ -397,7 +407,13 @@ describe("runTaskRuntime", () => {
 
   it("keeps unscoped Pi result findings publishable", async () => {
     const result = await runRuntime({
-      plan: defaultReviewPlan(),
+      plan: testPlan((pipr) => {
+        pipr.review({
+          id: "review",
+          model: deepseekModel(pipr),
+          instructions: "Review.",
+        });
+      }),
       piRunner: async () => reviewPiResult([finding("unscoped", "range-1", 10)]),
     });
 
@@ -608,6 +624,141 @@ describe("runTaskRuntime", () => {
     expect(observedPrompt).toContain("emit one current inline finding");
     expect(observedPrompt).not.toContain("data.pipr.priorFindingId");
     expect(observedPrompt).not.toContain(maliciousPriorBody);
+  });
+
+  it("runs the internal verifier on synchronize and emits explicit resolution actions", async () => {
+    let calls = 0;
+    const models: string[] = [];
+
+    const result = await runRuntime({
+      plan: defaultReviewPlan(),
+      config: {
+        ...fallbackConfig,
+        publication: {
+          ...fallbackConfig.publication,
+          autoResolve: {
+            ...fallbackConfig.publication.autoResolve,
+            model: "fallback",
+          },
+        },
+      },
+      event: eventContext({ action: "opened", rawAction: "synchronize" }),
+      priorReviewState: priorReviewStateForTasks(["review"]),
+      loadInlineThreadContexts: async () => [
+        {
+          findingId: "fnd_existing",
+          findingHeadSha: "head",
+          parentCommentId: 10,
+          parentBody: "<!-- pipr:finding id=fnd_existing head=head -->\nExisting body",
+          threadId: "thread-1",
+          threadResolved: false,
+          comments: [{ id: 10, body: "Existing body", authorLogin: "github-actions[bot]" }],
+        },
+      ],
+      piRunner: async (options) => {
+        calls += 1;
+        models.push(options.provider.model);
+        return calls === 1
+          ? reviewPiResult([])
+          : {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                findings: [{ id: "fnd_existing", status: "fixed" }],
+              }),
+              stderr: "",
+              durationMs: 1,
+            };
+      },
+    });
+
+    expect(result.publicationPlan.reviewState.findings[0]?.status).toBe("resolved");
+    expect(result.publicationPlan.threadActions).toEqual([
+      expect.objectContaining({
+        kind: "resolve",
+        findingId: "fnd_existing",
+        commentId: 10,
+        threadId: "thread-1",
+      }),
+    ]);
+    expect(models).toEqual(["deepseek-v4-pro", "fallback-model"]);
+  });
+
+  it("keeps synchronize still-valid and unknown verifier results open without thread actions", async () => {
+    for (const status of ["still-valid", "unknown"] as const) {
+      let calls = 0;
+
+      const result = await runRuntime({
+        plan: defaultReviewPlan(),
+        event: eventContext({ action: "opened", rawAction: "synchronize" }),
+        priorReviewState: priorReviewStateForTasks(["review"]),
+        loadInlineThreadContexts: async () => [
+          {
+            findingId: "fnd_existing",
+            findingHeadSha: "head",
+            parentCommentId: 10,
+            parentBody: "<!-- pipr:finding id=fnd_existing head=head -->\nExisting body",
+            threadId: "thread-1",
+            threadResolved: false,
+            comments: [{ id: 10, body: "Existing body", authorLogin: "github-actions[bot]" }],
+          },
+        ],
+        piRunner: async () => {
+          calls += 1;
+          return calls === 1
+            ? reviewPiResult([])
+            : {
+                exitCode: 0,
+                stdout: JSON.stringify({
+                  findings: [{ id: "fnd_existing", status }],
+                }),
+                stderr: "",
+                durationMs: 1,
+              };
+        },
+      });
+
+      expect(result.publicationPlan.reviewState.findings[0]?.status).toBe("open");
+      expect(result.publicationPlan.threadActions).toEqual([]);
+    }
+  });
+
+  it("skips the internal verifier when synchronize autoResolve is disabled", async () => {
+    let calls = 0;
+
+    const result = await runRuntime({
+      plan: defaultReviewPlan(),
+      config: {
+        ...config,
+        publication: {
+          ...config.publication,
+          autoResolve: {
+            ...config.publication.autoResolve,
+            synchronize: false,
+          },
+        },
+      },
+      event: eventContext({ action: "opened", rawAction: "synchronize" }),
+      priorReviewState: priorReviewStateForTasks(["review"]),
+      loadInlineThreadContexts: async () => [
+        {
+          findingId: "fnd_existing",
+          findingHeadSha: "head",
+          parentCommentId: 10,
+          parentBody: "<!-- pipr:finding id=fnd_existing head=head -->\nExisting body",
+          threadId: "thread-1",
+          threadResolved: false,
+          comments: [{ id: 10, body: "Existing body", authorLogin: "github-actions[bot]" }],
+        },
+      ],
+      piRunner: async () => {
+        calls += 1;
+        return reviewPiResult([]);
+      },
+    });
+
+    expect(calls).toBe(1);
+    expect(result.publicationPlan.reviewState.findings[0]?.status).toBe("open");
+    expect(result.publicationPlan.threadActions).toEqual([]);
   });
 
   it("does not pass prior findings from another selected task scope to review agent prompts", async () => {
@@ -1154,10 +1305,13 @@ describe("runTaskRuntime", () => {
   });
 });
 
-function eventContext(options: { action?: string; title?: string; description?: string } = {}) {
+function eventContext(
+  options: { action?: string; rawAction?: string; title?: string; description?: string } = {},
+) {
   return {
     eventName: "pull_request",
     action: options.action ?? "opened",
+    rawAction: options.rawAction,
     platform: { id: "github" },
     repository: { slug: "local/pipr" },
     change: {

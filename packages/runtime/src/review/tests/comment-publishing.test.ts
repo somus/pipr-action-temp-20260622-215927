@@ -134,7 +134,7 @@ describe("buildCommentPublishingPlan", () => {
     expect(publishing.publicationPlan.mainComment).toContain("Review completed.");
   });
 
-  it("marks prior open findings resolved without showing them in the main findings list", () => {
+  it("keeps prior open findings open until the verifier resolves them", () => {
     const publishing = buildCommentPublishingPlan({
       event,
       main: "Review completed.",
@@ -146,7 +146,7 @@ describe("buildCommentPublishingPlan", () => {
 
     expect(publishing.publicationPlan.reviewState.findings[0]).toMatchObject({
       id: "fnd_existing",
-      status: "resolved",
+      status: "open",
       lastSeenHeadSha: "old-head",
     });
     expect(publishing.publicationPlan.mainComment).toContain("Review completed.");
@@ -202,7 +202,7 @@ describe("buildCommentPublishingPlan", () => {
       publishing.publicationPlan.reviewState.findings
         .filter((finding) => finding.id.startsWith("fnd_prior_"))
         .map((finding) => finding.status),
-    ).toEqual(["resolved", "resolved"]);
+    ).toEqual(["open", "open"]);
   });
 });
 

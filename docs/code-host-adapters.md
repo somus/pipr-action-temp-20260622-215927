@@ -78,12 +78,15 @@ The GitHub adapter handles:
 
 - `pull_request` event parsing
 - `issue_comment` command parsing
+- `pull_request_review_comment` reply parsing
 - pull request metadata loading
 - repository permission normalization into `read | triage | write | maintain | admin`
 - safe workspace setup
 - pull request head checkout
 - Main Review Comment upsert
 - Inline Review Comment publication
+- Inline Review Comment thread context loading
+- verifier reply publication and review thread resolution
 - GitHub inline payload mapping
 
 GitHub-specific setup stays in [GitHub Action](github-action.md).
@@ -123,10 +126,18 @@ type CodeHostAdapter = {
   parseEvent(options): Promise<ChangeRequestEventContext>;
   loadChangeRequest(ref): Promise<LoadedChangeRequest>;
   resolveCommandComment(options): Promise<CommandCommentEvent>;
+  resolveReviewCommentReply?(options): Promise<ReviewCommentReplyEvent>;
   getRepositoryPermission(options): Promise<RepositoryPermission>;
   ensureHeadCheckout(options): void;
   publish(options): Promise<PublicationResult>;
+  publishThreadActions?(options): Promise<{ errors: string[] }>;
+  loadPriorReviewState?(options): Promise<PriorReviewState | undefined>;
+  loadPriorMainComment?(options): Promise<string | undefined>;
+  loadInlineThreadContexts?(options): Promise<InlineThreadContext[]>;
+  createCheckRun?(options): Promise<CodeHostCheckRun>;
+  updateCheckRun?(options): Promise<void>;
   mapInlineLocation(item, change): unknown;
+  ensureWorkspaceSafeDirectory?(options): void;
 };
 ```
 

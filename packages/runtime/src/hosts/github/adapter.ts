@@ -2,14 +2,20 @@ import type { InlinePublicationItem } from "../../review/comment.js";
 import type { ChangeRequestEventContext } from "../../types.js";
 import type { CodeHostAdapter } from "../types.js";
 import { createGitHubCommandClient, type GitHubCommandClient } from "./command.js";
-import { loadGitHubIssueCommentEventContext, loadGitHubPullRequestEventContext } from "./event.js";
+import {
+  loadGitHubIssueCommentEventContext,
+  loadGitHubPullRequestEventContext,
+  loadGitHubReviewCommentReplyEvent,
+} from "./event.js";
 import { mapFindingToGithubReviewCommentLocation } from "./inline.js";
 import {
   createGitHubPublicationClient,
   type GitHubPublicationClient,
+  loadGitHubInlineThreadContexts,
   loadGitHubPriorMainComment,
   loadGitHubPriorReviewState,
   publishGitHubPublicationPlan,
+  publishGitHubThreadActions,
 } from "./publication.js";
 import { ensureGitHubHeadCheckout, ensureGitHubWorkspaceSafeDirectory } from "./workspace.js";
 
@@ -45,6 +51,9 @@ export function createGitHubHostAdapter(options: GitHubHostAdapterOptions = {}):
     resolveCommandComment(parseOptions) {
       return loadGitHubIssueCommentEventContext(parseOptions);
     },
+    resolveReviewCommentReply(parseOptions) {
+      return loadGitHubReviewCommentReplyEvent(parseOptions);
+    },
     getRepositoryPermission(options) {
       return commandClient.getRepositoryPermission(options);
     },
@@ -56,6 +65,14 @@ export function createGitHubHostAdapter(options: GitHubHostAdapterOptions = {}):
         plan: options.plan,
       });
     },
+    publishThreadActions(options) {
+      return publishGitHubThreadActions({
+        client: publicationClient,
+        change: options.change,
+        actions: options.actions,
+        reviewedHeadSha: options.reviewedHeadSha,
+      });
+    },
     loadPriorReviewState(options) {
       return loadGitHubPriorReviewState({
         client: publicationClient,
@@ -64,6 +81,12 @@ export function createGitHubHostAdapter(options: GitHubHostAdapterOptions = {}):
     },
     loadPriorMainComment(options) {
       return loadGitHubPriorMainComment({
+        client: publicationClient,
+        change: options.change,
+      });
+    },
+    loadInlineThreadContexts(options) {
+      return loadGitHubInlineThreadContexts({
         client: publicationClient,
         change: options.change,
       });

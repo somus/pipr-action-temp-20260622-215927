@@ -11,6 +11,8 @@ on:
   pull_request:
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -39,7 +41,7 @@ jobs:
 
 Provider settings come from the base-commit `.pipr/config.ts`, not from pull request code. The Action uses the base config's default model and configured fallbacks, including provider backend, model name, API key env name, and provider options.
 
-`checks: write` lets pipr publish task and aggregate Check Runs when enabled by config. `pull-requests: write` publishes Inline Review Comments and enables best-effort stale inline thread resolution after a finding disappears. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
+`checks: write` lets pipr publish task and aggregate Check Runs when enabled by config. `pull-requests: write` publishes Inline Review Comments, lets pipr resolve verified fixed threads, and lets pipr respond to user replies on pipr-owned Inline Review Comments. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
 
 ## Outputs
 
@@ -48,7 +50,7 @@ Provider settings come from the base-commit `.pipr/config.ts`, not from pull req
 | `main-comment` | Rendered main pull request review comment body. |
 | `inline-comments` | JSON array of inline review comment publication items. |
 | `dropped-findings` | JSON array of findings dropped during validation. |
-| `publication` | JSON publication result for main and inline comments. |
+| `publication` | JSON publication result for main and inline comments. On `pull_request_review_comment` verifier runs, this contains verifier thread action errors such as `inlineResolutionErrors`. |
 
 ## Trust model
 
@@ -70,6 +72,8 @@ Dry run is useful for checking Action packaging, event parsing, and trusted conf
 ## Command comments
 
 `issue_comment` events are used for `@pipr` commands on pull requests. pipr checks that the comment targets a pull request, fetches pull request metadata, checks the commenter permission, parses command arguments, and then starts the task.
+
+`pull_request_review_comment` events are used for verifier replies. When a user replies to a pipr-owned Inline Review Comment, pipr can run its internal verifier against the current diff and thread context. If the finding is fixed, pipr replies and resolves the thread. If the finding is still valid, pipr can reply with a short explanation and keep the thread open.
 
 Permissions are ordered:
 

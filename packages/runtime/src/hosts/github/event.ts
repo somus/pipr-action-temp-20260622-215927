@@ -83,6 +83,33 @@ const githubIssueCommentPayloadSchema = z.looseObject({
     .optional(),
 });
 
+const githubReviewCommentPayloadSchema = z.looseObject({
+  action: z.string().optional(),
+  repository: z
+    .looseObject({
+      full_name: z.string().optional(),
+      html_url: z.string().optional(),
+    })
+    .optional(),
+  pull_request: z
+    .looseObject({
+      number: z.number().optional(),
+    })
+    .optional(),
+  comment: z
+    .looseObject({
+      id: z.number().optional(),
+      in_reply_to_id: z.number().nullable().optional(),
+      body: z.string().optional(),
+      user: z
+        .looseObject({
+          login: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
 const githubIssueCommentEventContextSchema = z.strictObject({
   eventName: z.literal("issue_comment"),
   action: z.string().optional(),
@@ -102,6 +129,30 @@ const githubIssueCommentEventContextSchema = z.strictObject({
 });
 
 export type GitHubIssueCommentEventContext = z.infer<typeof githubIssueCommentEventContextSchema>;
+
+const githubReviewCommentReplyEventSchema = z.strictObject({
+  eventName: z.literal("pull_request_review_comment"),
+  action: z.string().optional(),
+  rawAction: z.string().optional(),
+  repository: z.strictObject({
+    slug: z.string({ error: "GitHub review comment event is missing repo" }).min(1),
+    url: z.string().min(1).optional(),
+  }),
+  changeNumber: z
+    .number({ error: "GitHub review comment event is missing pull request number" })
+    .int()
+    .positive(),
+  commentId: z
+    .number({ error: "GitHub review comment event is missing comment id" })
+    .int()
+    .positive(),
+  parentCommentId: z.number().int().positive().optional(),
+  body: z.string(),
+  actor: z.string({ error: "GitHub review comment event is missing comment user" }).min(1),
+  workspace: z.string().min(1),
+});
+
+export type GitHubReviewCommentReplyEvent = z.infer<typeof githubReviewCommentReplyEventSchema>;
 
 export async function loadGitHubPullRequestEventContext(options: {
   eventPath: string;
@@ -214,6 +265,31 @@ export async function loadGitHubIssueCommentEventContext(options: {
     },
     changeNumber: payload.issue?.number,
     isChangeRequest: payload.issue?.pull_request !== undefined,
+    body: payload.comment?.body ?? "",
+    actor: payload.comment?.user?.login,
+    workspace: options.workspace,
+  });
+}
+
+export async function loadGitHubReviewCommentReplyEvent(options: {
+  eventPath: string;
+  env: NodeJS.ProcessEnv;
+  workspace: string;
+}): Promise<GitHubReviewCommentReplyEvent> {
+  const payload = githubReviewCommentPayloadSchema.parse(await Bun.file(options.eventPath).json());
+  return githubReviewCommentReplyEventSchema.parse({
+    eventName: "pull_request_review_comment",
+    action: payload.action,
+    rawAction: payload.action,
+    repository: {
+      slug: [payload.repository?.full_name, options.env.GITHUB_REPOSITORY].find(
+        (value) => value !== undefined && value.length > 0,
+      ),
+      url: payload.repository?.html_url,
+    },
+    changeNumber: payload.pull_request?.number,
+    commentId: payload.comment?.id,
+    parentCommentId: payload.comment?.in_reply_to_id ?? undefined,
     body: payload.comment?.body ?? "",
     actor: payload.comment?.user?.login,
     workspace: options.workspace,

@@ -7,6 +7,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { runGit as runGitCommand } from "../../diff/git.js";
 import type { GitHubCommandClient } from "../../hosts/github/command.js";
 import type { RepositoryPermission } from "../../hosts/types.js";
+import {
+  renderInlineFindingMarker,
+  renderResolvedFindingMarker,
+  renderVerifierResponseMarker,
+} from "../../review/prior-state.js";
 import type { GitHubPublicationClient } from "../../review/publish.js";
 import { runActionCommandWithDependencies } from "../commands.js";
 
@@ -470,6 +475,274 @@ describe("runActionCommand pull_request dispatch", () => {
   });
 });
 
+describe("runActionCommand pull_request_review_comment dispatch", () => {
+  it("skips review comment verifier dispatch in dry-run mode without calling GitHub", async () => {
+    const workspace = await createCommandWorkspace();
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath);
+
+      await expect(
+        runActionCommandWithDependencies({
+          rootDir: workspace.rootDir,
+          configDir: ".pipr",
+          eventPath,
+          dryRun: true,
+          env: reviewCommentEnv(workspace.rootDir, eventPath),
+          githubClient: failingGitHubClient(),
+          githubPublicationClient: failingGitHubPublishingClient(),
+          piExecutable: workspace.piExecutable,
+        }),
+      ).resolves.toMatchObject({
+        kind: "ignored",
+        reason: "PIPR_DRY_RUN=1; verifier dispatch skipped",
+      });
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("ignores pipr-authored verifier replies by marker", async () => {
+    const workspace = await createCommandWorkspace();
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath, {
+        body: `${renderResolvedFindingMarker("fnd_existing", "old-head")}\n\nResolved.`,
+        actor: "custom-pipr-app[bot]",
+      });
+
+      await expect(
+        runReviewCommentAction(workspace, {
+          githubClient: failingGitHubClient(),
+          githubPublicationClient: failingGitHubPublishingClient(),
+        }),
+      ).resolves.toMatchObject({
+        kind: "ignored",
+        reason: "review comment reply was authored by pipr",
+      });
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("ignores edited review comment replies without loading PR context", async () => {
+    const workspace = await createCommandWorkspace();
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath, { action: "edited" });
+
+      await expect(
+        runReviewCommentAction(workspace, {
+          githubClient: failingGitHubClient(),
+          githubPublicationClient: failingGitHubPublishingClient(),
+        }),
+      ).resolves.toMatchObject({
+        kind: "ignored",
+        reason: "review comment action 'edited' is not supported",
+      });
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("ignores review comments that are not replies without loading PR context", async () => {
+    const workspace = await createCommandWorkspace();
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath, { parentCommentId: null });
+
+      await expect(
+        runReviewCommentAction(workspace, {
+          githubClient: failingGitHubClient(),
+          githubPublicationClient: failingGitHubPublishingClient(),
+        }),
+      ).resolves.toMatchObject({
+        kind: "ignored",
+        reason: "review comment was not a reply",
+      });
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("skips user-reply verifier when autoResolve is disabled", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ autoResolve: false }),
+    });
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath);
+
+      await expect(
+        runReviewCommentAction(workspace, {
+          githubClient: fakeGitHubClient(workspace, "write"),
+          githubPublicationClient: failingGitHubPublishingClient(),
+        }),
+      ).resolves.toMatchObject({
+        kind: "ignored",
+        reason: "publication.autoResolve is disabled",
+      });
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("skips user-reply verifier when user replies are disabled", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ autoResolve: "userRepliesDisabled" }),
+    });
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath);
+
+      await expect(
+        runReviewCommentAction(workspace, {
+          githubClient: fakeGitHubClient(workspace, "write"),
+          githubPublicationClient: failingGitHubPublishingClient(),
+        }),
+      ).resolves.toMatchObject({
+        kind: "ignored",
+        reason: "publication.autoResolve.userReplies is disabled",
+      });
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("denies review comment verifier dispatch for unauthorized actors", async () => {
+    const workspace = await createCommandWorkspace();
+    try {
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath, { actor: "reader" });
+
+      await expect(
+        runReviewCommentAction(workspace, {
+          githubClient: fakeGitHubClient(workspace, "read"),
+          githubPublicationClient: verifierPublicationClient(workspace),
+        }),
+      ).resolves.toMatchObject({
+        kind: "ignored",
+        reason: "review comment reply actor is not allowed",
+      });
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("allows the pull request author without checking repository permission", async () => {
+    const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
+    const publication = verifierPublicationClient(workspace);
+    try {
+      await writePiExecutable(
+        workspace.piExecutable,
+        JSON.stringify({
+          findings: [
+            {
+              id: "fnd_existing",
+              status: "still-valid",
+              response: "This still applies.",
+            },
+          ],
+        }),
+      );
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath, { actor: "somu" });
+
+      const result = await runReviewCommentAction(workspace, {
+        githubClient: fakeGitHubClient(workspace, "read", {
+          author: "somu",
+          failPermission: true,
+        }),
+        githubPublicationClient: publication,
+      });
+
+      expect(result).toMatchObject({ kind: "verifier", errors: [] });
+      expect(publication.reviewReplies).toHaveLength(1);
+      await expectPiCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("allows any actor without checking repository permission when configured", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: reviewConfigTs({ autoResolve: "any" }),
+      checkoutBaseBeforeRun: true,
+    });
+    const publication = verifierPublicationClient(workspace);
+    try {
+      await writePiExecutable(
+        workspace.piExecutable,
+        JSON.stringify({
+          findings: [
+            {
+              id: "fnd_existing",
+              status: "still-valid",
+              response: "This still applies.",
+            },
+          ],
+        }),
+      );
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath, { actor: "outsider" });
+
+      const result = await runReviewCommentAction(workspace, {
+        githubClient: fakeGitHubClient(workspace, "read", { failPermission: true }),
+        githubPublicationClient: publication,
+      });
+
+      expect(result).toMatchObject({ kind: "verifier", errors: [] });
+      expect(publication.reviewReplies).toHaveLength(1);
+      await expectPiCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("runs user-reply verifier and publishes still-valid responses", async () => {
+    const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
+    const publication = verifierPublicationClient(workspace);
+    try {
+      await writePiExecutable(
+        workspace.piExecutable,
+        JSON.stringify({
+          findings: [
+            {
+              id: "fnd_existing",
+              status: "still-valid",
+              response: "This still applies because the unsafe path remains.",
+            },
+          ],
+        }),
+      );
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writeReviewCommentEvent(eventPath);
+
+      const result = await runReviewCommentAction(workspace, {
+        githubClient: fakeGitHubClient(workspace, "write"),
+        githubPublicationClient: publication,
+      });
+
+      expect(result).toMatchObject({ kind: "verifier", errors: [] });
+      expect(publication.reviewReplies).toHaveLength(1);
+      expect(publication.reviewReplies[0]?.body).toContain(
+        renderVerifierResponseMarker("fnd_existing", "reply-11:still-valid:fnd_existing"),
+      );
+      await expectPiCalled(workspace);
+      expect(currentGitHead(workspace.rootDir)).toBe(workspace.headSha);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+});
+
 type CommandWorkspace = {
   rootDir: string;
   baseSha: string;
@@ -512,17 +785,24 @@ async function createCommandWorkspace(
   const piExecutable = path.join(rootDir, "fake-pi.sh");
   await Bun.write(
     piExecutable,
-    [
-      "#!/bin/sh",
-      'touch "$(dirname "$0")/pi-called"',
-      'printf \'%s\\n\' \'{"summary":{"body":"No findings."},"inlineFindings":[]}\'',
-    ].join("\n"),
+    piExecutableScript('{"summary":{"body":"No findings."},"inlineFindings":[]}'),
   );
   await chmod(piExecutable, 0o755);
   if (options.checkoutBaseBeforeRun) {
     runGit(rootDir, ["checkout", "--detach", baseSha]);
   }
   return { rootDir, baseSha, headSha, piExecutable };
+}
+
+async function writePiExecutable(piExecutable: string, stdout: string): Promise<void> {
+  await Bun.write(piExecutable, piExecutableScript(stdout));
+  await chmod(piExecutable, 0o755);
+}
+
+function piExecutableScript(stdout: string): string {
+  return ["#!/bin/sh", 'touch "$(dirname "$0")/pi-called"', `printf '%s\\n' '${stdout}'`].join(
+    "\n",
+  );
 }
 
 async function runIssueCommentCommand(
@@ -565,6 +845,27 @@ async function runPullRequestAction(
   });
 }
 
+async function runReviewCommentAction(
+  workspace: CommandWorkspace,
+  options: {
+    dryRun?: boolean;
+    githubClient: GitHubCommandClient;
+    githubPublicationClient: GitHubPublicationClient;
+  },
+) {
+  const eventPath = path.join(workspace.rootDir, "event.json");
+  return await runActionCommandWithDependencies({
+    rootDir: workspace.rootDir,
+    configDir: ".pipr",
+    eventPath,
+    dryRun: options.dryRun ?? false,
+    env: reviewCommentEnv(workspace.rootDir, eventPath),
+    githubClient: options.githubClient,
+    githubPublicationClient: options.githubPublicationClient,
+    piExecutable: workspace.piExecutable,
+  });
+}
+
 async function expectPiNotCalled(workspace: CommandWorkspace): Promise<void> {
   await expect(Bun.file(path.join(workspace.rootDir, "pi-called")).text()).rejects.toThrow();
 }
@@ -583,9 +884,23 @@ async function expectReviewRanAtHead(
 }
 
 function reviewConfigTs(
-  options: { command?: boolean; event?: boolean; parseSideEffect?: boolean; checks?: boolean } = {},
+  options: {
+    command?: boolean;
+    event?: boolean;
+    parseSideEffect?: boolean;
+    checks?: boolean;
+    autoResolve?: false | "userRepliesDisabled" | "any";
+  } = {},
 ): string {
   const template = "$";
+  const autoResolveConfig =
+    options.autoResolve === false
+      ? "  pipr.config({ publication: { autoResolve: false } });"
+      : options.autoResolve === "userRepliesDisabled"
+        ? "  pipr.config({ publication: { autoResolve: { userReplies: { enabled: false } } } });"
+        : options.autoResolve === "any"
+          ? '  pipr.config({ publication: { autoResolve: { userReplies: { allowedActors: "any" } } } });'
+          : "";
   return [
     'import { definePipr } from "@pipr/sdk";',
     "",
@@ -614,6 +929,7 @@ function reviewConfigTs(
     "  });",
     options.event === false ? "" : '  pipr.on.changeRequest({ actions: ["opened"], task });',
     options.checks ? '  pipr.checks({ aggregate: { name: "pipr / all" } });' : "",
+    autoResolveConfig,
     options.command === false
       ? ""
       : [
@@ -774,9 +1090,35 @@ async function writePullRequestEvent(
   );
 }
 
+async function writeReviewCommentEvent(
+  eventPath: string,
+  options: {
+    action?: string;
+    body?: string;
+    actor?: string;
+    parentCommentId?: number | null;
+  } = {},
+): Promise<void> {
+  await Bun.write(
+    eventPath,
+    JSON.stringify({
+      action: options.action ?? "created",
+      repository: { full_name: "local/pipr" },
+      pull_request: { number: 1 },
+      comment: {
+        id: 11,
+        in_reply_to_id: options.parentCommentId === undefined ? 10 : options.parentCommentId,
+        body: options.body ?? "The caller validates this earlier.",
+        user: { login: options.actor ?? "somu" },
+      },
+    }),
+  );
+}
+
 function fakeGitHubClient(
   workspace: CommandWorkspace,
   permission: RepositoryPermission,
+  options: { author?: string; failPermission?: boolean } = {},
 ): GitHubCommandClient {
   return {
     async getPullRequest() {
@@ -786,12 +1128,16 @@ function fakeGitHubClient(
           number: 1,
           title: "Test PR",
           description: "Test body",
+          author: options.author ? { login: options.author } : undefined,
           base: { sha: workspace.baseSha },
           head: { sha: workspace.headSha },
         },
       };
     },
     async getRepositoryPermission() {
+      if (options.failPermission) {
+        throw new Error("repository permission should not be checked");
+      }
       return permission;
     },
   };
@@ -863,6 +1209,69 @@ function fakeGitHubPublicationClient(
   };
 }
 
+function verifierPublicationClient(workspace: CommandWorkspace): GitHubPublicationClient & {
+  reviewReplies: Array<{ commentId: number; body: string }>;
+} {
+  const reviewReplies: Array<{ commentId: number; body: string }> = [];
+  const issueComments = [priorMainCommentWithFindingBody()];
+  const reviewComments: Awaited<ReturnType<GitHubPublicationClient["listReviewComments"]>> = [
+    {
+      id: 10,
+      body: `${renderInlineFindingMarker("fnd_existing", "old-head")}\n\nThis can fail.`,
+      authorLogin: "github-actions[bot]",
+      path: undefined,
+      commitId: undefined,
+      line: undefined,
+      startLine: undefined,
+      side: undefined,
+      startSide: undefined,
+    },
+    {
+      id: 11,
+      body: "The caller validates this earlier.",
+      authorLogin: "somu",
+      path: undefined,
+      commitId: undefined,
+      line: undefined,
+      startLine: undefined,
+      side: undefined,
+      startSide: undefined,
+    },
+  ];
+  return {
+    ...fakeGitHubPublicationClient(workspace),
+    reviewReplies,
+    async listIssueComments() {
+      return issueComments.map((body, index) => ({
+        id: index + 1,
+        body,
+        authorLogin: "github-actions[bot]",
+      }));
+    },
+    async listReviewComments() {
+      return reviewComments;
+    },
+    async listReviewThreads() {
+      return [{ id: "thread-1", isResolved: false, commentIds: [10, 11] }];
+    },
+    async createReviewCommentReply(options: { commentId: number; body: string }) {
+      reviewReplies.push(options);
+      reviewComments.push({
+        id: reviewComments.length + 10,
+        body: options.body,
+        authorLogin: "github-actions[bot]",
+        path: undefined,
+        commitId: undefined,
+        line: undefined,
+        startLine: undefined,
+        side: undefined,
+        startSide: undefined,
+      });
+      return { id: reviewComments.length + 10 };
+    },
+  };
+}
+
 function priorMainCommentBody(): string {
   const state = Buffer.from(
     JSON.stringify({
@@ -870,6 +1279,38 @@ function priorMainCommentBody(): string {
       reviewedHeadSha: "old-head",
       selectedTasks: ["old-task"],
       findings: [],
+    }),
+  ).toString("base64url");
+  return [
+    `<!-- pipr:main-comment change=1 version=1 state=${state} -->`,
+    "",
+    "# pipr Review",
+    "",
+    "Prior preserved section.",
+    "",
+  ].join("\n");
+}
+
+function priorMainCommentWithFindingBody(): string {
+  const state = Buffer.from(
+    JSON.stringify({
+      version: 1,
+      reviewedHeadSha: "old-head",
+      selectedTasks: ["review"],
+      findings: [
+        {
+          id: "fnd_existing",
+          status: "open",
+          path: "src/a.ts",
+          rangeId: "range-1",
+          side: "RIGHT",
+          startLine: 1,
+          endLine: 1,
+          firstSeenHeadSha: "old-head",
+          lastSeenHeadSha: "old-head",
+          lastCommentedHeadSha: "old-head",
+        },
+      ],
     }),
   ).toString("base64url");
   return [
@@ -937,6 +1378,16 @@ function pullRequestEnv(rootDir: string, eventPath: string): NodeJS.ProcessEnv {
     DEEPSEEK_API_KEY: "provider-key",
     FAST_DEEPSEEK_API_KEY: "provider-key",
     GITHUB_EVENT_NAME: "pull_request",
+    GITHUB_EVENT_PATH: eventPath,
+    GITHUB_WORKSPACE: rootDir,
+  };
+}
+
+function reviewCommentEnv(rootDir: string, eventPath: string): NodeJS.ProcessEnv {
+  return {
+    DEEPSEEK_API_KEY: "provider-key",
+    FAST_DEEPSEEK_API_KEY: "provider-key",
+    GITHUB_EVENT_NAME: "pull_request_review_comment",
     GITHUB_EVENT_PATH: eventPath,
     GITHUB_WORKSPACE: rootDir,
   };

@@ -1,5 +1,5 @@
-import type { ModelProfile, RuntimePlan } from "@pipr/sdk";
-import type { ProviderConfig, RuntimeSettings } from "../types.js";
+import type { AutoResolveOptions, ModelProfile, RuntimePlan } from "@pipr/sdk";
+import type { AutoResolveConfig, ProviderConfig, RuntimeSettings } from "../types.js";
 import { parseProviderConfig, parseRuntimeSettings } from "../types.js";
 import { loadTypescriptConfig } from "./ts-loader.js";
 
@@ -97,11 +97,78 @@ function planToRuntimeSettings(
       providers,
       publication: {
         maxInlineComments: plan.publication.maxInlineComments,
+        autoResolve: normalizeAutoResolveConfig(plan.publication.autoResolve, defaultProvider.id),
       },
       limits: plan.limits,
     },
     warnings: [],
   });
+}
+
+function normalizeAutoResolveConfig(
+  options: AutoResolveOptions | undefined,
+  defaultProvider: string,
+): AutoResolveConfig {
+  if (options === false) {
+    return disabledAutoResolveConfig();
+  }
+  if (!options) {
+    return enabledAutoResolveConfig(defaultProvider);
+  }
+  return enabledAutoResolveConfig(defaultProvider, options);
+}
+
+function enabledAutoResolveConfig(
+  defaultProvider: string,
+  options?: Exclude<AutoResolveOptions, false>,
+): AutoResolveConfig {
+  if (!options) {
+    return {
+      enabled: true,
+      model: defaultProvider,
+      synchronize: true,
+      userReplies: normalizeUserReplyAutoResolveConfig(undefined),
+    };
+  }
+  if (options.enabled === false && options.model) {
+    throw new Error("publication.autoResolve.model cannot be set when autoResolve is disabled");
+  }
+  return {
+    enabled: options.enabled ?? true,
+    model: options.model?.id ?? defaultProvider,
+    synchronize: options.synchronize ?? true,
+    userReplies: normalizeUserReplyAutoResolveConfig(options),
+  };
+}
+
+function disabledAutoResolveConfig(): AutoResolveConfig {
+  return {
+    enabled: false,
+    synchronize: false,
+    userReplies: {
+      enabled: false,
+      respondWhenStillValid: true,
+      allowedActors: "author-or-write",
+    },
+  };
+}
+
+function normalizeUserReplyAutoResolveConfig(
+  options: Exclude<AutoResolveOptions, false> | undefined,
+): AutoResolveConfig["userReplies"] {
+  const userReplies = options?.userReplies;
+  if (typeof userReplies === "boolean") {
+    return {
+      enabled: userReplies,
+      respondWhenStillValid: true,
+      allowedActors: "author-or-write",
+    };
+  }
+  return {
+    enabled: userReplies?.enabled ?? true,
+    respondWhenStillValid: userReplies?.respondWhenStillValid ?? true,
+    allowedActors: userReplies?.allowedActors ?? "author-or-write",
+  };
 }
 
 function modelToProvider(model: ModelProfile): ProviderConfig {

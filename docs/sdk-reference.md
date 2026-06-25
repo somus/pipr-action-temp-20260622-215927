@@ -215,6 +215,47 @@ pipr.checks({
 
 Checks publish only on GitHub `pull_request` Action runs. They do not publish for `issue_comment`, local runs, or dry runs. `ctx.check.pass/fail/neutral(...)` can be called at most once per task. `ctx.check.fail(...)` fails the task Check Run but does not fail the Action process by itself.
 
+## Global config
+
+`pipr.config(...)` sets global runtime behavior:
+
+```ts
+pipr.config({
+  publication: {
+    maxInlineComments: 5,
+    autoResolve: {
+      model,
+      synchronize: true,
+      userReplies: {
+        enabled: true,
+        respondWhenStillValid: true,
+        allowedActors: "author-or-write",
+      },
+    },
+  },
+  checks: {
+    aggregate: { enabled: true },
+  },
+  limits: {
+    timeoutSeconds: 300,
+  },
+});
+```
+
+`publication.autoResolve` defaults to enabled. Use `autoResolve: false` to disable verifier-driven thread cleanup and user-reply handling. If `model` is omitted, pipr uses the default provider.
+
+`userReplies.allowedActors` controls who can trigger verifier replies:
+
+| Value | Behavior |
+| --- | --- |
+| `"author-or-write"` | PR author or users with write access. Default. |
+| `"write"` | Only users with write access. |
+| `"any"` | Any commenter. Use only when public reply-triggered model calls are acceptable. |
+
+`"author-or-write"` lets the PR author trigger verifier model calls from review-comment replies, including external contributors on public forks. Use `"write"` when only trusted repository collaborators should spend provider quota or send bounded diff, finding, and thread context to the configured model provider.
+
+Set `respondWhenStillValid: false` to keep user-reply verifier runs silent unless the finding is resolved.
+
 ## Comment output
 
 Each selected run must call `ctx.comment(value)` exactly once. Missing or duplicate calls fail the run.

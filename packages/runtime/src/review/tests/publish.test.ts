@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { loadGitHubPriorReviewState } from "../../hosts/github/publication.js";
+import {
+  loadGitHubPriorReviewState,
+  publishGitHubThreadActions,
+} from "../../hosts/github/publication.js";
 import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from "../../types.js";
 import { buildPublicationPlan, prepareInlinePublicationItems, runtimeVersion } from "../comment.js";
 import {
   type PriorReviewState,
   renderInlineFindingMarker,
   renderResolvedFindingMarker,
+  renderVerifierResponseMarker,
 } from "../prior-state.js";
 import {
   createGitHubPublicationClient,
@@ -229,6 +233,106 @@ describe("publishPublicationPlan", () => {
     });
   });
 
+  it("loads resolved markers into prior review state", async () => {
+    const { client, finding, publicationPlan } = staleResolutionFixture({ resolved: false });
+    client.issueComments.push({
+      id: 20,
+      body: publicationPlan.mainComment,
+      authorLogin: client.ownerLogin,
+    });
+    client.reviewComments.push(
+      fakeReviewComment({
+        id: 11,
+        body: renderResolvedFindingMarker(finding.id, "old-head"),
+        authorLogin: client.ownerLogin,
+      }),
+    );
+
+    const state = await loadGitHubPriorReviewState({ client, change: event });
+
+    expect(state?.findings[0]?.status).toBe("resolved");
+  });
+
+  it("does not apply old resolved markers to reintroduced findings on a new thread head", async () => {
+    const { client, finding, publicationPlan } = staleResolutionFixture({ resolved: false });
+    const reviewState = {
+      ...publicationPlan.reviewState,
+      findings: [
+        {
+          ...finding,
+          status: "open" as const,
+          lastCommentedHeadSha: "new-head",
+        },
+      ],
+    };
+    const reintroducedPlan = {
+      ...publicationPlan,
+      mainComment: buildPublicationPlan({
+        event,
+        main: "Review completed.",
+        inlineItems: [],
+        metadata: publicationPlan.metadata,
+        reviewState,
+      }).mainComment,
+    };
+    client.issueComments.push({
+      id: 20,
+      body: reintroducedPlan.mainComment,
+      authorLogin: client.ownerLogin,
+    });
+    client.reviewComments.push(
+      fakeReviewComment({
+        id: 11,
+        body: renderResolvedFindingMarker(finding.id, "old-head"),
+        authorLogin: client.ownerLogin,
+      }),
+      fakeReviewComment({
+        id: 12,
+        body: renderInlineFindingMarker(finding.id, "new-head"),
+        authorLogin: client.ownerLogin,
+      }),
+    );
+
+    const state = await loadGitHubPriorReviewState({ client, change: event });
+
+    expect(state?.findings[0]?.status).toBe("open");
+  });
+
+  it("ignores nested resolved markers in pipr-owned comment bodies", async () => {
+    const { client, finding, publicationPlan } = staleResolutionFixture({ resolved: false });
+    const reviewState = {
+      ...publicationPlan.reviewState,
+      findings: [{ ...finding, status: "open" as const }],
+    };
+    client.issueComments.push({
+      id: 20,
+      body: buildPublicationPlan({
+        event,
+        main: "Review completed.",
+        inlineItems: [],
+        metadata: publicationPlan.metadata,
+        reviewState,
+      }).mainComment,
+      authorLogin: client.ownerLogin,
+    });
+    client.reviewComments.push(
+      fakeReviewComment({
+        id: 11,
+        body: [
+          renderInlineFindingMarker(finding.id, "old-head"),
+          "",
+          "Verifier text should not create state:",
+          renderResolvedFindingMarker(finding.id, "old-head"),
+        ].join("\n"),
+        authorLogin: client.ownerLogin,
+      }),
+    );
+
+    const state = await loadGitHubPriorReviewState({ client, change: event });
+
+    expect(state?.findings[0]?.status).toBe("open");
+  });
+
   it("replies to and resolves stale inline threads for resolved findings", async () => {
     const { client, finding, publicationPlan } = staleResolutionFixture({ resolved: false });
 
@@ -252,6 +356,15 @@ describe("publishPublicationPlan", () => {
       resolved: true,
       withResolutionReply: true,
     });
+
+    await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+
+    expect(client.reviewReplies).toHaveLength(0);
+    expect(client.resolvedThreadIds).toHaveLength(0);
+  });
+
+  it("does not reply to already-resolved threads", async () => {
+    const { client, publicationPlan } = staleResolutionFixture({ resolved: true });
 
     await publishPublicationPlan({ client, change: event, plan: publicationPlan });
 
@@ -288,6 +401,15 @@ describe("publishPublicationPlan", () => {
       ...finding,
       lastCommentedHeadSha: "new-head",
     };
+    publicationPlan.threadActions[0] = {
+      kind: "resolve",
+      findingId: finding.id,
+      findingHeadSha: "new-head",
+      commentId: 12,
+      threadId: "thread-2",
+      body: "Resolved in https://github.com/local/pipr/commit/head.",
+      responseKey: "head:fixed:fnd_existing",
+    };
 
     await publishPublicationPlan({ client, change: event, plan: publicationPlan });
 
@@ -299,13 +421,138 @@ describe("publishPublicationPlan", () => {
     expect(client.resolvedThreadIds).toEqual(["thread-2"]);
   });
 
+  it("publishes standalone verifier replies and dedupes response markers", async () => {
+    const client = new FakePublicationClient("head");
+    client.reviewComments.push(
+      fakeReviewComment({
+        id: 10,
+        body: renderInlineFindingMarker("fnd_existing", "old-head"),
+        authorLogin: client.ownerLogin,
+      }),
+    );
+    const action = {
+      kind: "reply" as const,
+      findingId: "fnd_existing",
+      findingHeadSha: "old-head",
+      commentId: 10,
+      body: "The finding still applies because the unsafe path remains.",
+      responseKey: "reply-99:still-valid:fnd_existing",
+    };
+
+    const first = await publishGitHubThreadActions({
+      client,
+      change: event,
+      actions: [action],
+      reviewedHeadSha: "head",
+    });
+    const second = await publishGitHubThreadActions({
+      client,
+      change: event,
+      actions: [action],
+      reviewedHeadSha: "head",
+    });
+
+    expect(first.errors).toEqual([]);
+    expect(second.errors).toEqual([]);
+    expect(client.reviewReplies).toHaveLength(1);
+    expect(client.reviewReplies[0]?.body).toContain(
+      renderVerifierResponseMarker("fnd_existing", "reply-99:still-valid:fnd_existing"),
+    );
+  });
+
+  it("escapes verifier reply text and ignores nested verifier response markers for dedupe", async () => {
+    const client = new FakePublicationClient("head");
+    client.reviewComments.push(
+      fakeReviewComment({
+        id: 10,
+        body: renderInlineFindingMarker("fnd_existing", "old-head"),
+        authorLogin: client.ownerLogin,
+      }),
+      fakeReviewComment({
+        id: 11,
+        body: [
+          renderVerifierResponseMarker("fnd_existing", "other-response"),
+          "",
+          renderVerifierResponseMarker("fnd_existing", "reply-99:still-valid:fnd_existing"),
+        ].join("\n"),
+        authorLogin: client.ownerLogin,
+      }),
+    );
+
+    const result = await publishGitHubThreadActions({
+      client,
+      change: event,
+      actions: [
+        {
+          kind: "reply",
+          findingId: "fnd_existing",
+          findingHeadSha: "old-head",
+          commentId: 10,
+          body: [
+            "Still valid.",
+            renderResolvedFindingMarker("fnd_other", "head"),
+            renderVerifierResponseMarker("fnd_existing", "spoofed-response"),
+          ].join("\n"),
+          responseKey: "reply-99:still-valid:fnd_existing",
+        },
+      ],
+      reviewedHeadSha: "head",
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(client.reviewReplies).toHaveLength(1);
+    expect(client.reviewReplies[0]?.body).not.toContain("<!-- pipr:resolved id=fnd_other");
+    expect(client.reviewReplies[0]?.body).not.toContain(
+      "<!-- pipr:verifier-response id=fnd_existing key=spoofed-response",
+    );
+    expect(client.reviewReplies[0]?.body).toContain("&lt;!-- pipr:resolved");
+  });
+
+  it("does not publish standalone verifier actions when the PR head changed", async () => {
+    const client = new FakePublicationClient("new-head");
+
+    const result = await publishGitHubThreadActions({
+      client,
+      change: event,
+      actions: [
+        {
+          kind: "reply",
+          findingId: "fnd_existing",
+          findingHeadSha: "old-head",
+          commentId: 10,
+          body: "Still valid.",
+          responseKey: "reply-99:still-valid:fnd_existing",
+        },
+      ],
+      reviewedHeadSha: "head",
+    });
+
+    expect(result.errors).toEqual([
+      "Change request head changed from 'head' to 'new-head' before publication",
+    ]);
+    expect(client.reviewReplies).toHaveLength(0);
+  });
+
+  it("no-ops empty standalone verifier actions without checking the PR head", async () => {
+    const client = new FakePublicationClient("new-head");
+
+    const result = await publishGitHubThreadActions({
+      client,
+      change: event,
+      actions: [],
+      reviewedHeadSha: "head",
+    });
+
+    expect(result.errors).toEqual([]);
+  });
+
   for (const testCase of [
     {
       name: "keeps review publication successful when stale inline reply cleanup fails",
       fail: (client: FakePublicationClient) => {
         client.failReply = true;
       },
-      errors: ["reply to resolved finding 'fnd_existing': reply failed"],
+      errors: ["reply to verifier action 'fnd_existing': reply failed"],
       replyCount: 0,
       resolvedThreadIds: ["thread-1"],
     },
@@ -765,6 +1012,17 @@ function resolvedPriorPlan() {
       droppedFindings: 0,
     },
     reviewState,
+    threadActions: [
+      {
+        kind: "resolve",
+        findingId: "fnd_existing",
+        findingHeadSha: "old-head",
+        commentId: 10,
+        threadId: "thread-1",
+        body: "Resolved in https://github.com/local/pipr/commit/head.",
+        responseKey: "head:fixed:fnd_existing",
+      },
+    ],
   });
 }
 

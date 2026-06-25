@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { compact } from "lodash-es";
 import type { DiffManifest, ProviderConfig } from "../types.js";
+import type { PiReadOnlyToolName } from "./contract.js";
 import {
   type PiCustomToolRequest,
   type PreparedPiCustomTools,
@@ -19,6 +20,7 @@ export type PiRunOptions = {
   env?: NodeJS.ProcessEnv;
   piExecutable?: string;
   timeoutSeconds?: number;
+  builtinTools?: readonly PiReadOnlyToolName[];
   runtimeTools?: {
     manifest: DiffManifest;
     toolResponseMaxBytes: number;
@@ -82,7 +84,13 @@ export async function runPi(options: PiRunOptions): Promise<PiRunResult> {
     preparedTools = mergePreparedPiTools(runtimeRead, customTools);
     const promptPath = path.join(sandbox.root, "prompt.md");
     await Bun.write(promptPath, options.prompt);
-    const args = buildPiArgs(options.provider, `@${promptPath}`, sandbox.sessionDir, preparedTools);
+    const args = buildPiArgs(
+      options.provider,
+      `@${promptPath}`,
+      sandbox.sessionDir,
+      preparedTools,
+      options.builtinTools,
+    );
     const result = await runProcess(options.piExecutable ?? "pi", args, {
       cwd: sandbox.workspace,
       env: buildPiEnv(options.provider, sandbox, options.env, preparedTools),
@@ -104,9 +112,10 @@ export function buildPiArgs(
   prompt: string,
   sessionDir = ".pipr/pi-sessions",
   runtimeTools?: PreparedPiTools,
+  builtinTools?: readonly PiReadOnlyToolName[],
 ): string[] {
   const invocation = toPiProviderInvocation(provider);
-  const toolNames = [...invocation.tools, ...(runtimeTools?.toolNames ?? [])];
+  const toolNames = [...(builtinTools ?? invocation.tools), ...(runtimeTools?.toolNames ?? [])];
   return [
     "--provider",
     invocation.provider,

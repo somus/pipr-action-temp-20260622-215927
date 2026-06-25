@@ -30,6 +30,7 @@ const actionResultHandlers: ActionResultHandlers = {
   "dry-run": handleDryRunActionResult,
   "command-help": handleCommandHelpActionResult,
   review: handleReviewActionResult,
+  verifier: handleVerifierActionResult,
 };
 
 async function main(): Promise<void> {
@@ -132,6 +133,14 @@ async function handleReviewActionResult(
   await setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
   await setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
   await setOutput("publication", JSON.stringify(result.publication));
+}
+
+async function handleVerifierActionResult(
+  result: Extract<ActionCommandResult, { kind: "verifier" }>,
+): Promise<void> {
+  logActionContext(result);
+  info(`pipr verifier processed review comment reply with ${result.errors.length} error(s)`);
+  await setOutput("publication", JSON.stringify({ inlineResolutionErrors: result.errors }));
 }
 
 function logActionContext(result: LoadedActionResult): void {

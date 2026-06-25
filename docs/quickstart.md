@@ -66,6 +66,8 @@ on:
   pull_request:
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -86,7 +88,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 ```
 
-`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit. pipr loads provider/model/API key settings from the base-branch `.pipr/config.ts`, so pull request changes cannot alter the model used for that run. `checks: write` lets pipr publish Check Runs when your config enables them. `pull-requests: write` lets pipr attempt best-effort stale review thread cleanup after findings are fixed.
+`fetch-depth: 0` is required so pipr can compare the pull request head against the trusted base commit. pipr loads provider/model/API key settings from the base-branch `.pipr/config.ts`, so pull request changes cannot alter the model used for that run. `checks: write` lets pipr publish Check Runs when your config enables them. `pull-requests: write` lets pipr publish Inline Review Comments, resolve verified fixed threads, and respond to user replies on pipr-owned comments.
 
 ## 4. Trigger a review
 

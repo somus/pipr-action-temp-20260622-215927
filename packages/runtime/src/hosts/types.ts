@@ -1,4 +1,4 @@
-import type { InlinePublicationItem, PublicationPlan } from "../review/comment.js";
+import type { InlinePublicationItem, PublicationPlan, ThreadAction } from "../review/comment.js";
 import type { PriorReviewState } from "../review/prior-state.js";
 import type { PublicationResult } from "../review/publication-result.js";
 import type {
@@ -21,6 +21,33 @@ export type CommandCommentEvent = {
   repository: RepositoryRef;
   changeNumber: number;
   isChangeRequest: boolean;
+  body: string;
+  actor: string;
+  workspace: string;
+};
+
+export type InlineThreadContext = {
+  findingId: string;
+  findingHeadSha: string;
+  parentCommentId: number;
+  parentBody: string;
+  threadId?: string;
+  threadResolved: boolean;
+  comments: Array<{
+    id: number;
+    body: string;
+    authorLogin?: string;
+  }>;
+};
+
+export type ReviewCommentReplyEvent = {
+  eventName: string;
+  action?: string;
+  rawAction?: string;
+  repository: RepositoryRef;
+  changeNumber: number;
+  commentId: number;
+  parentCommentId?: number;
   body: string;
   actor: string;
   workspace: string;
@@ -56,6 +83,7 @@ export type CodeHostAdapter = {
     rawAction?: string;
   }): Promise<LoadedChangeRequest>;
   resolveCommandComment(options: HostEventParseOptions): Promise<CommandCommentEvent>;
+  resolveReviewCommentReply?(options: HostEventParseOptions): Promise<ReviewCommentReplyEvent>;
   getRepositoryPermission(options: {
     repository: RepositoryRef;
     actor: string;
@@ -65,12 +93,20 @@ export type CodeHostAdapter = {
     plan: PublicationPlan;
     change: ChangeRequestEventContext;
   }): Promise<PublicationResult>;
+  publishThreadActions?(options: {
+    change: ChangeRequestEventContext;
+    actions: ThreadAction[];
+    reviewedHeadSha: string;
+  }): Promise<{ errors: string[] }>;
   loadPriorReviewState?(options: {
     change: ChangeRequestEventContext;
   }): Promise<PriorReviewState | undefined>;
   loadPriorMainComment?(options: {
     change: ChangeRequestEventContext;
   }): Promise<string | undefined>;
+  loadInlineThreadContexts?(options: {
+    change: ChangeRequestEventContext;
+  }): Promise<InlineThreadContext[]>;
   createCheckRun?(options: {
     change: ChangeRequestEventContext;
     name: string;

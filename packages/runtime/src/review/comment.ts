@@ -60,6 +60,20 @@ const inlinePublicationItemsSchema = z.array(inlinePublicationItemSchema);
 export type InlinePublicationItem = z.infer<typeof inlinePublicationItemSchema>;
 export type InlineCommentDraft = InlinePublicationItem;
 
+const threadActionSchema = z.strictObject({
+  kind: z.enum(["resolve", "reply"]),
+  findingId: findingIdSchema,
+  findingHeadSha: z.string().min(1),
+  commentId: z.number().int().positive(),
+  threadId: z.string().min(1).optional(),
+  body: z.string().min(1),
+  responseKey: z.string().min(1),
+});
+
+const threadActionsSchema = z.array(threadActionSchema);
+
+export type ThreadAction = z.infer<typeof threadActionSchema>;
+
 const publicationMetadataSchema = z.strictObject({
   runtimeVersion: z.string().min(1),
   trustedConfigSha: z.string().min(1).optional(),
@@ -82,6 +96,7 @@ const publicationPlanSchema = z.strictObject({
   inlineItems: inlinePublicationItemsSchema,
   metadata: publicationMetadataSchema,
   reviewState: priorReviewStateSchema,
+  threadActions: threadActionsSchema,
 });
 
 export type PublicationPlan = z.infer<typeof publicationPlanSchema>;
@@ -93,6 +108,7 @@ export type BuildPublicationPlanOptions = {
   metadata: Omit<PublicationMetadata, "cappedInlineFindings">;
   maxInlineComments?: number;
   reviewState?: PriorReviewState;
+  threadActions?: ThreadAction[];
 };
 
 export function buildPublicationPlan(options: BuildPublicationPlanOptions): PublicationPlan {
@@ -122,6 +138,7 @@ export function buildPublicationPlan(options: BuildPublicationPlanOptions): Publ
     inlineItems: cappedInlineItems,
     metadata,
     reviewState,
+    threadActions: options.threadActions ?? [],
   });
 }
 
