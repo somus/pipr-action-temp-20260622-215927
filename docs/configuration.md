@@ -123,7 +123,7 @@ const security = pipr.agent({
 
 const task = pipr.task({
   name: "security-review",
-  check: { name: "pipr / security" },
+  check: { name: "security" },
   async run(ctx) {
     const paths = { include: ["packages/runtime/**"] };
     const manifest = await ctx.change.diffManifest({ compressed: true, paths });

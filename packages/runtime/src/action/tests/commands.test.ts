@@ -309,7 +309,7 @@ describe("runActionCommand pull_request dispatch", () => {
       });
 
       expect(result).toMatchObject({ kind: "review" });
-      expect(checks.created.map((check) => check.name)).toEqual(["pipr / review", "pipr / all"]);
+      expect(checks.created.map((check) => check.name)).toEqual(["review", "all"]);
       expect(checks.created.map((check) => check.headSha)).toEqual([
         workspace.headSha,
         workspace.headSha,
@@ -376,19 +376,19 @@ describe("runActionCommand pull_request dispatch", () => {
       expect(checks.updated).toEqual([
         {
           checkRunId: 4,
-          name: "pipr / summary",
+          name: "summary",
           conclusion: "success",
           summary: undefined,
         },
         {
           checkRunId: 5,
-          name: "pipr / gate",
+          name: "gate",
           conclusion: "failure",
           summary: "Task failed; see logs for details.",
         },
         {
           checkRunId: 6,
-          name: "pipr / all",
+          name: "all",
           conclusion: "failure",
           summary: "pipr failed; see Action logs for details.",
         },
@@ -407,7 +407,7 @@ describe("runActionCommand pull_request dispatch", () => {
     try {
       const client = fakeGitHubPublicationClient(workspace, [], checks);
       client.createCheckRun = async (options) => {
-        if (options.name === "pipr / all") {
+        if (options.name === "all") {
           throw new Error("Resource not accessible by integration");
         }
         return fakeGitHubPublicationClient(workspace, [], checks).createCheckRun(options);
@@ -417,11 +417,11 @@ describe("runActionCommand pull_request dispatch", () => {
         runPullRequestAction(workspace, { githubPublicationClient: client }),
       ).rejects.toThrow("checks: write");
 
-      expect(checks.created.map((check) => check.name)).toEqual(["pipr / review"]);
+      expect(checks.created.map((check) => check.name)).toEqual(["review"]);
       expect(checks.updated).toEqual([
         {
           checkRunId: 4,
-          name: "pipr / review",
+          name: "review",
           conclusion: "failure",
           summary: "pipr failed; see Action logs for details.",
         },
@@ -920,7 +920,7 @@ function reviewConfigTs(
     "  });",
     "  const task = pipr.task({",
     "    name: 'review',",
-    options.checks ? '    check: { name: "pipr / review" },' : "",
+    options.checks ? "    check: { enabled: true }," : "",
     "    async run(ctx, input = {}) {",
     "    const manifest = await ctx.change.diffManifest({ compressed: true });",
     "    const result = await ctx.pi.run(reviewer, { manifest, scope: input.scope ?? 'changed' });",
@@ -928,7 +928,7 @@ function reviewConfigTs(
     "    },",
     "  });",
     options.event === false ? "" : '  pipr.on.changeRequest({ actions: ["opened"], task });',
-    options.checks ? '  pipr.checks({ aggregate: { name: "pipr / all" } });' : "",
+    options.checks ? "  pipr.checks({ aggregate: { enabled: true } });" : "",
     autoResolveConfig,
     options.command === false
       ? ""
@@ -982,21 +982,21 @@ function multiTaskCheckConfigTs(): string {
     "  });",
     "  const summary = pipr.task({",
     '    name: "summary",',
-    '    check: { name: "pipr / summary" },',
+    "    check: { enabled: true },",
     "    async run(ctx) {",
     '      await ctx.comment("Summary completed.");',
     "    },",
     "  });",
     "  const gate = pipr.task({",
     '    name: "gate",',
-    '    check: { name: "pipr / gate" },',
+    "    check: { enabled: true },",
     "    async run() {",
     '      throw new Error("Sensitive task failure");',
     "    },",
     "  });",
     '  pipr.on.changeRequest({ actions: ["opened"], task: summary });',
     '  pipr.on.changeRequest({ actions: ["opened"], task: gate });',
-    '  pipr.checks({ aggregate: { name: "pipr / all" } });',
+    "  pipr.checks({ aggregate: { enabled: true } });",
     "  void model;",
     "});",
   ].join("\n");

@@ -155,7 +155,7 @@ Tasks are the executable review units. They receive a `TaskContext` and optional
 ```ts
 const task = pipr.task({
   name: "security-review",
-  check: { name: "pipr / security" },
+  check: { name: "security" },
   async run(ctx) {
     const paths = { include: ["packages/runtime/**"] };
     const manifest = await ctx.change.diffManifest({ compressed: true, paths });
@@ -195,7 +195,7 @@ Task-level `check` controls individual GitHub Check Runs and aggregate participa
 ```ts
 const task = pipr.task({
   name: "security",
-  check: { enabled: true, name: "pipr / security", required: true },
+  check: { enabled: true, name: "security", required: true },
   async run(ctx) {
     ctx.check.pass("Security review completed.");
     await ctx.comment("## Security review\n\nNo blocking findings.");
@@ -205,11 +205,11 @@ const task = pipr.task({
 
 When `check` is an object, the individual task Check Run is enabled by default. `required` defaults to `true`. Use `check: false` to opt a task out of both its individual Check Run and the aggregate Check Run. A task without `check` does not get an individual Check Run, but still participates in the aggregate when aggregate checks are enabled.
 
-Enable the aggregate Check Run explicitly:
+The workflow job check is usually the branch protection gate. Enable the aggregate Check Run only when you explicitly want one pipr-owned Check Run across multiple tasks:
 
 ```ts
 pipr.checks({
-  aggregate: { enabled: true, name: "pipr / all" },
+  aggregate: { enabled: true, name: "all" },
 });
 ```
 

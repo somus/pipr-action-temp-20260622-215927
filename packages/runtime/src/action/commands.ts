@@ -915,7 +915,7 @@ function aggregateCheckOptions(plan: RuntimePlan): { name: string } | undefined 
   if (aggregate === undefined || aggregate === false || aggregate.enabled === false) {
     return undefined;
   }
-  return { name: aggregate.name ?? "pipr / all" };
+  return { name: aggregate.name ?? "all" };
 }
 
 function taskCheckSettings(task: Task<unknown>): {
@@ -926,13 +926,13 @@ function taskCheckSettings(task: Task<unknown>): {
 } {
   const check = task.check;
   if (check === false) {
-    return { individual: false, aggregate: false, name: `pipr / ${task.name}`, required: false };
+    return { individual: false, aggregate: false, name: task.name, required: false };
   }
   const options = typeof check === "object" ? check : undefined;
   return {
     individual: options !== undefined && options.enabled !== false,
     aggregate: true,
-    name: options?.name ?? `pipr / ${task.name}`,
+    name: options?.name ?? task.name,
     required: options?.required ?? true,
   };
 }
