@@ -1,0 +1,21 @@
+packages/runtime/src/review/verifier.ts
+  s_647b279dc72317::t_449b2f4f26a060 284-286
+packages/runtime/src/review/tests/verifier.test.ts
+  s_647b279dc72317::t_2aa80924fab942 161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "efc625a358002a042133f43eb25ab417c8afae31",
+  "prompts": {},
+  "sessions": {
+    "s_647b279dc72317": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efceb-4eaf-72d3-bfa3-691bccddb4c7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
