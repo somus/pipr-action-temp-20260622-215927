@@ -4,6 +4,7 @@ import type { GitHubPublicationClient } from "../hosts/github/publication.js";
 import type { CodeHostAdapter, CommandResponsePublicationResult } from "../hosts/types.js";
 import type { PublicationResult } from "../review/publication-result.js";
 import type { ReviewRuntimeResult } from "../review/task/task-runtime.js";
+import type { ActionLogSink } from "../shared/logging.js";
 import type { ChangeRequestEventContext, RuntimeSettings } from "../types.js";
 
 export type RuntimeCommandOptions = {
@@ -24,6 +25,7 @@ export type DryRunCommandOptions = RuntimeCommandOptions & {
 export type ActionCommandOptions = RuntimeCommandOptions & {
   eventPath: string;
   dryRun: boolean;
+  logSink?: ActionLogSink;
 };
 
 export type ActionCommandDependencyOptions = ActionCommandOptions & {

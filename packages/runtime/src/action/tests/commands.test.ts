@@ -13,7 +13,7 @@ import {
   renderResolvedFindingMarker,
   renderVerifierResponseMarker,
 } from "../../review/prior-state.js";
-import { runActionCommandWithDependencies } from "../commands.js";
+import { type ActionLogSink, runActionCommandWithDependencies } from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {
   it("ignores issue comments that are not pull request comments", async () => {
@@ -182,15 +182,28 @@ describe("runActionCommand issue_comment dispatch", () => {
 
   it("executes commands from the base commit config instead of PR-head config", async () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
+    const logs = memoryActionLogSink();
     try {
       expect(currentGitHead(workspace.rootDir)).toBe(workspace.baseSha);
-      const result = await runIssueCommentCommand(workspace, "@pipr review --scope full", "write");
+      const result = await runIssueCommentCommand(
+        workspace,
+        "@pipr review --scope full",
+        "write",
+        undefined,
+        undefined,
+        logs.logSink,
+      );
 
       expect(result).toMatchObject({
         kind: "review",
         command: "review",
       });
       expect(result.kind === "review" ? result.review.validated.validFindings : []).toEqual([]);
+      const output = logs.messages.join("\n");
+      expect(output).toContain('"eventName":"issue_comment"');
+      expect(output).toContain('"event":"parse issue comment start"');
+      expect(output).toContain('"event":"command dispatch"');
+      expect(output).toContain('"event":"publication result"');
       await expectReviewRanAtHead(result, workspace);
     } finally {
       await removeWorkspace(workspace.rootDir);
@@ -566,6 +579,116 @@ describe("runActionCommand pull_request dispatch", () => {
       await removeWorkspace(workspace.rootDir);
     }
   });
+
+  it("logs action, event, config, diff, task, Pi, and publication breadcrumbs", async () => {
+    const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
+    const logs = memoryActionLogSink();
+    try {
+      const result = await runPullRequestAction(workspace, { logSink: logs.logSink });
+
+      expect(result).toMatchObject({ kind: "review" });
+      const output = logs.messages.join("\n");
+      expect(output).toContain('"event":"action start"');
+      expect(output).toContain('"eventName":"pull_request"');
+      expect(output).toContain('"platform":"github"');
+      expect(output).toContain('"event":"trusted config"');
+      expect(output).toContain('"event":"diff manifest"');
+      expect(output).toContain('"event":"task start"');
+      expect(output).toContain('"task":"review"');
+      expect(output).toContain('"event":"pi start"');
+      expect(output).toContain('"event":"pi run"');
+      expect(output).toContain('"event":"publication result"');
+      expect(logs.notices.join("\n")).toContain('"event":"publication result"');
+      expect(logs.groups).toContain("pipr action");
+      expect(logs.groups).toContain("publish review");
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("logs bounded Pi failure snippets without leaking secret env values", async () => {
+    const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
+    const logs = memoryActionLogSink();
+    const secret = "super-secret-deepseek-key";
+    try {
+      await Bun.write(
+        workspace.piExecutable,
+        [
+          "#!/bin/sh",
+          'printf "%s\\n" "$DEEPSEEK_API_KEY" >&2',
+          'printf "%s\\n" "model exploded" >&2',
+          "exit 42",
+        ].join("\n"),
+      );
+      await chmod(workspace.piExecutable, 0o755);
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writePullRequestEvent(eventPath, workspace);
+
+      await expect(
+        runActionCommandWithDependencies({
+          rootDir: workspace.rootDir,
+          configDir: ".pipr",
+          eventPath,
+          dryRun: false,
+          env: { ...pullRequestEnv(workspace.rootDir, eventPath), DEEPSEEK_API_KEY: secret },
+          githubPublicationClient: fakeGitHubPublicationClient(workspace),
+          piExecutable: workspace.piExecutable,
+          logSink: logs.logSink,
+        }),
+      ).rejects.toThrow("Pi agent failed with exit 42");
+
+      const output = logs.messages.join("\n");
+      expect(output).toContain('"event":"pi stderr"');
+      expect(output).toContain("| ***");
+      expect(output).toContain("| model exploded");
+      expect(output).not.toContain(secret);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("keeps redacted Pi failure snippets in thrown errors when no log sink is installed", async () => {
+    const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
+    const secret = "super-secret-deepseek-key";
+    try {
+      await Bun.write(
+        workspace.piExecutable,
+        [
+          "#!/bin/sh",
+          'printf "%s\\n" "$DEEPSEEK_API_KEY" >&2',
+          'printf "%s\\n" "model exploded" >&2',
+          "exit 42",
+        ].join("\n"),
+      );
+      await chmod(workspace.piExecutable, 0o755);
+      const eventPath = path.join(workspace.rootDir, "event.json");
+      await writePullRequestEvent(eventPath, workspace);
+
+      let thrown: unknown;
+      try {
+        await runActionCommandWithDependencies({
+          rootDir: workspace.rootDir,
+          configDir: ".pipr",
+          eventPath,
+          dryRun: false,
+          env: { ...pullRequestEnv(workspace.rootDir, eventPath), DEEPSEEK_API_KEY: secret },
+          githubPublicationClient: fakeGitHubPublicationClient(workspace),
+          piExecutable: workspace.piExecutable,
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = thrown instanceof Error ? thrown.message : String(thrown);
+      expect(message).toContain("Pi agent failed with exit 42");
+      expect(message).toContain("| ***");
+      expect(message).toContain("| model exploded");
+      expect(message).not.toContain(secret);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
 });
 
 describe("runActionCommand pull_request_review_comment dispatch", () => {
@@ -748,6 +871,7 @@ describe("runActionCommand pull_request_review_comment dispatch", () => {
   it("runs user-reply verifier and publishes still-valid responses", async () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     const publication = verifierPublicationClient(workspace);
+    const logs = memoryActionLogSink();
     try {
       await writeStillValidVerifierOutput(
         workspace,
@@ -755,7 +879,13 @@ describe("runActionCommand pull_request_review_comment dispatch", () => {
       );
       await expectVerifierReplyPublished(workspace, publication, {
         githubClient: fakeGitHubClient(workspace, "write"),
+        logSink: logs.logSink,
       });
+      const output = logs.messages.join("\n");
+      expect(output).toContain('"eventName":"pull_request_review_comment"');
+      expect(output).toContain('"event":"parse review comment reply start"');
+      expect(output).toContain('"event":"verifier start"');
+      expect(output).toContain('"event":"verifier publication"');
       expect(publication.reviewReplies[0]?.body).toContain(
         renderVerifierResponseMarker("fnd_existing", "reply-11:still-valid:fnd_existing"),
       );
@@ -777,6 +907,44 @@ type FakeCheckRuns = {
   created: Array<{ id: number; name: string; headSha: string; summary?: string }>;
   updated: Array<{ checkRunId: number; name: string; conclusion: string; summary?: string }>;
 };
+
+function memoryActionLogSink(): {
+  logSink: ActionLogSink;
+  messages: string[];
+  notices: string[];
+  groups: string[];
+} {
+  const messages: string[] = [];
+  const notices: string[] = [];
+  const groups: string[] = [];
+  return {
+    messages,
+    notices,
+    groups,
+    logSink: {
+      info(message) {
+        messages.push(message);
+      },
+      notice(message) {
+        messages.push(message);
+        notices.push(message);
+      },
+      warning(message) {
+        messages.push(message);
+      },
+      error(message) {
+        messages.push(message);
+      },
+      debug(message) {
+        messages.push(message);
+      },
+      async group(name, run) {
+        groups.push(name);
+        return await run();
+      },
+    },
+  };
+}
 
 async function createCommandWorkspace(
   options: { baseConfigTs?: string; checkoutBaseBeforeRun?: boolean; headConfigTs?: string } = {},
@@ -834,6 +1002,7 @@ async function runIssueCommentCommand(
   permission: RepositoryPermission,
   checks?: FakeCheckRuns,
   githubPublicationClient?: GitHubPublicationClient,
+  logSink?: ActionLogSink,
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
   await writeIssueCommentEvent(eventPath, body);
@@ -847,6 +1016,7 @@ async function runIssueCommentCommand(
     githubPublicationClient:
       githubPublicationClient ?? fakeGitHubPublicationClient(workspace, [], checks),
     piExecutable: workspace.piExecutable,
+    logSink,
   });
 }
 
@@ -854,6 +1024,7 @@ async function runPullRequestAction(
   workspace: CommandWorkspace,
   options: {
     githubPublicationClient?: GitHubPublicationClient;
+    logSink?: ActionLogSink;
   } = {},
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
@@ -867,6 +1038,7 @@ async function runPullRequestAction(
     githubPublicationClient:
       options.githubPublicationClient ?? fakeGitHubPublicationClient(workspace),
     piExecutable: workspace.piExecutable,
+    logSink: options.logSink,
   });
 }
 
@@ -876,6 +1048,7 @@ async function runReviewCommentAction(
     dryRun?: boolean;
     githubClient: GitHubCommandClient;
     githubPublicationClient: GitHubPublicationClient;
+    logSink?: ActionLogSink;
   },
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
@@ -888,6 +1061,7 @@ async function runReviewCommentAction(
     githubClient: options.githubClient,
     githubPublicationClient: options.githubPublicationClient,
     piExecutable: workspace.piExecutable,
+    logSink: options.logSink,
   });
 }
 
@@ -936,6 +1110,7 @@ async function expectVerifierReplyPublished(
   options: {
     githubClient: GitHubCommandClient;
     event?: Parameters<typeof writeReviewCommentEvent>[1];
+    logSink?: ActionLogSink;
   },
 ): Promise<void> {
   const eventPath = path.join(workspace.rootDir, "event.json");
@@ -943,6 +1118,7 @@ async function expectVerifierReplyPublished(
   const result = await runReviewCommentAction(workspace, {
     githubClient: options.githubClient,
     githubPublicationClient: publication,
+    logSink: options.logSink,
   });
   expect(result).toMatchObject({ kind: "verifier", errors: [] });
   expect(publication.reviewReplies).toHaveLength(1);

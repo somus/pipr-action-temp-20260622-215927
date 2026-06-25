@@ -16,9 +16,16 @@ import { resolveProvider } from "../review/agent/review-run.js";
 import { isPiprThreadActionReplyBody } from "../review/prior-state.js";
 import { runTaskRuntime } from "../review/task/task-runtime.js";
 import { runInternalVerifier } from "../review/verifier.js";
+import { createRuntimeActionLog, type RuntimeActionLog } from "../shared/logging.js";
 import type { ChangeRequestEventContext, PiprConfig } from "../types.js";
 import { parseChangeRequestEventContext } from "../types.js";
 import { assertTrustedActionProviderEnv, createActionHostAdapter } from "./action-host.js";
+import {
+  addProviderSecrets,
+  logEventContext,
+  logPhase,
+  logTrustedRuntime,
+} from "./action-logging.js";
 import {
   dispatchRuntimeEntry,
   hasRequiredRepositoryPermission,
@@ -45,6 +52,7 @@ import type {
   ValidateCommandResult,
 } from "./types.js";
 
+export type { ActionLogSink } from "../shared/logging.js";
 export type {
   ActionCommandOptions,
   ActionCommandResult,
@@ -159,60 +167,87 @@ export async function runActionCommand(
 export async function runActionCommandWithDependencies(
   options: ActionCommandDependencyOptions,
 ): Promise<ActionCommandResult> {
-  const adapter = createActionHostAdapter(options);
-  adapter.workspace.ensureWorkspaceSafeDirectory?.({ rootDir: options.rootDir, env: options.env });
-  const eventName = (options.env ?? process.env).GITHUB_EVENT_NAME ?? "pull_request";
-  if (eventName === "issue_comment") {
-    return await runIssueCommentActionCommand(options, adapter);
-  }
-  if (eventName === "pull_request_review_comment") {
-    return await runReviewCommentReplyActionCommand(options, adapter);
-  }
-  const event = await adapter.events.parseEvent({
-    eventPath: options.eventPath,
-    env: options.env ?? process.env,
-    workspace: options.rootDir,
+  const log = createRuntimeActionLog({ logSink: options.logSink, env: options.env });
+  return await log.group("pipr action", async () => {
+    const eventName = (options.env ?? process.env).GITHUB_EVENT_NAME ?? "pull_request";
+    log.notice("action start", {
+      eventName,
+      dryRun: options.dryRun,
+      root: options.rootDir,
+      configDir: options.configDir,
+    });
+    const adapter = createActionHostAdapter(options);
+    await logPhase(log, "workspace", async () => {
+      adapter.workspace.ensureWorkspaceSafeDirectory?.({
+        rootDir: options.rootDir,
+        env: options.env,
+      });
+    });
+    if (eventName === "issue_comment") {
+      return await runIssueCommentActionCommand(options, adapter, log);
+    }
+    if (eventName === "pull_request_review_comment") {
+      return await runReviewCommentReplyActionCommand(options, adapter, log);
+    }
+    return await runPullRequestActionCommand(options, adapter, log);
   });
-  if (options.dryRun) {
-    const trustedRuntime = await loadRuntimeProjectFromGitCommit({
+}
+
+async function runPullRequestActionCommand(
+  options: ActionCommandDependencyOptions,
+  adapter: CodeHostAdapter,
+  log: RuntimeActionLog,
+): Promise<ActionCommandResult> {
+  const event = await logPhase(log, "parse event", async () =>
+    adapter.events.parseEvent({
+      eventPath: options.eventPath,
+      env: options.env ?? process.env,
+      workspace: options.rootDir,
+    }),
+  );
+  logEventContext(log, event);
+  const trustedRuntime = await logPhase(log, "load trusted config", async () =>
+    loadRuntimeProjectFromGitCommit({
       rootDir: options.rootDir,
       configDir: options.configDir,
       commitSha: event.change.base.sha,
       env: options.env,
-    });
+    }),
+  );
+  logTrustedRuntime(log, trustedRuntime);
+  if (options.dryRun) {
+    log.notice("dry run stop before review runtime, model, or GitHub publishing calls");
     return {
       kind: "dry-run",
       event,
       configSource: trustedRuntime.settings.source,
     };
   }
-  const trustedRuntime = await loadRuntimeProjectFromGitCommit({
-    rootDir: options.rootDir,
-    configDir: options.configDir,
-    commitSha: event.change.base.sha,
-    env: options.env,
-  });
-  assertTrustedActionProviderEnv(options, trustedRuntime.settings.config);
-  adapter.workspace.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
+  await prepareTrustedHeadCheckout(options, adapter, trustedRuntime.settings.config, event, log);
   const dispatch = dispatchRuntimeEntry({
     kind: "change-request",
     plan: trustedRuntime.plan,
     event,
+  });
+  const selectedTasks = dispatch.kind === "change-request" ? dispatch.tasks : [];
+  log.notice("dispatch", {
+    selectedTasks: selectedTasks.map((task) => task.name),
   });
   const completed = await runTrustedReviewAndPublish({
     options,
     adapter,
     trustedRuntime,
     event,
-    selectedTasks: dispatch.kind === "change-request" ? dispatch.tasks : [],
+    selectedTasks,
+    log,
   });
   if (completed.kind === "skipped") {
+    log.notice("action ignored", { reason: completed.reason });
     return { kind: "ignored", reason: completed.reason };
   }
   if (completed.kind === "command-response") {
     throw new Error("command response result is only supported for issue_comment commands");
   }
-
   return {
     kind: "review",
     event,
@@ -222,43 +257,71 @@ export async function runActionCommandWithDependencies(
   };
 }
 
+async function prepareTrustedHeadCheckout(
+  options: ActionCommandDependencyOptions,
+  adapter: CodeHostAdapter,
+  config: PiprConfig,
+  event: ChangeRequestEventContext,
+  log: RuntimeActionLog,
+): Promise<void> {
+  addProviderSecrets(log, config, options.env);
+  assertTrustedActionProviderEnv(options, config);
+  await logPhase(log, "checkout head", async () => {
+    adapter.workspace.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
+  });
+}
+
 async function runIssueCommentActionCommand(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
+  log: RuntimeActionLog,
 ): Promise<ActionCommandResult> {
-  const prepared = await prepareIssueCommentCommand(options, adapter);
+  const prepared = await prepareIssueCommentCommand(options, adapter, log);
   if (prepared.kind === "ignored") {
+    log.notice("action ignored", { reason: prepared.reason });
     return prepared;
   }
-  return await dispatchIssueCommentCommand(options, adapter, prepared);
+  return await dispatchIssueCommentCommand(options, adapter, prepared, log);
 }
 
 async function runReviewCommentReplyActionCommand(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
+  log: RuntimeActionLog,
 ): Promise<ActionCommandResult> {
   const capabilities = reviewCommentReplyDispatchCapabilities(options, adapter);
   if (capabilities.kind === "ignored") {
+    log.notice("action ignored", { reason: capabilities.reason });
     return capabilities;
   }
-  const reply = await capabilities.resolveReviewCommentReply({
-    eventPath: options.eventPath,
-    env: options.env ?? process.env,
-    workspace: options.rootDir,
-  });
+  const reply = await logPhase(log, "parse review comment reply", async () =>
+    capabilities.resolveReviewCommentReply({
+      eventPath: options.eventPath,
+      env: options.env ?? process.env,
+      workspace: options.rootDir,
+    }),
+  );
   const runnable = runnableReviewCommentReply(reply);
   if (runnable.kind === "ignored") {
+    log.notice("action ignored", { reason: runnable.reason });
     return runnable;
   }
-  const prepared = await prepareReviewCommentVerifier(options, adapter, reply);
+  const prepared = await prepareReviewCommentVerifier(options, adapter, reply, log);
   if (prepared.kind === "ignored") {
+    log.notice("action ignored", { reason: prepared.reason });
     return prepared;
   }
-  const result = await runReviewCommentVerifier(options, adapter, prepared);
-  const publication = await capabilities.publishThreadActions({
-    change: prepared.event,
-    actions: result.threadActions,
-    reviewedHeadSha: prepared.event.change.head.sha,
+  const result = await runReviewCommentVerifier(options, adapter, prepared, log);
+  const publication = await logPhase(log, "publish verifier thread actions", async () =>
+    capabilities.publishThreadActions({
+      change: prepared.event,
+      actions: result.threadActions,
+      reviewedHeadSha: prepared.event.change.head.sha,
+    }),
+  );
+  log.notice("verifier publication", {
+    errors: publication?.errors.length ?? 0,
+    threadActions: result.threadActions.length,
   });
   return {
     kind: "verifier",
@@ -311,18 +374,21 @@ async function prepareReviewCommentVerifier(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
   reply: ReviewCommentReplyEvent,
+  log: RuntimeActionLog,
 ): Promise<PreparedReviewCommentVerifier> {
   if (!reply.parentCommentId) {
     return { kind: "ignored", reason: "review comment was not a reply" };
   }
-  const loaded = await adapter.events.loadChangeRequest({
-    repository: reply.repository,
-    changeNumber: reply.changeNumber,
-    workspace: reply.workspace,
-    eventName: reply.eventName,
-    action: reply.action,
-    rawAction: reply.rawAction,
-  });
+  const loaded = await logPhase(log, "load change request", async () =>
+    adapter.events.loadChangeRequest({
+      repository: reply.repository,
+      changeNumber: reply.changeNumber,
+      workspace: reply.workspace,
+      eventName: reply.eventName,
+      action: reply.action,
+      rawAction: reply.rawAction,
+    }),
+  );
   const event = parseChangeRequestEventContext({
     eventName: loaded.eventName ?? reply.eventName,
     action: loaded.action ?? reply.action,
@@ -332,12 +398,16 @@ async function prepareReviewCommentVerifier(
     change: loaded.change,
     workspace: loaded.workspace ?? reply.workspace,
   });
-  const trustedRuntime = await loadRuntimeProjectFromGitCommit({
-    rootDir: options.rootDir,
-    configDir: options.configDir,
-    commitSha: event.change.base.sha,
-    env: options.env,
-  });
+  logEventContext(log, event);
+  const trustedRuntime = await logPhase(log, "load trusted config", async () =>
+    loadRuntimeProjectFromGitCommit({
+      rootDir: options.rootDir,
+      configDir: options.configDir,
+      commitSha: event.change.base.sha,
+      env: options.env,
+    }),
+  );
+  logTrustedRuntime(log, trustedRuntime);
   const config = trustedRuntime.settings.config;
   if (!config.publication.autoResolve.enabled) {
     return { kind: "ignored", reason: "publication.autoResolve is disabled" };
@@ -348,8 +418,7 @@ async function prepareReviewCommentVerifier(
   if (!(await verifierActorAllowed(adapter, event, reply, config))) {
     return { kind: "ignored", reason: "review comment reply actor is not allowed" };
   }
-  assertTrustedActionProviderEnv(options, trustedRuntime.settings.config);
-  adapter.workspace.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
+  await prepareTrustedHeadCheckout(options, adapter, trustedRuntime.settings.config, event, log);
   return {
     kind: "prepared",
     reply: { ...reply, parentCommentId: reply.parentCommentId },
@@ -362,6 +431,7 @@ async function runReviewCommentVerifier(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
   prepared: Exclude<PreparedReviewCommentVerifier, { kind: "ignored" }>,
+  log: RuntimeActionLog,
 ) {
   const { event, reply, trustedRuntime } = prepared;
   const config = trustedRuntime.settings.config;
@@ -370,6 +440,14 @@ async function runReviewCommentVerifier(
     config,
     config.publication.autoResolve.model ?? config.defaultProvider,
   );
+  const threadContexts =
+    (await adapter.comments?.loadInlineThreadContexts?.({ change: event })) ?? [];
+  log.notice("verifier start", {
+    mode: "user-reply",
+    threadContexts: threadContexts.length,
+    replyCommentId: reply.commentId,
+    parentCommentId: reply.parentCommentId,
+  });
   const result = await runInternalVerifier({
     workspace: options.rootDir,
     config,
@@ -379,13 +457,14 @@ async function runReviewCommentVerifier(
     plan: trustedRuntime.plan,
     env: options.env,
     piExecutable: options.piExecutable,
+    log,
     diffManifest: buildDiffManifest({
       cwd: options.rootDir,
       baseSha: event.change.base.sha,
       headSha: event.change.head.sha,
     }),
     priorReviewState: await adapter.comments?.loadPriorReviewState?.({ change: event }),
-    threadContexts: (await adapter.comments?.loadInlineThreadContexts?.({ change: event })) ?? [],
+    threadContexts,
     mode: {
       kind: "user-reply",
       reply: {
@@ -452,24 +531,29 @@ type PreparedIssueCommentCommand =
 async function prepareIssueCommentCommand(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
+  log: RuntimeActionLog,
 ): Promise<PreparedIssueCommentCommand> {
-  const comment = await adapter.events.resolveCommandComment({
-    eventPath: options.eventPath,
-    env: options.env ?? process.env,
-    workspace: options.rootDir,
-  });
+  const comment = await logPhase(log, "parse issue comment", async () =>
+    adapter.events.resolveCommandComment({
+      eventPath: options.eventPath,
+      env: options.env ?? process.env,
+      workspace: options.rootDir,
+    }),
+  );
   const runnable = runnableIssueCommentCommand(comment, options.dryRun);
   if (runnable.kind === "ignored") {
     return runnable;
   }
-  const loaded = await adapter.events.loadChangeRequest({
-    repository: comment.repository,
-    changeNumber: comment.changeNumber,
-    workspace: comment.workspace,
-    eventName: comment.eventName,
-    action: comment.action,
-    rawAction: comment.rawAction,
-  });
+  const loaded = await logPhase(log, "load change request", async () =>
+    adapter.events.loadChangeRequest({
+      repository: comment.repository,
+      changeNumber: comment.changeNumber,
+      workspace: comment.workspace,
+      eventName: comment.eventName,
+      action: comment.action,
+      rawAction: comment.rawAction,
+    }),
+  );
   const event = parseChangeRequestEventContext({
     eventName: loaded.eventName ?? comment.eventName,
     action: loaded.action ?? comment.action,
@@ -479,12 +563,16 @@ async function prepareIssueCommentCommand(
     change: loaded.change,
     workspace: loaded.workspace ?? comment.workspace,
   });
-  const trustedRuntime = await loadRuntimeProjectFromGitCommit({
-    rootDir: options.rootDir,
-    configDir: options.configDir,
-    commitSha: event.change.base.sha,
-    env: options.env,
-  });
+  logEventContext(log, event);
+  const trustedRuntime = await logPhase(log, "load trusted config", async () =>
+    loadRuntimeProjectFromGitCommit({
+      rootDir: options.rootDir,
+      configDir: options.configDir,
+      commitSha: event.change.base.sha,
+      env: options.env,
+    }),
+  );
+  logTrustedRuntime(log, trustedRuntime);
   const resolution = resolvePlanCommand(trustedRuntime.plan, runnable.line);
   if (resolution.kind === "ignored") {
     return { kind: "ignored", reason: resolution.reason };
@@ -515,14 +603,22 @@ async function dispatchIssueCommentCommand(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
   prepared: Extract<PreparedIssueCommentCommand, { kind: "prepared" }>,
+  log: RuntimeActionLog,
 ): Promise<ActionCommandResult> {
   const requiredPermission =
     prepared.resolution.kind === "matched"
       ? prepared.resolution.invocation.requiredPermission
       : prepared.resolution.requiredPermission;
-  const permission = await adapter.permissions.getRepositoryPermission({
-    repository: prepared.comment.repository,
-    actor: prepared.comment.actor,
+  const permission = await logPhase(log, "check command permission", async () =>
+    adapter.permissions.getRepositoryPermission({
+      repository: prepared.comment.repository,
+      actor: prepared.comment.actor,
+    }),
+  );
+  log.notice("command dispatch", {
+    resolution: prepared.resolution.kind,
+    requiredPermission,
+    actualPermission: permission,
   });
   if (!hasRequiredRepositoryPermission(permission, requiredPermission)) {
     return {
@@ -560,8 +656,13 @@ async function dispatchIssueCommentCommand(
     return { kind: "ignored", reason: "command dispatch did not resolve to a runnable task" };
   }
 
-  assertTrustedActionProviderEnv(options, prepared.trustedRuntime.settings.config);
-  adapter.workspace.ensureHeadCheckout({ rootDir: options.rootDir, change: prepared.event });
+  await prepareTrustedHeadCheckout(
+    options,
+    adapter,
+    prepared.trustedRuntime.settings.config,
+    prepared.event,
+    log,
+  );
   const dispatch = dispatchRuntimeEntry({
     kind: "change-request",
     plan: prepared.trustedRuntime.plan,
@@ -581,6 +682,7 @@ async function dispatchIssueCommentCommand(
       line: parsedResolution.invocation.line,
       arguments: parsedResolution.invocation.arguments,
     },
+    log,
   });
   return await issueCommentCommandResult({
     adapter,

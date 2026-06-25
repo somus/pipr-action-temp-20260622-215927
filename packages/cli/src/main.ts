@@ -3,6 +3,7 @@ import { inspect } from "node:util";
 import * as core from "@actions/core";
 import {
   type ActionCommandResult,
+  type ActionLogSink,
   PublicationError,
   runActionCommand,
   runDryRunCommand,
@@ -108,8 +109,30 @@ function actionOptions(options: CliOptions): ActionOptions {
     env: process.env,
     eventPath,
     dryRun: process.env.PIPR_DRY_RUN === "1",
+    logSink: githubActionsLogSink,
   };
 }
+
+const githubActionsLogSink: ActionLogSink = {
+  info(message) {
+    core.info(message);
+  },
+  notice(message) {
+    core.notice(message);
+  },
+  warning(message) {
+    core.warning(message);
+  },
+  error(message) {
+    core.error(message);
+  },
+  debug(message) {
+    core.debug(message);
+  },
+  async group(name, run) {
+    return await core.group(name, run);
+  },
+};
 
 function writeActionResult(result: ActionCommandResult): void {
   if (result.kind === "ignored") {

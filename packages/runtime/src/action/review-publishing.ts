@@ -1,6 +1,7 @@
 import type { Task } from "@pipr/sdk";
 import type { CodeHostAdapter } from "../hosts/types.js";
 import { type RuntimeCommandInvocation, runTaskRuntime } from "../review/task/task-runtime.js";
+import type { RuntimeActionLog } from "../shared/logging.js";
 import type { ChangeRequestEventContext } from "../types.js";
 import {
   finalizeRuntimeChecks,
@@ -22,6 +23,7 @@ export async function runTrustedReviewAndPublish(options: {
   taskInput?: unknown;
   selectedTasks: Task<unknown>[];
   commandInvocation?: RuntimeCommandInvocation;
+  log: RuntimeActionLog;
 }): Promise<TrustedReviewAndPublishResult> {
   const checks = await startRuntimeChecks({
     adapter: options.adapter,
@@ -29,6 +31,7 @@ export async function runTrustedReviewAndPublish(options: {
     plan: options.trustedRuntime.plan,
     taskName: options.taskName,
     selectedTasks: options.selectedTasks,
+    log: options.log,
   });
   try {
     const review = await runTaskRuntime({
@@ -43,6 +46,7 @@ export async function runTrustedReviewAndPublish(options: {
       trustedConfigSha: options.trustedRuntime.trustedConfigSha,
       trustedConfigHash: options.trustedRuntime.trustedConfigHash,
       piExecutable: options.options.piExecutable,
+      log: options.log,
       checkSink: checks?.sink,
       loadPriorReviewState: () =>
         options.adapter.comments?.loadPriorReviewState?.({ change: options.event }) ??
@@ -75,9 +79,23 @@ export async function runTrustedReviewAndPublish(options: {
     if (!publish) {
       throw new Error("review publication is not available for this code host");
     }
-    const publication = await publish({
-      change: options.event,
-      plan: review.publicationPlan,
+    const publication = await options.log.group("publish review", async () => {
+      options.log.info("publication plan", {
+        inlineItems: review.publicationPlan.inlineItems.length,
+        threadActions: review.publicationPlan.threadActions.length,
+      });
+      const result = await publish({
+        change: options.event,
+        plan: review.publicationPlan,
+      });
+      options.log.notice("publication result", {
+        main: result.mainComment.action,
+        inlinePosted: result.inlineComments.posted,
+        inlineSkipped: result.inlineComments.skipped,
+        inlineFailed: result.inlineComments.failed,
+        inlineResolutionErrors: result.metadata.inlineResolutionErrors.length,
+      });
+      return result;
     });
     await finalizeRuntimeChecks(checks, {});
     return { kind: "completed", review, publication };
@@ -88,11 +106,9 @@ export async function runTrustedReviewAndPublish(options: {
         (result) => result.conclusion === "failure",
       ),
     }).catch((finalizeError: unknown) => {
-      console.warn(
-        `Unable to finalize GitHub check runs after failure: ${
-          finalizeError instanceof Error ? finalizeError.message : String(finalizeError)
-        }`,
-      );
+      options.log.warning("check finalization after failure failed", {
+        error: finalizeError instanceof Error ? finalizeError.message : String(finalizeError),
+      });
     });
     throw error;
   }

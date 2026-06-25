@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type { Agent, AgentTool, DurationInput, TaskContext } from "@pipr/sdk";
 import type { RuntimePlan } from "@pipr/sdk/internal";
 import { isBuiltinReadOnlyTool } from "@pipr/sdk/internal";
@@ -9,6 +10,7 @@ import {
 } from "../../diff/manifest-projection.js";
 import { type PiReadOnlyToolName, piReadOnlyToolNames } from "../../pi/contract.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../../pi/runner.js";
+import { boundedLogSnippet, type RuntimeActionLog } from "../../shared/logging.js";
 import type {
   ChangeRequestEventContext,
   DiffManifest,
@@ -43,6 +45,7 @@ export type RunReviewAgentOptions = {
     piExecutable?: string;
     piRunner?: PiRunner;
     priorReviewState?: PriorReviewState;
+    log?: RuntimeActionLog;
   };
 };
 
@@ -179,6 +182,14 @@ async function runAgentWithProvider(
     lastError = parsed.error;
   }
 
+  options.runtime.log?.textSnippet("error", "pi invalid output", lastOutput);
+  options.runtime.log?.error("pi invalid output metadata", {
+    agent: options.agent.name ?? "anonymous-agent",
+    provider: provider.id,
+    model: provider.model,
+    repairAttempts: retry.invalidOutput,
+    error: lastError,
+  });
   return {
     ok: false,
     error: `Pi output failed schema validation after ${retry.invalidOutput} repair attempt(s): ${lastError}`,
@@ -254,23 +265,43 @@ async function runPiForPrompt(
   provider: ProviderConfig,
   prompt: string,
 ): Promise<PiRunResult> {
+  const builtinTools = builtinToolsForPrompt(options.toolMode ?? "read-only");
+  const runtimeTools =
+    options.toolMode === "none"
+      ? undefined
+      : runtimeToolsForPrompt(options.manifest, options.manifestPrompt);
+  const timeoutSeconds = effectiveTimeoutSeconds(
+    options.runOptions?.timeout ?? options.agent.definition.timeout,
+    options.runtime.config.limits?.timeoutSeconds,
+  );
+  options.runtime.log?.info("pi start", {
+    agent: options.agent.name ?? "anonymous-agent",
+    provider: provider.id,
+    model: provider.model,
+    promptBytes: Buffer.byteLength(prompt, "utf8"),
+    tools: [...builtinTools, ...(runtimeTools ? ["pipr-runtime-tools"] : [])],
+  });
   const result = await (options.runtime.piRunner ?? runPi)({
     workspace: options.runtime.workspace,
     provider,
     prompt,
     env: options.runtime.env,
     piExecutable: options.runtime.piExecutable,
-    builtinTools: builtinToolsForPrompt(options.toolMode ?? "read-only"),
-    runtimeTools:
-      options.toolMode === "none"
-        ? undefined
-        : runtimeToolsForPrompt(options.manifest, options.manifestPrompt),
-    timeoutSeconds: effectiveTimeoutSeconds(
-      options.runOptions?.timeout ?? options.agent.definition.timeout,
-      options.runtime.config.limits?.timeoutSeconds,
-    ),
+    builtinTools,
+    runtimeTools,
+    timeoutSeconds,
   });
-  assertSuccessfulPiResult(result);
+  options.runtime.log?.info("pi run", {
+    agent: options.agent.name ?? "anonymous-agent",
+    provider: provider.id,
+    model: provider.model,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    stdoutBytes: result.stdout.length,
+    stderrBytes: result.stderr.length,
+    timeoutSeconds,
+  });
+  assertSuccessfulPiResult(result, options.runtime.log);
   return result;
 }
 
@@ -317,12 +348,22 @@ function runtimeToolsForPrompt(
   };
 }
 
-function assertSuccessfulPiResult(result: PiRunResult): void {
+function assertSuccessfulPiResult(result: PiRunResult, log: RuntimeActionLog | undefined): void {
   if (result.exitCode === 0) {
     return;
   }
-  const detail = result.stderr.trim() || result.stdout.trim() || "no output";
-  throw new Error(`Pi agent failed with exit ${result.exitCode}: ${detail}`);
+  if (result.stderr.trim()) {
+    log?.textSnippet("error", "pi stderr", result.stderr);
+  }
+  if (result.stdout.trim()) {
+    log?.textSnippet("error", "pi stdout", result.stdout);
+  }
+  if (!log?.writesToSink) {
+    const output = result.stderr.trim() || result.stdout.trim() || "no output";
+    const detail = log ? log.formatTextSnippet(output) : boundedLogSnippet(output);
+    throw new Error(`Pi agent failed with exit ${result.exitCode}:\n${detail}`);
+  }
+  throw new Error(`Pi agent failed with exit ${result.exitCode}`);
 }
 
 function readInputManifest(input: unknown): DiffManifest | undefined {

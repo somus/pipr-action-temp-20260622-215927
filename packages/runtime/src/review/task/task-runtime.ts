@@ -4,6 +4,7 @@ import { uniq } from "lodash-es";
 import { selectRuntimeTasks } from "../../action/entry-dispatch.js";
 import { type BuildDiffManifestOptions, buildDiffManifest } from "../../diff/diff.js";
 import { cloneDiffManifest, projectDiffManifest } from "../../diff/manifest-projection.js";
+import type { RuntimeActionLog } from "../../shared/logging.js";
 import type {
   ChangeRequestEventContext,
   DiffManifest,
@@ -63,6 +64,7 @@ export type RunTaskRuntimeOptions = {
   loadInlineThreadContexts?: () => Promise<import("../../hosts/types.js").InlineThreadContext[]>;
   checkSink?: RuntimeCheckSink;
   commandInvocation?: RuntimeCommandInvocation;
+  log?: RuntimeActionLog;
 };
 
 export type RuntimeCommandInvocation = Pick<CommandContext, "name" | "line" | "arguments">;
@@ -121,12 +123,24 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       headSha: options.event.change.head.sha,
     }),
   );
+  options.log?.info("diff manifest", {
+    base: diffManifest.baseSha.slice(0, 12),
+    head: diffManifest.headSha.slice(0, 12),
+    mergeBase: diffManifest.mergeBaseSha.slice(0, 12),
+    files: diffManifest.files.length,
+    hunks: diffManifest.files.reduce((sum, file) => sum + file.hunks.length, 0),
+    ranges: diffManifest.files.reduce((sum, file) => sum + file.commentableRanges.length, 0),
+    additions: diffManifest.files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: diffManifest.files.reduce((sum, file) => sum + file.deletions, 0),
+    excluded: diffManifest.files.filter((file) => file.excludedReason !== undefined).length,
+  });
   const tasks = selectRuntimeTasks({
     plan: options.plan,
     event: options.event,
     taskName: options.taskName,
   });
   if (tasks.length === 0) {
+    options.log?.info("task runtime skipped", { reason: "no-matched-tasks" });
     return skippedTaskRuntimeResult({
       config,
       diffManifest,
@@ -140,6 +154,7 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     });
   }
   const selectedTasks = tasks.map((task) => task.name);
+  options.log?.info("task runtime start", { selectedTasks, taskCount: tasks.length });
   const loadedPriorReviewState =
     options.priorReviewState ?? (await options.loadPriorReviewState?.());
   const priorMainComment = options.priorMainComment ?? (await options.loadPriorMainComment?.());
@@ -150,6 +165,8 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
   const taskResults = await Promise.all(
     tasks.map(async (task, taskOrder) => {
       const output = createOutputState();
+      const started = Date.now();
+      options.log?.info("task start", { task: task.name, order: taskOrder });
       try {
         await task.handler(
           createTaskContext({
@@ -167,6 +184,13 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
         options.checkSink?.setTaskResult(
           runtimeTaskCheckResult(task.name, output.check ?? { conclusion: "success" }),
         );
+        options.log?.info("task ok", {
+          task: task.name,
+          durationMs: Date.now() - started,
+          findings: output.findings.length,
+          providerModels: output.providerModels,
+          repairAttempted: output.repairAttempted,
+        });
         return { taskName: task.name, output };
       } catch (error) {
         const check = {
@@ -174,6 +198,14 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
           summary: genericTaskFailureSummary,
         };
         options.checkSink?.setTaskResult(runtimeTaskCheckResult(task.name, check));
+        options.log?.error("task failed", {
+          task: task.name,
+          durationMs: Date.now() - started,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (options.log?.debugEnabled && error instanceof Error && error.stack) {
+          options.log.text("debug", "error stack", error.stack);
+        }
         return { taskName: task.name, output: { ...output, check }, error };
       }
     }),
@@ -185,6 +217,11 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       : new Error(String(failedTask.error));
   }
   const output = mergeTaskOutputs(taskResults);
+  options.log?.info("task runtime collected", {
+    findings: output.findings.length,
+    providerModels: output.providerModels,
+    repairAttempted: output.repairAttempted,
+  });
   const taskChecks = taskResults.map((result) =>
     runtimeTaskCheckResult(result.taskName, result.output.check ?? { conclusion: "success" }),
   );
@@ -239,6 +276,12 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     },
   });
   const publicationPlan = publishing.publicationPlan;
+  options.log?.info("review validated", {
+    validFindings: validated.validFindings.length,
+    droppedFindings: validated.droppedFindings.length,
+    inlineDrafts: publishing.inlineCommentDrafts.length,
+    threadActions: verifier.threadActions.length,
+  });
 
   return {
     kind: "review",
@@ -317,6 +360,7 @@ async function runSynchronizeVerifier(options: {
     env: options.options.env,
     piExecutable: options.options.piExecutable,
     piRunner: options.options.piRunner,
+    log: options.options.log,
     diffManifest: options.diffManifest,
     priorReviewState: options.priorReviewState,
     threadContexts: (await options.options.loadInlineThreadContexts?.()) ?? [],

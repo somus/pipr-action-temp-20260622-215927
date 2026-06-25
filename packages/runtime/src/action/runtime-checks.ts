@@ -2,6 +2,7 @@ import type { Task } from "@pipr/sdk";
 import type { RuntimePlan } from "@pipr/sdk/internal";
 import type { CodeHostAdapter, CodeHostCheckConclusion, CodeHostCheckRun } from "../hosts/types.js";
 import type { RuntimeCheckSink, RuntimeTaskCheckResult } from "../review/task/task-runtime.js";
+import type { RuntimeActionLog } from "../shared/logging.js";
 import type { ChangeRequestEventContext } from "../types.js";
 
 export const genericCheckFailureSummary = "pipr failed; see Action logs for details.";
@@ -14,6 +15,7 @@ export type StartedRuntimeChecks = {
   taskRuns: Map<string, CodeHostCheckRun>;
   aggregate?: CodeHostCheckRun;
   sink: RuntimeCheckSink;
+  log?: RuntimeActionLog;
 };
 
 export type FinalizeRuntimeCheckOptions = {
@@ -28,6 +30,7 @@ export async function startRuntimeChecks(options: {
   plan: RuntimePlan;
   taskName?: string;
   selectedTasks: Task<unknown>[];
+  log?: RuntimeActionLog;
 }): Promise<StartedRuntimeChecks | undefined> {
   if (!canStartRuntimeChecks(options)) {
     return undefined;
@@ -49,6 +52,7 @@ export async function startRuntimeChecks(options: {
     tasks,
     outcomes,
     taskRuns,
+    log: options.log,
     sink: {
       setTaskResult(result) {
         outcomes.set(result.taskName, result);
@@ -63,6 +67,7 @@ export async function startRuntimeChecks(options: {
         aggregateName,
         "pipr review is running.",
       );
+      started.log?.info("check run created", { name: aggregateName, kind: "aggregate" });
     }
   } catch (error) {
     await finalizeRuntimeChecks(started, {
@@ -110,10 +115,13 @@ async function startTaskCheckRuns(started: StartedRuntimeChecks): Promise<void> 
     if (!settings.individual) {
       continue;
     }
-    started.taskRuns.set(
-      task.name,
-      await createCheckRunOrThrow(started, settings.name, "pipr task is running."),
-    );
+    const run = await createCheckRunOrThrow(started, settings.name, "pipr task is running.");
+    started.taskRuns.set(task.name, run);
+    started.log?.info("check run created", {
+      name: settings.name,
+      kind: "task",
+      task: task.name,
+    });
   }
 }
 
@@ -186,8 +194,17 @@ async function updateCheckRunOrError(
       conclusion: result.conclusion,
       summary: result.summary,
     });
+    checks.log?.info("check run finalized", {
+      name: checkRun.name,
+      conclusion: result.conclusion,
+      summary: result.summary,
+    });
     return undefined;
   } catch (error) {
+    checks.log?.warning("check run finalize failed", {
+      name: checkRun.name,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return error;
   }
 }

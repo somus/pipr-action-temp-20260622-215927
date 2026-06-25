@@ -1,6 +1,7 @@
 import type { Agent, ModelProfile, Schema } from "@pipr/sdk";
 import { z } from "zod";
 import type { InlineThreadContext } from "../hosts/types.js";
+import type { RuntimeActionLog } from "../shared/logging.js";
 import type {
   ChangeRequestEventContext,
   DiffManifest,
@@ -42,6 +43,7 @@ export type RunVerifierOptions = {
   priorReviewState?: PriorReviewState;
   threadContexts: InlineThreadContext[];
   mode: VerifierMode;
+  log?: RuntimeActionLog;
 };
 
 export type VerifierResult = {
@@ -85,6 +87,12 @@ export async function runInternalVerifier(options: RunVerifierOptions): Promise<
   }
 
   const candidates = verifierCandidates(prior, options.threadContexts, options.mode);
+  options.log?.info("verifier candidates", {
+    mode: options.mode.kind,
+    candidates: candidates.length,
+    priorFindings: prior.findings.length,
+    threadContexts: options.threadContexts.length,
+  });
   if (candidates.length === 0) {
     return { priorReviewState: prior, threadActions: [], providerModels: [] };
   }
@@ -105,14 +113,15 @@ export async function runInternalVerifier(options: RunVerifierOptions): Promise<
         env: options.env,
         piExecutable: options.piExecutable,
         piRunner: options.piRunner,
+        log: options.log,
       },
     });
     const output = verifierOutputSchema.parse(result.value);
     return applyVerifierOutput(options, candidates, output, result.providerModels);
   } catch (error) {
-    console.warn(
-      `pipr verifier failed closed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    options.log?.warning("verifier failed closed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { priorReviewState: prior, threadActions: [], providerModels: [] };
   }
 }

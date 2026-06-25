@@ -1,6 +1,7 @@
 export type {
   ActionCommandOptions,
   ActionCommandResult,
+  ActionLogSink,
   DryRunCommandOptions,
   DryRunCommandResult,
   InitCommandOptions,
