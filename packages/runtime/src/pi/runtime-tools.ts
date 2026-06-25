@@ -1,4 +1,4 @@
-import { access, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DiffManifest } from "../types.js";
@@ -75,12 +75,7 @@ export async function piRuntimeToolsExtensionPath(): Promise<string> {
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+  return await Bun.file(filePath).exists();
 }
 
 export async function readAtRef(options: {

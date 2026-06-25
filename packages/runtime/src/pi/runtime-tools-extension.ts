@@ -39,10 +39,6 @@ type ToolResult = {
   details: unknown;
 };
 
-type CustomToolData = {
-  tools: Array<{ name: string; description?: string }>;
-};
-
 const customToolDataSchema = z.strictObject({
   tools: z.array(
     z.strictObject({
@@ -110,7 +106,7 @@ function registerRuntimeReadTools(pi: PiExtensionHost, dataPath: string): void {
       },
     },
     async execute(_toolCallId, params) {
-      const data = await loadData(dataPath);
+      const data = (await Bun.file(dataPath).json()) as RuntimeToolData;
       const result = readDiffFromRuntimeData(data, readDiffParams(params));
       return textResult(result);
     },
@@ -132,7 +128,7 @@ function registerRuntimeReadTools(pi: PiExtensionHost, dataPath: string): void {
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const cwd = typeof ctx?.cwd === "string" ? ctx.cwd : "";
-      const data = await loadData(dataPath);
+      const data = (await Bun.file(dataPath).json()) as RuntimeToolData;
       const result = await readAtRef(dataRoot, data, readAtRefParams(params), cwd);
       return textResult(result);
     },
@@ -142,7 +138,7 @@ function registerRuntimeReadTools(pi: PiExtensionHost, dataPath: string): void {
 function registerCustomTools(pi: PiExtensionHost, dataPath: string): void {
   const bridgeUrl = customToolBridgeUrl();
   const bridgeToken = customToolBridgeToken();
-  const data = loadCustomToolData(dataPath);
+  const data = customToolDataSchema.parse(JSON.parse(readFileSync(dataPath, "utf8")));
   for (const tool of data.tools) {
     pi.registerTool({
       name: tool.name,
@@ -196,14 +192,6 @@ function customToolBridgeToken(): string {
     throw new Error("PIPR_CUSTOM_TOOLS_BRIDGE_TOKEN is required for pipr custom tools");
   }
   return value;
-}
-
-async function loadData(dataPath: string): Promise<RuntimeToolData> {
-  return (await Bun.file(dataPath).json()) as RuntimeToolData;
-}
-
-function loadCustomToolData(dataPath: string): CustomToolData {
-  return customToolDataSchema.parse(JSON.parse(readFileSync(dataPath, "utf8")));
 }
 
 async function callCustomTool(

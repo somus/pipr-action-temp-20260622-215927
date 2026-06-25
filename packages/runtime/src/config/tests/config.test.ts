@@ -309,10 +309,11 @@ export default definePipr((pipr) => {
     await writePiprConfig(
       rootDir,
       `import { definePipr } from "@pipr/sdk";
-import { schemas } from "@pipr/sdk/review";
-import { renderPromptValue } from "@pipr/sdk/tools";
+import { reviewSchemaExample } from "@pipr/sdk/review";
+import "@pipr/sdk/tools";
 
 export default definePipr((pipr) => {
+  const example = reviewSchemaExample();
   const model = pipr.model({
     provider: "deepseek",
     model: "deepseek-v4-pro",
@@ -321,8 +322,8 @@ export default definePipr((pipr) => {
   const reviewer = pipr.agent({
     name: "reviewer",
     model,
-    instructions: renderPromptValue("Review."),
-    output: schemas.review,
+    instructions: \`Review. Example summary: \${example.summary.body}\`,
+    output: pipr.schemas.review,
     prompt: () => "Review.",
   });
   const task = pipr.task({ name: "review", async run() {} });

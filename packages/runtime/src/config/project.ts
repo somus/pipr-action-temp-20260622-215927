@@ -1,4 +1,5 @@
-import type { AutoResolveOptions, ModelProfile, RuntimePlan } from "@pipr/sdk";
+import type { AutoResolveOptions, ModelProfile } from "@pipr/sdk";
+import type { RuntimePlan } from "@pipr/sdk/internal";
 import type { AutoResolveConfig, ProviderConfig, RuntimeSettings } from "../types.js";
 import { parseProviderConfig, parseRuntimeSettings } from "../types.js";
 import { loadTypescriptConfig } from "./ts-loader.js";

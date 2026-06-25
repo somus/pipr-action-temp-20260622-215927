@@ -7,13 +7,13 @@ import type {
   PiprConfig,
   ProviderConfig,
 } from "../types.js";
+import { type PiRunner, runReviewAgent } from "./agent/review-run.js";
 import type { ThreadAction } from "./comment.js";
 import {
   type PriorFindingRecord,
   type PriorReviewState,
   resolvePriorFindings,
 } from "./prior-state.js";
-import { type PiRunner, runReviewAgent } from "./review-run.js";
 
 export type VerifierMode =
   | { kind: "synchronize" }

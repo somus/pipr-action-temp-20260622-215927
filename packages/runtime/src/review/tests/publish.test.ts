@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  createGitHubPublicationClient,
+  type GitHubPublicationClient,
   loadGitHubPriorReviewState,
   publishGitHubCommandResponse,
+  publishGitHubPublicationPlan,
   publishGitHubThreadActions,
 } from "../../hosts/github/publication.js";
 import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from "../../types.js";
@@ -12,12 +15,7 @@ import {
   renderResolvedFindingMarker,
   renderVerifierResponseMarker,
 } from "../prior-state.js";
-import {
-  createGitHubPublicationClient,
-  type GitHubPublicationClient,
-  PublicationError,
-  publishPublicationPlan,
-} from "../publish.js";
+import { PublicationError } from "../publication-result.js";
 
 const event: ChangeRequestEventContext = {
   eventName: "pull_request",
@@ -117,7 +115,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe("publishPublicationPlan", () => {
+describe("publishGitHubPublicationPlan", () => {
   it("upserts the main comment and publishes inline comments", async () => {
     const client = new FakePublicationClient("head");
     const [firstFinding, secondFinding] = validated.validFindings;
@@ -130,8 +128,16 @@ describe("publishPublicationPlan", () => {
         validFindings: [{ ...firstFinding, suggestedFix: "safeCall();" }, secondFinding],
       },
     });
-    const first = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
-    const second = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    const first = await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: publicationPlan,
+    });
+    const second = await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: publicationPlan,
+    });
 
     expect(first.mainComment.action).toBe("created");
     expect(second.mainComment.action).toBe("updated");
@@ -156,7 +162,7 @@ describe("publishPublicationPlan", () => {
 
   it("blocks publication when the PR head changed", async () => {
     await expect(
-      publishPublicationPlan({
+      publishGitHubPublicationPlan({
         client: new FakePublicationClient("new-head"),
         change: event,
         plan: plan(),
@@ -184,7 +190,11 @@ describe("publishPublicationPlan", () => {
     const publicationPlan = plan({ maxInlineComments: 1 });
     addExistingInlineComment(client, publicationPlan, client.ownerLogin);
 
-    const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    const result = await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: publicationPlan,
+    });
 
     expect(result.inlineComments).toEqual({ posted: 0, skipped: 1, failed: 0 });
     expect(client.reviewCommentPayloads).toHaveLength(0);
@@ -192,13 +202,17 @@ describe("publishPublicationPlan", () => {
 
   it("dedupes same-head inline comments by location when finding wording changes", async () => {
     const client = new FakePublicationClient("head");
-    await publishPublicationPlan({ client, change: event, plan: plan({ maxInlineComments: 1 }) });
+    await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: plan({ maxInlineComments: 1 }),
+    });
 
     const changedFinding = {
       ...validated.validFindings[0],
       body: "Different wording for the same issue.",
     };
-    const result = await publishPublicationPlan({
+    const result = await publishGitHubPublicationPlan({
       client,
       change: event,
       plan: plan({
@@ -227,7 +241,7 @@ describe("publishPublicationPlan", () => {
       }),
     );
 
-    const result = await publishPublicationPlan({
+    const result = await publishGitHubPublicationPlan({
       client,
       change: event,
       plan: plan({ maxInlineComments: 1 }),
@@ -239,7 +253,11 @@ describe("publishPublicationPlan", () => {
 
   it("loads prior review state from the main marker and inline markers", async () => {
     const client = new FakePublicationClient("head");
-    await publishPublicationPlan({ client, change: event, plan: plan({ maxInlineComments: 1 }) });
+    await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: plan({ maxInlineComments: 1 }),
+    });
 
     const state = await loadGitHubPriorReviewState({ client, change: event });
 
@@ -324,7 +342,11 @@ describe("publishPublicationPlan", () => {
   it("replies to and resolves stale inline threads for resolved findings", async () => {
     const { client, finding, publicationPlan } = staleResolutionFixture({ resolved: false });
 
-    const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    const result = await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: publicationPlan,
+    });
 
     expect(result.inlineComments).toEqual({ posted: 0, skipped: 0, failed: 0 });
     expect(client.reviewReplies).toHaveLength(1);
@@ -347,7 +369,11 @@ describe("publishPublicationPlan", () => {
       };
     }
 
-    const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    const result = await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: publicationPlan,
+    });
 
     expect(result.metadata.inlineResolutionErrors).toEqual([]);
     expect(client.reviewReplies).toHaveLength(1);
@@ -360,7 +386,7 @@ describe("publishPublicationPlan", () => {
       withResolutionReply: true,
     });
 
-    await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    await publishGitHubPublicationPlan({ client, change: event, plan: publicationPlan });
 
     expectNoResolutionActivity(client);
   });
@@ -368,7 +394,7 @@ describe("publishPublicationPlan", () => {
   it("does not reply to already-resolved threads", async () => {
     const { client, publicationPlan } = staleResolutionFixture({ resolved: true });
 
-    await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    await publishGitHubPublicationPlan({ client, change: event, plan: publicationPlan });
 
     expectNoResolutionActivity(client);
   });
@@ -379,7 +405,7 @@ describe("publishPublicationPlan", () => {
       withResolutionReply: true,
     });
 
-    await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    await publishGitHubPublicationPlan({ client, change: event, plan: publicationPlan });
 
     expect(client.reviewReplies).toHaveLength(0);
     expect(client.resolvedThreadIds).toEqual(["thread-1"]);
@@ -412,7 +438,7 @@ describe("publishPublicationPlan", () => {
       responseKey: "head:fixed:fnd_existing",
     };
 
-    await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    await publishGitHubPublicationPlan({ client, change: event, plan: publicationPlan });
 
     expect(client.reviewReplies).toHaveLength(1);
     expect(client.reviewReplies[0]?.commentId).toBe(12);
@@ -571,7 +597,11 @@ describe("publishPublicationPlan", () => {
       const { client, publicationPlan } = staleResolutionFixture({ resolved: false });
       testCase.fail(client);
 
-      const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+      const result = await publishGitHubPublicationPlan({
+        client,
+        change: event,
+        plan: publicationPlan,
+      });
 
       expect(result.inlineComments).toEqual({ posted: 0, skipped: 0, failed: 0 });
       expect(result.metadata.inlineResolutionErrors).toEqual(testCase.errors);
@@ -588,7 +618,7 @@ describe("publishPublicationPlan", () => {
       authorLogin: "attacker",
     });
 
-    const result = await publishPublicationPlan({ client, change: event, plan: plan() });
+    const result = await publishGitHubPublicationPlan({ client, change: event, plan: plan() });
 
     expect(result.mainComment.action).toBe("created");
     expect(client.issueComments).toHaveLength(2);
@@ -602,7 +632,7 @@ describe("publishPublicationPlan", () => {
       authorLogin: client.ownerLogin,
     });
 
-    const result = await publishPublicationPlan({ client, change: event, plan: plan() });
+    const result = await publishGitHubPublicationPlan({ client, change: event, plan: plan() });
 
     expect(result.mainComment).toEqual({ action: "updated", id: 10 });
     expect(client.issueComments).toHaveLength(1);
@@ -614,7 +644,11 @@ describe("publishPublicationPlan", () => {
     const publicationPlan = plan({ maxInlineComments: 1 });
     addExistingInlineComment(client, publicationPlan, "attacker");
 
-    const result = await publishPublicationPlan({ client, change: event, plan: publicationPlan });
+    const result = await publishGitHubPublicationPlan({
+      client,
+      change: event,
+      plan: publicationPlan,
+    });
 
     expect(result.inlineComments).toEqual({ posted: 1, skipped: 0, failed: 0 });
     expect(client.reviewCommentPayloads).toHaveLength(1);
@@ -630,7 +664,7 @@ describe("publishPublicationPlan", () => {
     client.failInline = true;
 
     await expect(
-      publishPublicationPlan({ client, change: event, plan: plan({ maxInlineComments: 1 }) }),
+      publishGitHubPublicationPlan({ client, change: event, plan: plan({ maxInlineComments: 1 }) }),
     ).rejects.toMatchObject({
       result: {
         inlineComments: { posted: 0, skipped: 0, failed: 1 },
@@ -656,7 +690,7 @@ describe("publishPublicationPlan", () => {
     ];
 
     await expect(
-      publishPublicationPlan({ client, change: event, plan: publicationPlan }),
+      publishGitHubPublicationPlan({ client, change: event, plan: publicationPlan }),
     ).rejects.toThrow("GitHub inline comment publication failed");
     expect(client.reviewCommentPayloads).toHaveLength(0);
   });

@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { z } from "zod";
-import { githubApiVersion, parseRepoSlug } from "../../shared/github.js";
+import { githubActor, githubApiVersion, parseRepoSlug } from "../../shared/github.js";
 import type { ChangeRequestRef, CommandPermissionLevel, RepositoryRef } from "../../types.js";
 import type { RepositoryPermission } from "../types.js";
 
@@ -164,10 +164,6 @@ function githubPullRequestRepository(
     slug: json.base.repo?.full_name ?? fallback.slug,
     url: json.base.repo?.html_url ?? fallback.url,
   };
-}
-
-function githubActor(login: string | undefined): { login: string } | undefined {
-  return login ? { login } : undefined;
 }
 
 function githubHeadIsFork(

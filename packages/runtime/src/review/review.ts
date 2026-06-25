@@ -85,7 +85,7 @@ type FindingValidator = (context: FindingValidationContext) => string | undefine
 const findingValidators: FindingValidator[] = [
   validatePathScope,
   validateExcludedFile,
-  validateRangeMatch,
+  (context) => findingRangeMismatchReason(context.finding, context.range),
   validateDuplicateFingerprint,
 ];
 
@@ -114,10 +114,6 @@ function validateExcludedFile(context: FindingValidationContext): string | undef
   return context.excludedReason
     ? `file excluded from inline comments: ${context.excludedReason}`
     : undefined;
-}
-
-function validateRangeMatch(context: FindingValidationContext): string | undefined {
-  return findingRangeMismatchReason(context.finding, context.range);
 }
 
 function validateDuplicateFingerprint(context: FindingValidationContext): string | undefined {

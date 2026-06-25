@@ -1,12 +1,45 @@
 import { describe, expect, it } from "bun:test";
-import { buildPiprPlan, definePipr } from "@pipr/sdk";
+import { definePipr } from "@pipr/sdk";
+import { buildPiprPlan } from "@pipr/sdk/internal";
 import {
+  dispatchRuntimeEntry,
   parsePlanCommandInputs,
   permissionDeniedHelp,
   resolvePlanCommand,
-} from "../command-router.js";
+} from "../entry-dispatch.js";
 
-describe("plan command routing", () => {
+describe("entry dispatch command routing", () => {
+  it("selects change-request and local task entrypoints", () => {
+    const plan = buildPiprPlan(
+      definePipr((pipr) => {
+        const review = pipr.task({ name: "review", run() {} });
+        const audit = pipr.task({ name: "audit", run() {} });
+        const ready = pipr.task({ name: "ready", run() {} });
+        pipr.on.changeRequest({ actions: ["updated"], task: review });
+        pipr.on.changeRequest({ actions: ["updated"], task: audit });
+        pipr.on.changeRequest({ actions: ["ready"], task: ready });
+        pipr.local({ name: "review", task: review });
+      }),
+    );
+
+    expect(
+      dispatchRuntimeEntry({ kind: "change-request", plan, event: { action: "updated" } }),
+    ).toMatchObject({
+      kind: "change-request",
+      tasks: [{ name: "review" }, { name: "audit" }],
+    });
+    expect(
+      dispatchRuntimeEntry({ kind: "change-request", plan, event: {}, taskName: "audit" }),
+    ).toMatchObject({
+      kind: "change-request",
+      tasks: [{ name: "audit" }],
+    });
+    expect(dispatchRuntimeEntry({ kind: "local", plan, localName: "review" })).toMatchObject({
+      kind: "local",
+      local: { name: "review" },
+    });
+  });
+
   it("matches required positional and optional named arguments into task inputs", () => {
     const plan = buildPiprPlan(
       definePipr((pipr) => {

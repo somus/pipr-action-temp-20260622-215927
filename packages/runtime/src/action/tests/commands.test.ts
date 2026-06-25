@@ -6,13 +6,13 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { runGit as runGitCommand } from "../../diff/git.js";
 import type { GitHubCommandClient } from "../../hosts/github/command.js";
+import type { GitHubPublicationClient } from "../../hosts/github/publication.js";
 import type { RepositoryPermission } from "../../hosts/types.js";
 import {
   renderInlineFindingMarker,
   renderResolvedFindingMarker,
   renderVerifierResponseMarker,
 } from "../../review/prior-state.js";
-import type { GitHubPublicationClient } from "../../review/publish.js";
 import { runActionCommandWithDependencies } from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {

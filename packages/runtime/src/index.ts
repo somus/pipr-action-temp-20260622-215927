@@ -19,8 +19,8 @@ export {
 } from "./action/commands.js";
 export type { SdkDeclarationModule } from "./config/sdk-declaration.js";
 export { embeddedSdkDeclaration } from "./config/sdk-declaration.js";
-export type { PublicationResult } from "./review/publish.js";
-export { PublicationError } from "./review/publish.js";
+export type { PublicationResult } from "./review/publication-result.js";
+export { PublicationError } from "./review/publication-result.js";
 export type {
   ChangeRequestEventContext,
   ChangeRequestRef,

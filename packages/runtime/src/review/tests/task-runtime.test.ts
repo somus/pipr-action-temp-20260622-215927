@@ -1,12 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import {
-  type Agent,
-  buildPiprPlan,
-  definePipr,
-  type ReviewResult,
-  type TaskContext,
-  z,
-} from "@pipr/sdk";
+import { type Agent, definePipr, type ReviewResult, type TaskContext, z } from "@pipr/sdk";
+import { buildPiprPlan } from "@pipr/sdk/internal";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import type { DiffManifest, PiprConfig, ProviderConfig, ReviewFinding } from "../../types.js";
 import {
@@ -14,7 +8,7 @@ import {
   type ReviewRuntimeResult,
   type RunTaskRuntimeOptions,
   runTaskRuntime,
-} from "../task-runtime.js";
+} from "../task/task-runtime.js";
 
 const provider: ProviderConfig = {
   id: "deepseek/deepseek-v4-pro",
@@ -222,11 +216,7 @@ describe("runTaskRuntime", () => {
       plan,
       taskName: "ask",
       taskInput: { question: "what changed?" },
-      commandInvocation: {
-        name: "ask",
-        line: "@pipr ask what changed?",
-        arguments: { question: "what changed?" },
-      },
+      commandInvocation: askCommandInvocation(),
     });
 
     expect(observedCommand).toMatchObject({
@@ -241,6 +231,8 @@ describe("runTaskRuntime", () => {
         body: "Answer: what changed?",
       },
     });
+    expect(result).not.toHaveProperty("publicationPlan");
+    expect(result).not.toHaveProperty("review");
   });
 
   it("does not expose command context outside command-triggered tasks", async () => {
@@ -274,11 +266,7 @@ describe("runTaskRuntime", () => {
         plan,
         taskName: "ask",
         taskInput: { question: "what changed?" },
-        commandInvocation: {
-          name: "ask",
-          line: "@pipr ask what changed?",
-          arguments: { question: "what changed?" },
-        },
+        commandInvocation: askCommandInvocation(),
       }),
     ).rejects.toThrow("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
   });
@@ -300,11 +288,7 @@ describe("runTaskRuntime", () => {
         plan,
         taskName: "ask",
         taskInput: { question: "what changed?" },
-        commandInvocation: {
-          name: "ask",
-          line: "@pipr ask what changed?",
-          arguments: { question: "what changed?" },
-        },
+        commandInvocation: askCommandInvocation(),
       }),
     ).rejects.toThrow(
       "ctx.command.reply(...) may be called once per selected run; 'ask' called it more than once",
@@ -332,11 +316,7 @@ describe("runTaskRuntime", () => {
     await expect(
       runRuntime({
         plan,
-        commandInvocation: {
-          name: "ask",
-          line: "@pipr ask what changed?",
-          arguments: { question: "what changed?" },
-        },
+        commandInvocation: askCommandInvocation(),
       }),
     ).rejects.toThrow("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
   });
@@ -362,11 +342,7 @@ describe("runTaskRuntime", () => {
     await expect(
       runRuntime({
         plan,
-        commandInvocation: {
-          name: "ask",
-          line: "@pipr ask what changed?",
-          arguments: { question: "what changed?" },
-        },
+        commandInvocation: askCommandInvocation(),
       }),
     ).rejects.toThrow(
       "ctx.command.reply(...) may be called once per selected run; received replies from 'ask' and 'explain'",
@@ -1503,6 +1479,10 @@ type RunRuntimeOptions = Omit<
   event?: RunTaskRuntimeOptions["event"];
   diffManifestBuilder?: RunTaskRuntimeOptions["diffManifestBuilder"];
 };
+type ReviewOnlyRuntimeResult = Exclude<ReviewRuntimeResult, { kind: "command-response" }>;
+type CommandRunRuntimeOptions = RunRuntimeOptions & {
+  commandInvocation: NonNullable<RunTaskRuntimeOptions["commandInvocation"]>;
+};
 
 function testPlan(configure: (pipr: PiprApi) => void) {
   return buildPiprPlan(definePipr(configure));
@@ -1649,7 +1629,7 @@ async function runCustomOkPlan(
   });
 }
 
-function expectOnlyInsideFinding(result: ReviewRuntimeResult) {
+function expectOnlyInsideFinding(result: ReviewOnlyRuntimeResult) {
   expect(result.validated.validFindings.map((item) => item.body)).toEqual(["inside body"]);
   expectDroppedOutsideConfiguredPaths(result);
 }
@@ -1675,7 +1655,9 @@ async function expectCustomToolRejected(
   );
 }
 
-async function runRuntime(options: RunRuntimeOptions) {
+async function runRuntime(options: CommandRunRuntimeOptions): Promise<ReviewRuntimeResult>;
+async function runRuntime(options: RunRuntimeOptions): Promise<ReviewOnlyRuntimeResult>;
+async function runRuntime(options: RunRuntimeOptions): Promise<ReviewRuntimeResult> {
   const { config: runtimeConfig, event, diffManifestBuilder, ...rest } = options;
   return await runTaskRuntime({
     workspace: process.cwd(),
@@ -1684,6 +1666,14 @@ async function runRuntime(options: RunRuntimeOptions) {
     diffManifestBuilder: diffManifestBuilder ?? manifestBuilder(),
     ...rest,
   });
+}
+
+function askCommandInvocation(): NonNullable<RunTaskRuntimeOptions["commandInvocation"]> {
+  return {
+    name: "ask",
+    line: "@pipr ask what changed?",
+    arguments: { question: "what changed?" },
+  };
 }
 
 function manifestBuilder(manifest: DiffManifest = reviewTestManifest()) {
@@ -1787,7 +1777,7 @@ function finding(
   };
 }
 
-function expectDroppedOutsideConfiguredPaths(result: ReviewRuntimeResult): void {
+function expectDroppedOutsideConfiguredPaths(result: ReviewOnlyRuntimeResult): void {
   expect(result.validated.droppedFindings).toEqual([
     {
       finding: expect.objectContaining({ body: "outside body" }),

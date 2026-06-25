@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { githubActor } from "../../shared/github.js";
 import type { ChangeRequestEventContext } from "../../types.js";
 import { parseChangeRequestEventContext } from "../../types.js";
 
@@ -237,10 +238,6 @@ function githubHeadEndpoint(
     author: githubActor(pullRequest.head?.user?.login),
     fork: pullRequest.head?.repo?.fork,
   };
-}
-
-function githubActor(login: string | undefined): { login: string } | undefined {
-  return login ? { login } : undefined;
 }
 
 function githubEventHeadIsFork(

@@ -36,6 +36,10 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Put implementation details behind internal modules. Do not export helpers only for tests or convenience.
 - Keep functions intent-level. Do not extract one-line field readers, throw wrappers, boolean aliases, or tiny pass-through helpers unless they are used in 3+ places or enforce a real domain invariant.
 - Prefer direct control flow inside workflow functions over chains of tiny local helpers.
+- Do not create waterfall helper chains where a parent function delegates to one-use private helpers that only parse, normalize, guard, or wrap a standard call. Keep that logic as local variables and direct control flow in the parent function unless each helper names a real protocol or domain rule.
+- Do not add wrappers for simple standard library calls, Bun APIs, lodash helpers, zod parse calls, JSON parse/stringify, string splitting/trimming, object shape checks, or one-expression boolean checks.
+- Before adding a private helper, ask whether it would still be worth a named function if used once. If not, keep it inline.
+- Keep small helpers only when they define protocol or domain vocabulary, public API boundaries, security-sensitive checks, schema boundary parsers, repeated policy text, or complex logic that would materially hurt readability if inlined.
 - Keep Docker Action, CLI command handling, TypeScript config loading, task execution, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In review tasks, diff parsing, Pi execution, and review validation stay in pipr through `ctx.change.diffManifest()` and `ctx.pi.run()`, not userland blocks.
 - Keep user configuration in `.pipr/config.ts`. `.pi` is only an internal Pi home inside the Docker image.
 - Preserve schema-first reviewer output: validate structured JSON, allow one repair attempt, and drop invalid findings with metadata.

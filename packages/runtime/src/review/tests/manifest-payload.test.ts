@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 import {
   condenseDiffManifest,
   measureDiffManifestPrompt,
   prepareDiffManifestPrompt,
-} from "../manifest-payload.js";
+} from "../../diff/manifest-projection.js";
+import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
 
 describe("Diff Manifest prompt payload", () => {
   it("keeps small manifests full and unchanged", () => {

@@ -365,11 +365,20 @@ Use `pipr.schemas.review` when an agent directly returns publishable Inline Revi
 
 The `z` export is the recommended typed path for JSON-Schema-representable schemas. Generated `.pipr/types` include a standalone Zod authoring subset so `pipr init` projects type-check without installing `zod`; use `pipr.jsonSchema<T>()` for advanced JSON Schema shapes or when a Zod helper is outside that generated subset.
 
-Parsing helpers are exported from `@pipr/sdk/review`:
+Parsing helpers and public Zod schemas are exported from `@pipr/sdk/review`:
 
 ```ts
-import { parseReviewFinding, parseReviewResult, reviewSchemaExample } from "@pipr/sdk/review";
+import {
+  parseReviewFinding,
+  parseReviewResult,
+  reviewFindingSchema,
+  reviewResultSchema,
+  reviewSchemaExample,
+  reviewSummarySchema,
+} from "@pipr/sdk/review";
 ```
+
+Use `reviewResultSchema`, `reviewFindingSchema`, and `reviewSummarySchema` when you need the public review contract as Zod values.
 
 ## Prompts
 

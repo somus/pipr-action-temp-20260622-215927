@@ -181,7 +181,7 @@ async function rawSdkDeclarations(): Promise<SdkDeclarationModule[]> {
     sdkDeclarationModules.map(async (module) => {
       const declarationPath = await sdkDeclarationPath(module.fileName);
       return declarationPath
-        ? { ...module, source: await Bun.file(declarationPath).text() }
+        ? { ...module, source: await rawSdkDeclarationSource(module, declarationPath) }
         : undefined;
     }),
   );
@@ -193,6 +193,25 @@ async function rawSdkDeclarations(): Promise<SdkDeclarationModule[]> {
     return [{ moduleName: sdkDeclarationModules[0].moduleName, source: embedded }];
   }
   throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
+}
+
+async function rawSdkDeclarationSource(
+  module: SdkDeclarationAsset,
+  declarationPath: string,
+): Promise<string> {
+  const source = await Bun.file(declarationPath).text();
+  if (module.moduleName !== "@pipr/sdk") {
+    return source;
+  }
+  const chunkFileName = source.match(/from "\.\/(?<chunk>index-[A-Za-z0-9_-]+)\.mjs"/)?.groups
+    ?.chunk;
+  if (!chunkFileName) {
+    return source;
+  }
+  const chunkPath = path.join(path.dirname(declarationPath), `${chunkFileName}.d.mts`);
+  const chunk = await Bun.file(chunkPath).text();
+  const declarations = chunk.replace(/^export \{.*\};$/gm, "");
+  return `${declarations}\n${source}`;
 }
 
 async function sdkDeclarationPath(fileName: string): Promise<string | undefined> {

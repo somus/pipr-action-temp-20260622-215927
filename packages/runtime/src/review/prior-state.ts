@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { z } from "zod";
+import { firstNonEmptyLine } from "../commands/grammar.js";
 import type { ReviewFinding } from "../types.js";
 import { reviewSideSchema } from "../types.js";
 
@@ -125,7 +126,11 @@ export function priorReviewStateForSelectedTasks(
   state: PriorReviewState | undefined,
   selectedTasks: string[],
 ): PriorReviewState | undefined {
-  if (!state || !sameSelectedTasks(state.selectedTasks, selectedTasks)) {
+  if (
+    !state ||
+    state.selectedTasks.length !== selectedTasks.length ||
+    !state.selectedTasks.every((taskName, index) => taskName === selectedTasks[index])
+  ) {
     return undefined;
   }
   return state;
@@ -157,7 +162,7 @@ export function extractPriorReviewState(
   changeNumber: number,
   marker = mainCommentMarker,
 ): PriorReviewState | undefined {
-  const parsed = parseMainCommentMarker(firstNonEmptyLine(body));
+  const parsed = parseMainCommentMarker(body ? firstNonEmptyLine(body) : undefined);
   if (!parsed || parsed.marker !== marker || parsed.changeNumber !== changeNumber) {
     return undefined;
   }
@@ -200,10 +205,6 @@ export function renderInlineFindingMarker(findingId: string, reviewedHeadSha: st
   return `<!-- ${inlineFindingMarkerPrefix} id=${findingId} head=${reviewedHeadSha} -->`;
 }
 
-function resolvedFindingMarker(findingId: string, reviewedHeadSha: string): string {
-  return `${resolvedFindingMarkerPrefix}:${findingId}:${reviewedHeadSha}`;
-}
-
 export function renderResolvedFindingMarker(findingId: string, reviewedHeadSha: string): string {
   return `<!-- ${resolvedFindingMarkerPrefix} id=${findingId} head=${reviewedHeadSha} -->`;
 }
@@ -213,7 +214,11 @@ export function renderVerifierResponseMarker(findingId: string, responseKey: str
 }
 
 export function extractInlineFindingMarkerRecords(commentBodies: string[]): FindingMarkerRecord[] {
-  return extractFindingMarkerRecords(commentBodies, inlineFindingMarkerPrefix);
+  return commentBodies.flatMap((body) =>
+    [parseFindingHeadMarker(firstNonEmptyLine(body), inlineFindingMarkerPrefix)].filter(
+      (marker): marker is FindingMarkerRecord => marker !== undefined,
+    ),
+  );
 }
 
 export function extractInlineFindingMarkers(commentBodies: string[]): Set<string> {
@@ -223,7 +228,11 @@ export function extractInlineFindingMarkers(commentBodies: string[]): Set<string
 export function extractResolvedFindingMarkerRecords(
   commentBodies: string[],
 ): FindingMarkerRecord[] {
-  return extractFindingMarkerRecords(commentBodies, resolvedFindingMarkerPrefix);
+  return commentBodies.flatMap((body) =>
+    [parseFindingHeadMarker(firstNonEmptyLine(body), resolvedFindingMarkerPrefix)].filter(
+      (marker): marker is FindingMarkerRecord => marker !== undefined,
+    ),
+  );
 }
 
 export function applyResolvedFindingMarkers(
@@ -250,14 +259,18 @@ export function applyResolvedFindingMarkers(
 
 export function extractVerifierResponseMarkers(commentBodies: string[]): Set<string> {
   return new Set(
-    extractFindingMarkerRecords(commentBodies, verifierResponseMarkerPrefix).map(
-      (record) => record.marker,
-    ),
+    commentBodies
+      .flatMap((body) =>
+        [parseFindingHeadMarker(firstNonEmptyLine(body), verifierResponseMarkerPrefix)].filter(
+          (marker): marker is FindingMarkerRecord => marker !== undefined,
+        ),
+      )
+      .map((record) => record.marker),
   );
 }
 
 export function isPiprThreadActionReplyBody(body: string | null | undefined): boolean {
-  const parsed = parsePiprMarker(firstNonEmptyLine(body));
+  const parsed = parsePiprMarker(body ? firstNonEmptyLine(body) : undefined);
   return (
     parsed?.name === resolvedFindingMarkerPrefix || parsed?.name === verifierResponseMarkerPrefix
   );
@@ -304,13 +317,6 @@ function selectFindingId(options: {
     }
   }
   return newFindingId(options.finding);
-}
-
-function sameSelectedTasks(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((taskName, index) => taskName === right[index]);
 }
 
 function cappedFindings(
@@ -372,17 +378,6 @@ function newFindingId(finding: ReviewFinding): string {
   ])}`;
 }
 
-function extractFindingMarkerRecords(
-  commentBodies: string[],
-  prefix: string,
-): FindingMarkerRecord[] {
-  return commentBodies.flatMap((body) =>
-    [parseFindingHeadMarker(firstNonEmptyLine(body), prefix)].filter(
-      (marker): marker is FindingMarkerRecord => marker !== undefined,
-    ),
-  );
-}
-
 function parseFindingHeadMarker(
   comment: string | undefined,
   prefix: string,
@@ -403,7 +398,7 @@ function parseFindingHeadMarker(
       prefix === inlineFindingMarkerPrefix
         ? inlineFindingMarker(id, head)
         : prefix === resolvedFindingMarkerPrefix
-          ? resolvedFindingMarker(id, head)
+          ? `${resolvedFindingMarkerPrefix}:${id}:${head}`
           : `${verifierResponseMarkerPrefix}:${id}:${head}`,
   };
 }
@@ -452,13 +447,6 @@ function parseAttrs(input: string): Record<string, string> {
     attrs[token.slice(0, index)] = token.slice(index + 1);
   }
   return attrs;
-}
-
-function firstNonEmptyLine(body: string | null | undefined): string | undefined {
-  return body
-    ?.split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
 }
 
 function hashParts(parts: string[]): string {

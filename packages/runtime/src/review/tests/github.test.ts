@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import type { CommentableRange, ReviewFinding } from "../../types.js";
 import {
   githubReviewCommentLocationSchema,
   mapFindingToGithubReviewCommentLocation,
-} from "../github.js";
+} from "../../hosts/github/inline.js";
+import type { CommentableRange, ReviewFinding } from "../../types.js";
 
 const finding: ReviewFinding = {
   body: "This can fail.",

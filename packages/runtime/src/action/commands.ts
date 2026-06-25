@@ -1,157 +1,61 @@
-import type { RuntimePlan, Task } from "@pipr/sdk";
 import { firstNonEmptyLine, isPiprCommandLine } from "../commands/grammar.js";
 import {
   type InitOfficialMinimalProjectResult,
   initOfficialMinimalProject,
 } from "../config/init.js";
-import {
-  inspectRuntimePlan,
-  type LoadedRuntimeProject,
-  loadRuntimeProject,
-  validateProject,
-} from "../config/project.js";
-import { selectLocalTask, selectRuntimeTasks } from "../config/task-selection.js";
+import { inspectRuntimePlan, loadRuntimeProject, validateProject } from "../config/project.js";
 import { buildDiffManifest } from "../diff/diff.js";
 import { runGit as runGitCommand } from "../diff/git.js";
-import { createGitHubHostAdapter } from "../hosts/github/adapter.js";
-import type { GitHubCommandClient } from "../hosts/github/command.js";
-import type { GitHubPublicationClient } from "../hosts/github/publication.js";
-import { createLocalChangeRequestEvent, createLocalHostAdapter } from "../hosts/local/adapter.js";
+import { createLocalChangeRequestEvent } from "../hosts/local/adapter.js";
 import type {
   CodeHostAdapter,
-  CodeHostCheckConclusion,
-  CodeHostCheckRun,
   CommandCommentEvent,
-  CommandResponsePublicationResult,
   ReviewCommentReplyEvent,
 } from "../hosts/types.js";
+import { resolveProvider } from "../review/agent/review-run.js";
 import { isPiprThreadActionReplyBody } from "../review/prior-state.js";
-import type { PublicationResult } from "../review/publication-result.js";
-import { resolveProvider } from "../review/review-run.js";
-import {
-  type ReviewRuntimeResult,
-  type RuntimeCheckSink,
-  type RuntimeCommandInvocation,
-  type RuntimeTaskCheckResult,
-  runTaskRuntime,
-} from "../review/task-runtime.js";
+import { runTaskRuntime } from "../review/task/task-runtime.js";
 import { runInternalVerifier } from "../review/verifier.js";
-import type { ChangeRequestEventContext, PiprConfig, RuntimeSettings } from "../types.js";
+import type { ChangeRequestEventContext, PiprConfig } from "../types.js";
 import { parseChangeRequestEventContext } from "../types.js";
+import { assertTrustedActionProviderEnv, createActionHostAdapter } from "./action-host.js";
 import {
+  dispatchRuntimeEntry,
   hasRequiredRepositoryPermission,
   type PlanCommandResolution,
   parsePlanCommandInputs,
   permissionDeniedHelp,
   resolvePlanCommand,
-} from "./command-router.js";
+} from "./entry-dispatch.js";
 import { loadRuntimeProjectFromGitCommit } from "./git-project.js";
+import { runTrustedReviewAndPublish } from "./review-publishing.js";
+import type {
+  ActionCommandDependencyOptions,
+  ActionCommandOptions,
+  ActionCommandResult,
+  DryRunCommandOptions,
+  DryRunCommandResult,
+  InitCommandOptions,
+  InspectCommandResult,
+  LocalTaskCommandOptions,
+  LocalTaskCommandResult,
+  RuntimeCommandOptions,
+  TrustedReviewAndPublishResult,
+  TrustedRuntimeProject,
+  ValidateCommandResult,
+} from "./types.js";
 
-const genericCheckFailureSummary = "pipr failed; see Action logs for details.";
-
-export type RuntimeCommandOptions = {
-  rootDir: string;
-  configDir: string;
-  env?: NodeJS.ProcessEnv;
-  requireProviderEnv?: boolean;
-};
-
-export type InitCommandOptions = RuntimeCommandOptions & {
-  force: boolean;
-};
-
-export type DryRunCommandOptions = RuntimeCommandOptions & {
-  eventPath: string;
-};
-
-export type ActionCommandOptions = RuntimeCommandOptions & {
-  eventPath: string;
-  dryRun: boolean;
-};
-
-export type ActionCommandDependencyOptions = ActionCommandOptions & {
-  piExecutable?: string;
-  hostAdapter?: CodeHostAdapter;
-  githubClient?: GitHubCommandClient;
-  githubPublicationClient?: GitHubPublicationClient;
-};
-
-export type LocalTaskCommandOptions = RuntimeCommandOptions & {
-  localName: string;
-  baseSha: string;
-  headSha?: string;
-  piExecutable?: string;
-};
-
-export type DryRunCommandResult = {
-  configSource: string;
-  event: ChangeRequestEventContext;
-};
-
-export type InspectCommandResult = import("../config/project.js").InspectRuntimePlan;
-
-export type LocalTaskCommandResult = ReviewRuntimeResult & {
-  kind: "review" | "skipped";
-  commandResponse?: never;
-};
-
-export type ActionCommandResult =
-  | {
-      kind: "ignored";
-      reason: string;
-    }
-  | {
-      kind: "dry-run";
-      event: ChangeRequestEventContext;
-      configSource: string;
-    }
-  | {
-      kind: "command-help";
-      event: ChangeRequestEventContext;
-      configSource: string;
-      body: string;
-      reason: string;
-    }
-  | {
-      kind: "review";
-      event: ChangeRequestEventContext;
-      configSource: string;
-      command?: string;
-      review: ReviewRuntimeResult;
-      publication: PublicationResult;
-    }
-  | {
-      kind: "command-response";
-      event: ChangeRequestEventContext;
-      configSource: string;
-      command: string;
-      response: {
-        body: string;
-      };
-      publication: CommandResponsePublicationResult;
-    }
-  | {
-      kind: "verifier";
-      event: ChangeRequestEventContext;
-      configSource: string;
-      errors: string[];
-    };
-
-type TrustedRuntimeProject = LoadedRuntimeProject & {
-  trustedConfigSha: string;
-  trustedConfigHash: string;
-};
-
-type TrustedReviewAndPublishResult =
-  | { kind: "skipped"; reason: string }
-  | { kind: "completed"; review: ReviewRuntimeResult; publication: PublicationResult }
-  | {
-      kind: "command-response";
-      response: {
-        commandName: string;
-        body: string;
-      };
-    };
+export type {
+  ActionCommandOptions,
+  ActionCommandResult,
+  DryRunCommandOptions,
+  DryRunCommandResult,
+  InitCommandOptions,
+  InspectCommandResult,
+  LocalTaskCommandOptions,
+  LocalTaskCommandResult,
+  RuntimeCommandOptions,
+} from "./types.js";
 
 /** Initializes the official minimal `.pipr` project files. */
 export async function runInitCommand(
@@ -165,7 +69,9 @@ export async function runInitCommand(
 }
 
 /** Loads and validates the runtime project configuration. */
-export async function runValidateCommand(options: RuntimeCommandOptions): Promise<RuntimeSettings> {
+export async function runValidateCommand(
+  options: RuntimeCommandOptions,
+): Promise<ValidateCommandResult> {
   return (
     await validateProject({
       ...options,
@@ -188,7 +94,7 @@ export async function runDryRunCommand(
 ): Promise<DryRunCommandResult> {
   const runtime = await loadRuntimeProject({ ...options, requireProviderEnv: false });
   const adapter = createActionHostAdapter(options);
-  const event = await adapter.parseEvent({
+  const event = await adapter.events.parseEvent({
     eventPath: options.eventPath,
     env: {
       ...options.env,
@@ -211,12 +117,16 @@ export async function runLocalTaskCommand(
     ...options,
     requireProviderEnv: true,
   });
-  const local = selectLocalTask(runtime.plan, options.localName);
+  const localDispatch = dispatchRuntimeEntry({
+    kind: "local",
+    plan: runtime.plan,
+    localName: options.localName,
+  });
+  const local = localDispatch.kind === "local" ? localDispatch.local : undefined;
   if (!local) {
     throw new Error(`Local entry '${options.localName}' was not registered`);
   }
   const headSha = options.headSha ?? runGitCommand(["rev-parse", "HEAD"], options.rootDir).trim();
-  const localAdapter = createLocalHostAdapter();
   const event = parseChangeRequestEventContext({
     ...createLocalChangeRequestEvent({
       rootDir: options.rootDir,
@@ -224,7 +134,6 @@ export async function runLocalTaskCommand(
       headSha,
     }),
   });
-  localAdapter.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
   const result = await runTaskRuntime({
     workspace: options.rootDir,
     config: runtime.settings.config,
@@ -251,15 +160,15 @@ export async function runActionCommandWithDependencies(
   options: ActionCommandDependencyOptions,
 ): Promise<ActionCommandResult> {
   const adapter = createActionHostAdapter(options);
-  adapter.ensureWorkspaceSafeDirectory?.({ rootDir: options.rootDir, env: options.env });
-  const eventName = actionEnv(options).GITHUB_EVENT_NAME ?? "pull_request";
+  adapter.workspace.ensureWorkspaceSafeDirectory?.({ rootDir: options.rootDir, env: options.env });
+  const eventName = (options.env ?? process.env).GITHUB_EVENT_NAME ?? "pull_request";
   if (eventName === "issue_comment") {
     return await runIssueCommentActionCommand(options, adapter);
   }
   if (eventName === "pull_request_review_comment") {
     return await runReviewCommentReplyActionCommand(options, adapter);
   }
-  const event = await adapter.parseEvent({
+  const event = await adapter.events.parseEvent({
     eventPath: options.eventPath,
     env: options.env ?? process.env,
     workspace: options.rootDir,
@@ -284,12 +193,18 @@ export async function runActionCommandWithDependencies(
     env: options.env,
   });
   assertTrustedActionProviderEnv(options, trustedRuntime.settings.config);
-  adapter.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
+  adapter.workspace.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
+  const dispatch = dispatchRuntimeEntry({
+    kind: "change-request",
+    plan: trustedRuntime.plan,
+    event,
+  });
   const completed = await runTrustedReviewAndPublish({
     options,
     adapter,
     trustedRuntime,
     event,
+    selectedTasks: dispatch.kind === "change-request" ? dispatch.tasks : [],
   });
   if (completed.kind === "skipped") {
     return { kind: "ignored", reason: completed.reason };
@@ -322,18 +237,13 @@ async function runReviewCommentReplyActionCommand(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
 ): Promise<ActionCommandResult> {
-  if (!adapter.resolveReviewCommentReply) {
-    return { kind: "ignored", reason: "host adapter does not support review comment replies" };
+  const capabilities = reviewCommentReplyDispatchCapabilities(options, adapter);
+  if (capabilities.kind === "ignored") {
+    return capabilities;
   }
-  if (!adapter.publishThreadActions) {
-    return { kind: "ignored", reason: "host adapter does not support verifier thread actions" };
-  }
-  if (options.dryRun) {
-    return { kind: "ignored", reason: "PIPR_DRY_RUN=1; verifier dispatch skipped" };
-  }
-  const reply = await adapter.resolveReviewCommentReply({
+  const reply = await capabilities.resolveReviewCommentReply({
     eventPath: options.eventPath,
-    env: actionEnv(options),
+    env: options.env ?? process.env,
     workspace: options.rootDir,
   });
   const runnable = runnableReviewCommentReply(reply);
@@ -345,7 +255,7 @@ async function runReviewCommentReplyActionCommand(
     return prepared;
   }
   const result = await runReviewCommentVerifier(options, adapter, prepared);
-  const publication = await adapter.publishThreadActions({
+  const publication = await capabilities.publishThreadActions({
     change: prepared.event,
     actions: result.threadActions,
     reviewedHeadSha: prepared.event.change.head.sha,
@@ -355,6 +265,36 @@ async function runReviewCommentReplyActionCommand(
     event: prepared.event,
     configSource: prepared.trustedRuntime.settings.source,
     errors: publication?.errors ?? [],
+  };
+}
+
+function reviewCommentReplyDispatchCapabilities(
+  options: ActionCommandDependencyOptions,
+  adapter: CodeHostAdapter,
+):
+  | { kind: "ignored"; reason: string }
+  | {
+      kind: "ready";
+      resolveReviewCommentReply: NonNullable<
+        CodeHostAdapter["events"]["resolveReviewCommentReply"]
+      >;
+      publishThreadActions: NonNullable<
+        NonNullable<CodeHostAdapter["publication"]>["publishThreadActions"]
+      >;
+    } {
+  if (!adapter.events.resolveReviewCommentReply) {
+    return { kind: "ignored", reason: "host adapter does not support review comment replies" };
+  }
+  if (!adapter.publication?.publishThreadActions) {
+    return { kind: "ignored", reason: "host adapter does not support verifier thread actions" };
+  }
+  if (options.dryRun) {
+    return { kind: "ignored", reason: "PIPR_DRY_RUN=1; verifier dispatch skipped" };
+  }
+  return {
+    kind: "ready",
+    resolveReviewCommentReply: adapter.events.resolveReviewCommentReply,
+    publishThreadActions: adapter.publication.publishThreadActions,
   };
 }
 
@@ -375,7 +315,7 @@ async function prepareReviewCommentVerifier(
   if (!reply.parentCommentId) {
     return { kind: "ignored", reason: "review comment was not a reply" };
   }
-  const loaded = await adapter.loadChangeRequest({
+  const loaded = await adapter.events.loadChangeRequest({
     repository: reply.repository,
     changeNumber: reply.changeNumber,
     workspace: reply.workspace,
@@ -409,7 +349,7 @@ async function prepareReviewCommentVerifier(
     return { kind: "ignored", reason: "review comment reply actor is not allowed" };
   }
   assertTrustedActionProviderEnv(options, trustedRuntime.settings.config);
-  adapter.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
+  adapter.workspace.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
   return {
     kind: "prepared",
     reply: { ...reply, parentCommentId: reply.parentCommentId },
@@ -444,8 +384,8 @@ async function runReviewCommentVerifier(
       baseSha: event.change.base.sha,
       headSha: event.change.head.sha,
     }),
-    priorReviewState: await adapter.loadPriorReviewState?.({ change: event }),
-    threadContexts: (await adapter.loadInlineThreadContexts?.({ change: event })) ?? [],
+    priorReviewState: await adapter.comments?.loadPriorReviewState?.({ change: event }),
+    threadContexts: (await adapter.comments?.loadInlineThreadContexts?.({ change: event })) ?? [],
     mode: {
       kind: "user-reply",
       reply: {
@@ -491,7 +431,7 @@ async function verifierActorAllowed(
   if (allowed === "author-or-write" && event.change.author?.login === reply.actor) {
     return true;
   }
-  const permission = await adapter.getRepositoryPermission({
+  const permission = await adapter.permissions.getRepositoryPermission({
     repository: event.repository,
     actor: reply.actor,
   });
@@ -513,16 +453,16 @@ async function prepareIssueCommentCommand(
   options: ActionCommandDependencyOptions,
   adapter: CodeHostAdapter,
 ): Promise<PreparedIssueCommentCommand> {
-  const comment = await adapter.resolveCommandComment({
+  const comment = await adapter.events.resolveCommandComment({
     eventPath: options.eventPath,
-    env: actionEnv(options),
+    env: options.env ?? process.env,
     workspace: options.rootDir,
   });
   const runnable = runnableIssueCommentCommand(comment, options.dryRun);
   if (runnable.kind === "ignored") {
     return runnable;
   }
-  const loaded = await adapter.loadChangeRequest({
+  const loaded = await adapter.events.loadChangeRequest({
     repository: comment.repository,
     changeNumber: comment.changeNumber,
     workspace: comment.workspace,
@@ -580,7 +520,7 @@ async function dispatchIssueCommentCommand(
     prepared.resolution.kind === "matched"
       ? prepared.resolution.invocation.requiredPermission
       : prepared.resolution.requiredPermission;
-  const permission = await adapter.getRepositoryPermission({
+  const permission = await adapter.permissions.getRepositoryPermission({
     repository: prepared.comment.repository,
     actor: prepared.comment.actor,
   });
@@ -621,7 +561,13 @@ async function dispatchIssueCommentCommand(
   }
 
   assertTrustedActionProviderEnv(options, prepared.trustedRuntime.settings.config);
-  adapter.ensureHeadCheckout({ rootDir: options.rootDir, change: prepared.event });
+  adapter.workspace.ensureHeadCheckout({ rootDir: options.rootDir, change: prepared.event });
+  const dispatch = dispatchRuntimeEntry({
+    kind: "change-request",
+    plan: prepared.trustedRuntime.plan,
+    event: prepared.event,
+    taskName: parsedResolution.invocation.taskName,
+  });
   const completed = await runTrustedReviewAndPublish({
     options,
     adapter,
@@ -629,6 +575,7 @@ async function dispatchIssueCommentCommand(
     event: prepared.event,
     taskName: parsedResolution.invocation.taskName,
     taskInput: parsedResolution.invocation.inputs,
+    selectedTasks: dispatch.kind === "change-request" ? dispatch.tasks : [],
     commandInvocation: {
       name: parsedResolution.invocation.commandName,
       line: parsedResolution.invocation.line,
@@ -682,7 +629,7 @@ async function publishCommandResponseActionResult(options: {
   sourceCommentId: number;
   configSource: string;
 }): Promise<ActionCommandResult> {
-  const publishCommandResponse = options.adapter.publishCommandResponse;
+  const publishCommandResponse = options.adapter.publication?.publishCommandResponse;
   if (!publishCommandResponse) {
     throw new Error("command response publication is not available for this code host");
   }
@@ -700,379 +647,4 @@ async function publishCommandResponseActionResult(options: {
     response: { body: options.completed.response.body },
     publication,
   };
-}
-
-async function runTrustedReviewAndPublish(options: {
-  options: ActionCommandDependencyOptions;
-  adapter: CodeHostAdapter;
-  trustedRuntime: TrustedRuntimeProject;
-  event: ChangeRequestEventContext;
-  taskName?: string;
-  taskInput?: unknown;
-  commandInvocation?: RuntimeCommandInvocation;
-}): Promise<TrustedReviewAndPublishResult> {
-  const checks = await startRuntimeChecks({
-    adapter: options.adapter,
-    event: options.event,
-    plan: options.trustedRuntime.plan,
-    taskName: options.taskName,
-  });
-  try {
-    const review = await runTaskRuntime({
-      workspace: options.options.rootDir,
-      config: options.trustedRuntime.settings.config,
-      event: options.event,
-      env: options.options.env,
-      plan: options.trustedRuntime.plan,
-      taskName: options.taskName,
-      taskInput: options.taskInput,
-      commandInvocation: options.commandInvocation,
-      trustedConfigSha: options.trustedRuntime.trustedConfigSha,
-      trustedConfigHash: options.trustedRuntime.trustedConfigHash,
-      piExecutable: options.options.piExecutable,
-      checkSink: checks?.sink,
-      loadPriorReviewState: () =>
-        options.adapter.loadPriorReviewState?.({ change: options.event }) ??
-        Promise.resolve(undefined),
-      loadPriorMainComment: () =>
-        options.adapter.loadPriorMainComment?.({ change: options.event }) ??
-        Promise.resolve(undefined),
-      loadInlineThreadContexts: () =>
-        options.adapter.loadInlineThreadContexts?.({ change: options.event }) ??
-        Promise.resolve([]),
-    });
-    if (review.kind === "skipped") {
-      await finalizeRuntimeChecks(checks, { skipped: true });
-      return { kind: "skipped", reason: review.skipReason ?? "review skipped" };
-    }
-    if (review.kind === "command-response") {
-      if (!review.commandResponse) {
-        throw new Error("command response result did not include a response body");
-      }
-      await finalizeRuntimeChecks(checks, {});
-      return {
-        kind: "command-response",
-        response: {
-          commandName: review.commandResponse.commandName,
-          body: review.commandResponse.body,
-        },
-      };
-    }
-    const publication = await options.adapter.publish({
-      change: options.event,
-      plan: review.publicationPlan,
-    });
-    await finalizeRuntimeChecks(checks, {});
-    return { kind: "completed", review, publication };
-  } catch (error) {
-    await finalizeRuntimeChecks(checks, {
-      forceFailureSummary: genericCheckFailureSummary,
-      preserveTaskOutcomes: hasTaskFailureOutcome(checks),
-    }).catch((finalizeError: unknown) => {
-      console.warn(
-        `Unable to finalize GitHub check runs after failure: ${errorMessage(finalizeError)}`,
-      );
-    });
-    throw error;
-  }
-}
-
-type StartedRuntimeChecks = {
-  event: ChangeRequestEventContext;
-  adapter: CodeHostAdapter;
-  tasks: Task<unknown>[];
-  outcomes: Map<string, RuntimeTaskCheckResult>;
-  taskRuns: Map<string, CodeHostCheckRun>;
-  aggregate?: CodeHostCheckRun;
-  sink: RuntimeCheckSink;
-};
-
-type FinalizeRuntimeCheckOptions = {
-  skipped?: boolean;
-  forceFailureSummary?: string;
-  preserveTaskOutcomes?: boolean;
-};
-
-async function startRuntimeChecks(options: {
-  adapter: CodeHostAdapter;
-  event: ChangeRequestEventContext;
-  plan: RuntimePlan;
-  taskName?: string;
-}): Promise<StartedRuntimeChecks | undefined> {
-  if (!canStartRuntimeChecks(options)) {
-    return undefined;
-  }
-  const tasks = selectRuntimeTasks({
-    plan: options.plan,
-    event: options.event,
-    taskName: options.taskName,
-  });
-  const aggregate = aggregateCheckOptions(options.plan);
-  const taskRuns = new Map<string, CodeHostCheckRun>();
-  if (!aggregate && !tasks.some((task) => taskCheckSettings(task).individual)) {
-    return undefined;
-  }
-  const outcomes = new Map<string, RuntimeTaskCheckResult>();
-  const started: StartedRuntimeChecks = {
-    event: options.event,
-    adapter: options.adapter,
-    tasks,
-    outcomes,
-    taskRuns,
-    sink: {
-      setTaskResult(result) {
-        outcomes.set(result.taskName, result);
-      },
-    },
-  };
-  try {
-    await startTaskCheckRuns(started);
-    if (aggregate) {
-      started.aggregate = await createCheckRunOrThrow(
-        started,
-        aggregate.name,
-        "pipr review is running.",
-      );
-    }
-  } catch (error) {
-    await finalizeRuntimeChecks(started, {
-      forceFailureSummary: genericCheckFailureSummary,
-    }).catch(() => undefined);
-    throw error;
-  }
-  return started;
-}
-
-function canStartRuntimeChecks(options: {
-  adapter: CodeHostAdapter;
-  event: ChangeRequestEventContext;
-  taskName?: string;
-}): boolean {
-  return (
-    options.event.eventName === "pull_request" &&
-    options.taskName === undefined &&
-    Boolean(options.adapter.createCheckRun) &&
-    Boolean(options.adapter.updateCheckRun)
-  );
-}
-
-async function startTaskCheckRuns(started: StartedRuntimeChecks): Promise<void> {
-  for (const task of started.tasks) {
-    const settings = taskCheckSettings(task);
-    if (!settings.individual) {
-      continue;
-    }
-    started.taskRuns.set(
-      task.name,
-      await createCheckRunOrThrow(started, settings.name, "pipr task is running."),
-    );
-  }
-}
-
-async function createCheckRunOrThrow(
-  checks: StartedRuntimeChecks,
-  name: string,
-  summary: string,
-): Promise<CodeHostCheckRun> {
-  try {
-    const createCheckRun = checks.adapter.createCheckRun;
-    if (!createCheckRun) {
-      throw new Error("check run creation is not available");
-    }
-    return await createCheckRun({ change: checks.event, name, summary });
-  } catch (error) {
-    throw checkRunPermissionError(error);
-  }
-}
-
-function checkRunPermissionError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error);
-  return new Error(
-    `Unable to create GitHub check run. Ensure the workflow grants 'checks: write'. ${message}`,
-  );
-}
-
-async function finalizeRuntimeChecks(
-  checks: StartedRuntimeChecks | undefined,
-  options: FinalizeRuntimeCheckOptions,
-): Promise<void> {
-  if (!checks?.adapter.updateCheckRun) {
-    return;
-  }
-  const taskResults = checks.tasks.map((task) =>
-    taskCheckResultForFinalization(task, checks.outcomes.get(task.name), options),
-  );
-  const taskError = await updateTaskCheckRuns(checks, taskResults);
-  const aggregateError = await updateAggregateCheckRun(checks, taskResults, options);
-  const firstError = taskError ?? aggregateError;
-  if (firstError !== undefined) {
-    throw firstError instanceof Error ? firstError : new Error(String(firstError));
-  }
-}
-
-async function updateTaskCheckRuns(
-  checks: StartedRuntimeChecks,
-  taskResults: RuntimeTaskCheckResult[],
-): Promise<unknown> {
-  let firstError: unknown;
-  for (const task of checks.tasks) {
-    const run = checks.taskRuns.get(task.name);
-    if (!run) {
-      continue;
-    }
-    const result = taskResults.find((item) => item.taskName === task.name);
-    if (!result) {
-      continue;
-    }
-    firstError ??= await updateCheckRunOrError(checks, run, result);
-  }
-  return firstError;
-}
-
-async function updateAggregateCheckRun(
-  checks: StartedRuntimeChecks,
-  taskResults: RuntimeTaskCheckResult[],
-  options: FinalizeRuntimeCheckOptions,
-): Promise<unknown> {
-  if (checks.aggregate) {
-    return await updateCheckRunOrError(
-      checks,
-      checks.aggregate,
-      aggregateCheckConclusion(checks.tasks, taskResults, options),
-    );
-  }
-  return undefined;
-}
-
-async function updateCheckRunOrError(
-  checks: StartedRuntimeChecks,
-  checkRun: CodeHostCheckRun,
-  result: { conclusion: CodeHostCheckConclusion; summary?: string },
-): Promise<unknown> {
-  try {
-    await checks.adapter.updateCheckRun?.({
-      change: checks.event,
-      checkRun,
-      conclusion: result.conclusion,
-      summary: result.summary,
-    });
-    return undefined;
-  } catch (error) {
-    return error;
-  }
-}
-
-function taskCheckResultForFinalization(
-  task: Task<unknown>,
-  result: RuntimeTaskCheckResult | undefined,
-  options: FinalizeRuntimeCheckOptions,
-): RuntimeTaskCheckResult {
-  if (options.skipped) {
-    return { taskName: task.name, conclusion: "neutral", summary: "No task matched this run." };
-  }
-  if (options.forceFailureSummary && options.preserveTaskOutcomes && result) {
-    return result;
-  }
-  if (options.forceFailureSummary) {
-    return { taskName: task.name, conclusion: "failure", summary: options.forceFailureSummary };
-  }
-  return result ?? { taskName: task.name, conclusion: "success" };
-}
-
-function aggregateCheckConclusion(
-  tasks: Task<unknown>[],
-  results: RuntimeTaskCheckResult[],
-  options: { skipped?: boolean; forceFailureSummary?: string },
-): { conclusion: CodeHostCheckConclusion; summary: string } {
-  if (options.skipped || tasks.length === 0) {
-    return { conclusion: "neutral", summary: "No pipr tasks matched this run." };
-  }
-  if (options.forceFailureSummary) {
-    return { conclusion: "failure", summary: options.forceFailureSummary };
-  }
-  const participating = tasks.filter((task) => taskCheckSettings(task).aggregate);
-  if (participating.length === 0) {
-    return { conclusion: "neutral", summary: "No pipr task checks participated." };
-  }
-  const failedRequired = participating.some((task) => {
-    const settings = taskCheckSettings(task);
-    const result = results.find((item) => item.taskName === task.name);
-    return settings.required && result?.conclusion === "failure";
-  });
-  return failedRequired
-    ? { conclusion: "failure", summary: "One or more required pipr tasks failed." }
-    : { conclusion: "success", summary: "All required pipr tasks completed." };
-}
-
-function hasTaskFailureOutcome(checks: StartedRuntimeChecks | undefined): boolean {
-  return Array.from(checks?.outcomes.values() ?? []).some(
-    (result) => result.conclusion === "failure",
-  );
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function aggregateCheckOptions(plan: RuntimePlan): { name: string } | undefined {
-  const aggregate = plan.checks?.aggregate;
-  if (aggregate === undefined || aggregate === false || aggregate.enabled === false) {
-    return undefined;
-  }
-  return { name: aggregate.name ?? "all" };
-}
-
-function taskCheckSettings(task: Task<unknown>): {
-  individual: boolean;
-  aggregate: boolean;
-  name: string;
-  required: boolean;
-} {
-  const check = task.check;
-  if (check === false) {
-    return { individual: false, aggregate: false, name: task.name, required: false };
-  }
-  const options = typeof check === "object" ? check : undefined;
-  return {
-    individual: options !== undefined && options.enabled !== false,
-    aggregate: true,
-    name: options?.name ?? task.name,
-    required: options?.required ?? true,
-  };
-}
-
-function assertTrustedActionProviderEnv(
-  options: ActionCommandDependencyOptions,
-  trustedConfig: PiprConfig,
-): void {
-  const env = actionEnv(options);
-  const missing: string[] = [];
-  for (const provider of trustedConfig.providers) {
-    if (!env[provider.apiKeyEnv]) {
-      missing.push(provider.apiKeyEnv);
-    }
-  }
-  if (missing.length > 0) {
-    throw new Error(`Missing provider env vars: ${missing.join(", ")}`);
-  }
-}
-
-function actionEnv(options: ActionCommandDependencyOptions): NodeJS.ProcessEnv {
-  return options.env ?? process.env;
-}
-
-function createActionHostAdapter(options: {
-  env?: NodeJS.ProcessEnv;
-  hostAdapter?: CodeHostAdapter;
-  githubClient?: GitHubCommandClient;
-  githubPublicationClient?: GitHubPublicationClient;
-}): CodeHostAdapter {
-  return (
-    options.hostAdapter ??
-    createGitHubHostAdapter({
-      env: options.env,
-      commandClient: options.githubClient,
-      publicationClient: options.githubPublicationClient,
-    })
-  );
 }

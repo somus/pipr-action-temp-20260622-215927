@@ -12,4 +12,3 @@ export type {
   SchemaParseResult,
   ToolRunOptions,
 } from "./index.js";
-export { isBuiltinReadOnlyTool, renderPromptValue, schemas } from "./index.js";

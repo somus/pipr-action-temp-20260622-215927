@@ -1,24 +1,42 @@
 import { z } from "zod";
+import type { ReviewFinding, ReviewResult, ReviewSummary } from "./review-contract.js";
+
+export { definePipr, definePlugin } from "./builder.js";
+export { md } from "./prompt.js";
+export type { ReviewFinding, ReviewResult, ReviewSummary } from "./review-contract.js";
+export {
+  parseReviewFinding,
+  parseReviewResult,
+  parseReviewSummary,
+  reviewFindingSchema,
+  reviewResultSchema,
+  reviewSchemaExample,
+  reviewSummarySchema,
+} from "./review-contract.js";
+export { jsonSchema, schema, schemas } from "./schema.js";
 
 export { z };
 
-const configFactoryBrand = Symbol.for("pipr.config.factory");
-const builtinReadOnlyToolBrand = Symbol.for("pipr.builtin.readOnlyTool");
-
+/** Repository permission levels used to authorize pipr commands. */
 export type RepositoryPermission = "read" | "triage" | "write" | "maintain" | "admin";
+/** Pull request lifecycle actions that can trigger change-request tasks. */
 export type ChangeRequestAction = "opened" | "updated" | "reopened" | "ready" | "closed";
 
+/** Duration accepted by timeout options, either seconds as a number or a suffixed string. */
 export type DurationInput = number | `${number}s` | `${number}m` | `${number}h`;
 
+/** Reference to a secret that pipr resolves from the runtime environment. */
 export type SecretRef = {
   readonly kind: "pipr.secret";
   readonly name: string;
 };
 
+/** Options for declaring a secret by environment variable name. */
 export type SecretOptions = {
   name: string;
 };
 
+/** Options for registering a model provider and model id. */
 export type ModelOptions = {
   id?: string;
   provider: string;
@@ -27,6 +45,7 @@ export type ModelOptions = {
   options?: Record<string, unknown>;
 };
 
+/** Registered model profile that can be used by reviewers and agents. */
 export type ModelProfile = {
   readonly kind: "pipr.model";
   readonly id: string;
@@ -36,13 +55,19 @@ export type ModelProfile = {
   readonly options?: Record<string, unknown>;
 };
 
+/** Primitive JSON value supported by JSON Schema based configuration. */
 export type JsonPrimitive = string | number | boolean | null;
+/** JSON value accepted by pipr schema and prompt helpers. */
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+/** JSON object accepted by pipr schema and prompt helpers. */
 export type JsonObject = { [key: string]: JsonValue };
+/** JSON Schema document or boolean schema. */
 export type JsonSchema = JsonObject | boolean;
 
+/** Result returned by `Schema.safeParse`. */
 export type SchemaParseResult<T> = { success: true; data: T } | { success: false; error: Error };
 
+/** Runtime schema wrapper used by pipr agents, tools, and user config. */
 export type Schema<T> = {
   readonly kind: "pipr.schema";
   readonly id: string;
@@ -51,32 +76,13 @@ export type Schema<T> = {
   safeParse(value: unknown): SchemaParseResult<T>;
 };
 
+/** Zod schema type accepted by `pipr.schema` and built-in schema exports. */
 export type ZodSchema<T> = z.ZodType<T>;
 
-export const reviewOutputSchemaId = "core/pr-review";
-
-export type ReviewSummary = {
-  title?: string;
-  body: string;
-};
-
-export type ReviewFinding = {
-  body: string;
-  path: string;
-  rangeId: string;
-  side: "RIGHT" | "LEFT";
-  startLine: number;
-  endLine: number;
-  suggestedFix?: string;
-};
-
-export type ReviewResult = {
-  summary: ReviewSummary;
-  inlineFindings: ReviewFinding[];
-};
-
+/** Markdown text accepted by review comments and command replies. */
 export type Markdown = string;
 
+/** Final review comment value produced by a task or review recipe. */
 export type CommentValue =
   | Markdown
   | {
@@ -84,6 +90,7 @@ export type CommentValue =
       inlineFindings?: readonly ReviewFinding[];
     };
 
+/** Prior inline finding persisted by earlier pipr review state. */
 export type PriorInlineFinding = {
   id: string;
   status: "open" | "resolved";
@@ -94,38 +101,47 @@ export type PriorInlineFinding = {
   endLine: number;
 };
 
+/** Prior pipr review state available to tasks through `ctx.review.prior()`. */
 export type PriorReview = {
   main?: Markdown;
   reviewedHeadSha?: string;
   inlineFindings: readonly PriorInlineFinding[];
 };
 
+/** Include/exclude path filter for scoped reviews and Diff Manifest projection. */
 export type PathFilter = {
   include?: string[];
   exclude?: string[];
 };
+/** Prompt text accepted by agent instructions and prompt functions. */
 export type PromptSource = string | PromptText;
+/** Value accepted by prompt rendering helpers. */
 export type PromptValue = unknown;
 
+/** Structured prompt text produced by `pipr.prompt`, `pipr.section`, or `pipr.json`. */
 export type PromptText = {
   readonly kind: "pipr.prompt";
   readonly value: string;
 };
 
+/** Options for rendering a value as JSON prompt text. */
 export type JsonPromptOptions = {
   pretty?: boolean;
   maxCharacters?: number;
 };
 
+/** Built-in tool catalog exposed on the pipr builder. */
 export type BuiltinToolCatalog = {
   readonly readOnly: readonly AgentTool[];
 };
 
+/** Built-in schema catalog exposed on the pipr builder. */
 export type BuiltinSchemaCatalog = {
   readonly review: Schema<ReviewResult>;
   readonly summary: Schema<ReviewSummary>;
 };
 
+/** Tool definition available to Pi agents at runtime. */
 export type AgentTool<Input = unknown, Output = unknown> = {
   readonly kind: "pipr.tool";
   readonly name: string;
@@ -136,11 +152,7 @@ export type AgentTool<Input = unknown, Output = unknown> = {
   toModelOutput?(output: Output): PromptValue;
 };
 
-/** Returns whether a tool is one of pipr's built-in read-only tools. */
-export function isBuiltinReadOnlyTool(tool: AgentTool): boolean {
-  return Reflect.get(tool, builtinReadOnlyToolBrand) === true;
-}
-
+/** Context passed to an agent prompt function. */
 export type AgentPromptContext = {
   runId: string;
   repository: RepositoryInfo;
@@ -148,6 +160,7 @@ export type AgentPromptContext = {
   platform: PlatformInfo;
 };
 
+/** Full definition for an agent pipr can run through Pi. */
 export type AgentDefinition<Input, Output> = {
   name?: string;
   model?: ModelProfile;
@@ -163,10 +176,12 @@ export type AgentDefinition<Input, Output> = {
   timeout?: DurationInput;
 };
 
+/** Partial patch accepted by `agent.extend`. */
 export type AgentExtension<Input, Output> = Partial<AgentDefinition<Input, Output>> & {
   instructions?: PromptSource;
 };
 
+/** Registered Pi agent with typed input and output. */
 export type Agent<Input = unknown, Output = unknown> = {
   readonly kind: "pipr.agent";
   readonly name?: string;
@@ -174,8 +189,10 @@ export type Agent<Input = unknown, Output = unknown> = {
   extend(patch: AgentExtension<Input, Output>): Agent<Input, Output>;
 };
 
+/** Function run by a task entrypoint. */
 export type TaskHandler<Input> = (context: TaskContext, input: Input) => void | Promise<void>;
 
+/** Check-run publication options for one task. */
 export type TaskCheckOptions =
   | false
   | {
@@ -184,12 +201,14 @@ export type TaskCheckOptions =
       required?: boolean;
     };
 
+/** Definition used to register a task. */
 export type TaskDefinition<Input> = {
   name: string;
   check?: TaskCheckOptions;
   run: TaskHandler<Input>;
 };
 
+/** Registered task that can be selected by change-request, command, or local entrypoints. */
 export type Task<Input = void> = {
   readonly kind: "pipr.task";
   readonly name: string;
@@ -197,22 +216,26 @@ export type Task<Input = void> = {
   readonly handler: TaskHandler<Input>;
 };
 
+/** Options shared by command registrations. */
 export type CommandOptions<Input> = {
   permission?: RepositoryPermission;
   description?: string;
   parse?: (arguments_: Record<string, string>) => Input;
 };
 
+/** Definition used to register an `@pipr` command. */
 export type CommandRegistrationOptions<Input> = CommandOptions<Input> & {
   pattern: string;
   task: Task<Input>;
 };
 
+/** Definition used to register a local task entrypoint. */
 export type LocalRegistrationOptions<Input> = {
   name: string;
   task: Task<Input>;
 };
 
+/** Options for creating a reusable reviewer agent. */
 export type ReviewerOptions = {
   name?: string;
   model: ModelProfile;
@@ -226,8 +249,10 @@ export type ReviewerOptions = {
   timeout?: DurationInput;
 };
 
+/** Reviewer agent that emits pipr's core review result. */
 export type Reviewer = Agent<DefaultReviewInput, ReviewResult>;
 
+/** Entrypoints created by `pipr.review`. */
 export type ReviewEntrypoints = {
   changeRequest?: ChangeRequestAction[] | false;
   command?:
@@ -260,15 +285,18 @@ type ReviewRecipeEntrypointOptions = {
   paths?: PathFilter;
 };
 
+/** Options for `pipr.review`, pipr's default review recipe. */
 export type ReviewRecipeOptions =
   | (ReviewRecipeEntrypointOptions & { reviewer: Reviewer })
   | (ReviewRecipeEntrypointOptions & ReviewerOptions & { reviewer?: undefined });
 
+/** Default input passed to a reviewer created by `pipr.review`. */
 export type DefaultReviewInput = {
   manifest: DiffManifest;
   change: ChangeRequestInfo;
 };
 
+/** Context passed to a custom review comment renderer. */
 export type ReviewCommentContext = {
   review: { id: string };
   repository: RepositoryInfo;
@@ -276,10 +304,12 @@ export type ReviewCommentContext = {
   platform: PlatformInfo;
 };
 
+/** Plugin installer returned by `definePlugin`. */
 export type PiprPlugin<Handle> = {
   setup(builder: PiprBuilder): Handle;
 };
 
+/** Definition for a custom tool registered by config or plugins. */
 export type PluginToolDefinition<Input, Output> = {
   name: string;
   description: string;
@@ -290,27 +320,32 @@ export type PluginToolDefinition<Input, Output> = {
   toModelOutput?(output: Output): PromptValue;
 };
 
+/** Runtime input passed to a tool implementation. */
 export type ToolRunOptions<Input> = {
   input: Input;
   ctx: unknown;
   signal?: AbortSignal;
 };
 
+/** Definition used to register a task for pull request actions. */
 export type ChangeRequestRegistrationOptions<Input> = {
   actions: ChangeRequestAction[];
   task: Task<Input>;
 };
 
+/** Zod-backed schema registration. */
 export type SchemaDefinition<T> = {
   id: string;
   schema: ZodSchema<T>;
 };
 
+/** JSON Schema backed schema registration. */
 export type JsonSchemaDefinition = {
   id: string;
   schema: JsonSchema;
 };
 
+/** Aggregate check-run options for a pipr run. */
 export type AggregateCheckOptions =
   | false
   | {
@@ -318,18 +353,22 @@ export type AggregateCheckOptions =
       name?: string;
     };
 
+/** Check-run settings for a pipr config. */
 export type ChecksOptions = {
   aggregate?: AggregateCheckOptions;
 };
 
+/** Actor policy for auto-resolving inline review threads from user replies. */
 export type AutoResolveAllowedActors = "author-or-write" | "write" | "any";
 
+/** Options controlling auto-resolve behavior for user replies. */
 export type AutoResolveUserRepliesOptions = {
   enabled?: boolean;
   respondWhenStillValid?: boolean;
   allowedActors?: AutoResolveAllowedActors;
 };
 
+/** Options controlling automatic stale-finding resolution. */
 export type AutoResolveOptions =
   | false
   | {
@@ -340,23 +379,27 @@ export type AutoResolveOptions =
       userReplies?: boolean | AutoResolveUserRepliesOptions;
     };
 
+/** Review publication settings. */
 export type PublicationOptions = {
   maxInlineComments?: number;
   autoResolve?: AutoResolveOptions;
 };
 
+/** Top-level pipr config settings. */
 export type PiprConfigOptions = {
   publication?: PublicationOptions;
   checks?: ChecksOptions;
   limits?: RuntimeLimits;
 };
 
+/** Handle for reporting task check status from inside a task. */
 export type CheckHandle = {
   pass(summary?: string): void;
   fail(summary?: string): void;
   neutral(summary?: string): void;
 };
 
+/** Builder API available inside `definePipr`. */
 export type PiprBuilder = {
   readonly tools: BuiltinToolCatalog;
   readonly schemas: BuiltinSchemaCatalog;
@@ -383,31 +426,7 @@ export type PiprBuilder = {
   json(value: unknown, options?: JsonPromptOptions): PromptText;
 };
 
-export type RuntimePlan = {
-  models: ModelProfile[];
-  agents: Agent[];
-  tasks: Task<unknown>[];
-  changeRequestTriggers: Array<{ actions: ChangeRequestAction[]; task: Task<unknown> }>;
-  commands: Array<{
-    pattern: string;
-    permission: RepositoryPermission;
-    description?: string;
-    parse?: (arguments_: Record<string, string>) => unknown;
-    task: Task<unknown>;
-  }>;
-  locals: Array<{ name: string; task: Task<unknown> }>;
-  tools: AgentTool[];
-  publication: PublicationOptions;
-  checks?: ChecksOptions;
-  limits?: RuntimeLimits;
-};
-
-export type PiprConfigFactory = {
-  readonly kind: "pipr.config-factory";
-  readonly [configFactoryBrand]: true;
-  build(): RuntimePlan;
-};
-
+/** Repository metadata available to tasks and agents. */
 export type RepositoryInfo = {
   root: string;
   owner?: string;
@@ -416,6 +435,7 @@ export type RepositoryInfo = {
   remoteUrl?: string;
 };
 
+/** Pull request or change-request metadata available to tasks and agents. */
 export type ChangeRequestInfo = {
   number?: number;
   title: string;
@@ -427,10 +447,12 @@ export type ChangeRequestInfo = {
   isFork?: boolean;
 };
 
+/** Code hosting platform metadata. */
 export type PlatformInfo = {
   id: string;
 };
 
+/** Diff Manifest exposed to reviewers and tasks. */
 export type DiffManifest = {
   baseSha: string;
   headSha: string;
@@ -448,6 +470,7 @@ export type DiffManifest = {
   }>;
 };
 
+/** Options for projecting a Diff Manifest for task or prompt use. */
 export type DiffManifestOptions = {
   compressed?: boolean;
   includePreviews?: boolean;
@@ -455,6 +478,7 @@ export type DiffManifestOptions = {
   paths?: PathFilter;
 };
 
+/** Size limits for Diff Manifest prompt and runtime-tool payloads. */
 export type DiffManifestLimits = {
   fullMaxBytes?: number;
   fullMaxEstimatedTokens?: number;
@@ -463,17 +487,20 @@ export type DiffManifestLimits = {
   toolResponseMaxBytes?: number;
 };
 
+/** Runtime limits for a pipr config. */
 export type RuntimeLimits = {
   timeoutSeconds?: number;
   diffManifest?: DiffManifestLimits;
 };
 
+/** Change-request context available inside tasks. */
 export type ChangeRequestContext = ChangeRequestInfo & {
   diffManifest(options?: DiffManifestOptions): Promise<DiffManifest>;
   changedFiles(): Promise<Array<{ path: string; previousPath?: string; status: string }>>;
   currentHeadSha(): Promise<string>;
 };
 
+/** Runner for invoking Pi agents from tasks. */
 export type PiRunner = {
   run<Input, Output>(
     agent: Agent<Input, Output>,
@@ -488,6 +515,7 @@ export type PiRunner = {
   ): Promise<Output>;
 };
 
+/** Command context available inside command-triggered tasks. */
 export type CommandContext = {
   readonly name: string;
   readonly line: string;
@@ -495,6 +523,7 @@ export type CommandContext = {
   reply(markdown: Markdown): Promise<void>;
 };
 
+/** Context object passed to task handlers. */
 export type TaskContext = {
   readonly run: { id: string };
   readonly repository: RepositoryInfo;
@@ -513,893 +542,3 @@ export type TaskContext = {
     error(message: string): void;
   };
 };
-
-const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
-    z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-);
-
-const nonEmptyStringSchema = z.string().min(1);
-const positiveIntegerSchema = z.number().int().positive();
-
-const reviewSummarySchema = z.strictObject({
-  title: nonEmptyStringSchema.optional(),
-  body: nonEmptyStringSchema,
-});
-
-const reviewFindingShape = {
-  body: nonEmptyStringSchema,
-  path: nonEmptyStringSchema,
-  rangeId: nonEmptyStringSchema,
-  side: z.enum(["RIGHT", "LEFT"]),
-  startLine: positiveIntegerSchema,
-  endLine: positiveIntegerSchema,
-  suggestedFix: nonEmptyStringSchema.optional(),
-};
-
-const reviewFindingSchema = z.strictObject(reviewFindingShape);
-
-const reviewResultSchema = z.strictObject({
-  summary: reviewSummarySchema,
-  inlineFindings: z.array(reviewFindingSchema),
-});
-
-/** Defines a synchronous pipr configuration factory. */
-export function definePipr(configure: (pipr: PiprBuilder) => void): PiprConfigFactory {
-  return {
-    kind: "pipr.config-factory",
-    [configFactoryBrand]: true,
-    build() {
-      const builder = createBuilder();
-      const result = configure(builder.api);
-      if (
-        typeof result === "object" &&
-        result !== null &&
-        typeof Reflect.get(result, "then") === "function"
-      ) {
-        throw new Error("definePipr configuration callback must be synchronous");
-      }
-      return builder.plan();
-    },
-  };
-}
-
-/** Checks that an unknown value is a pipr configuration factory. */
-export function isPiprConfigFactory(value: unknown): value is PiprConfigFactory {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Reflect.get(value, "kind") === "pipr.config-factory" &&
-    Reflect.get(value, configFactoryBrand) === true
-  );
-}
-
-/** Builds a runtime plan from a pipr configuration factory. */
-export function buildPiprPlan(factory: PiprConfigFactory): RuntimePlan {
-  return factory.build();
-}
-
-/** Defines a typed pipr plugin installer. */
-export function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle> {
-  return { setup };
-}
-
-/** Defines a typed schema from a Zod schema. */
-export function schema<T>(definition: SchemaDefinition<T>): Schema<T> {
-  if (!definition || typeof definition.id !== "string") {
-    throw new Error("pipr.schema requires { id, schema }");
-  }
-  assertUserSchemaId(definition.id);
-  return createZodSchema(definition.id, definition.schema);
-}
-
-/** Defines a typed schema from JSON Schema. The generic type is caller supplied. */
-export function jsonSchema<T>(definition: JsonSchemaDefinition): Schema<T> {
-  if (!definition || typeof definition.id !== "string") {
-    throw new Error("pipr.jsonSchema requires { id, schema }");
-  }
-  assertUserSchemaId(definition.id);
-  const zodSchema = z.fromJSONSchema(definition.schema);
-  return createSchema(definition.id, (value) => zodSchema.parse(value) as T, definition.schema);
-}
-
-export const schemas: BuiltinSchemaCatalog = {
-  review: createZodSchema<ReviewResult>(reviewOutputSchemaId, reviewResultSchema),
-  summary: createZodSchema<ReviewSummary>("core/summary", reviewSummarySchema),
-};
-
-export function md(strings: TemplateStringsArray, ...values: unknown[]): Markdown {
-  let text = "";
-  for (let index = 0; index < strings.length; index += 1) {
-    text += strings[index] ?? "";
-    if (index < values.length) {
-      text += String(values[index] ?? "");
-    }
-  }
-  return stripCommonIndent(text).trim();
-}
-
-function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
-  const models: ModelProfile[] = [];
-  const agents: Agent[] = [];
-  const tasks: Task<unknown>[] = [];
-  const changeRequestTriggers: RuntimePlan["changeRequestTriggers"] = [];
-  const commands: RuntimePlan["commands"] = [];
-  const locals: RuntimePlan["locals"] = [];
-  const tools: AgentTool[] = [];
-  const publication: RuntimePlan["publication"] = {};
-  let checks: ChecksOptions | undefined;
-  let limits: RuntimeLimits | undefined;
-
-  const api: PiprBuilder = {
-    tools: {
-      readOnly: [
-        {
-          kind: "pipr.tool",
-          name: "readOnly",
-          [builtinReadOnlyToolBrand]: true,
-        } as AgentTool,
-      ],
-    },
-    schemas,
-    on: {
-      changeRequest(options) {
-        if (!Array.isArray(options.actions) || !options.task) {
-          throw new Error("pipr.on.changeRequest requires { actions, task }");
-        }
-        changeRequestTriggers.push({
-          actions: options.actions,
-          task: options.task as Task<unknown>,
-        });
-      },
-    },
-    secret(options) {
-      if (!options || typeof options.name !== "string") {
-        throw new Error("pipr.secret requires { name }");
-      }
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(options.name)) {
-        throw new Error(`Secret '${options.name}' must be an environment variable name`);
-      }
-      return { kind: "pipr.secret", name: options.name };
-    },
-    model(options) {
-      if (!options || typeof options.provider !== "string" || typeof options.model !== "string") {
-        throw new Error("pipr.model requires { provider, model }");
-      }
-      if (!options.provider || !options.model) {
-        throw new Error("pipr.model requires provider and model");
-      }
-      const id = options.id ?? `${options.provider}/${options.model}`;
-      const profile: ModelProfile = {
-        kind: "pipr.model",
-        id,
-        provider: options.provider,
-        model: options.model,
-        apiKey: options.apiKey,
-        options: options.options,
-      };
-      models.push(profile);
-      return profile;
-    },
-    agent(definition) {
-      const agent = createAgent(definition);
-      agents.push(agent);
-      return agent;
-    },
-    task(definition) {
-      if (!definition.name || typeof definition.run !== "function") {
-        throw new Error("pipr.task requires { name, run }");
-      }
-      const task = {
-        kind: "pipr.task" as const,
-        name: definition.name,
-        check: definition.check,
-        handler: definition.run,
-      };
-      tasks.push(task as Task<unknown>);
-      return task;
-    },
-    reviewer(options) {
-      return createReviewer(api, options);
-    },
-    review(options) {
-      assertKnownReviewRecipeOptions(options);
-      registerReviewRecipe(api, publication, options);
-    },
-    config(options) {
-      if (!options || typeof options !== "object") {
-        throw new Error("pipr.config requires an options object");
-      }
-      mergePublicationConfig(publication, options.publication);
-      checks = mergeConfigField("checks", checks, options.checks);
-      limits = mergeLimits(limits, options.limits);
-    },
-    command(options) {
-      if (typeof options.pattern !== "string" || !options.task) {
-        throw new Error("pipr.command requires { pattern, task }");
-      }
-      const pattern = options.pattern;
-      const tokens = pattern.trim().split(/\s+/).filter(Boolean);
-      if (tokens.length === 0) {
-        throw new Error("Command pattern must not be empty");
-      }
-      if (tokens[0] !== "@pipr") {
-        throw new Error(`Command pattern '${pattern}' must start with @pipr`);
-      }
-      assertSupportedCommandRestCapture(pattern);
-      commands.push({
-        pattern,
-        permission: options.permission ?? "write",
-        description: options.description,
-        parse: options.parse as ((arguments_: Record<string, string>) => unknown) | undefined,
-        task: options.task as Task<unknown>,
-      });
-    },
-    local(options) {
-      if (!options.name || !options.task) {
-        throw new Error("pipr.local requires { name, task }");
-      }
-      locals.push({ name: options.name, task: options.task as Task<unknown> });
-    },
-    checks(options) {
-      checks = mergeConfigField("checks", checks, options);
-    },
-    limits(options) {
-      limits = mergeLimits(limits, options);
-    },
-    use(plugin) {
-      return plugin.setup(api);
-    },
-    tool(definition) {
-      if (definition.name === "readOnly") {
-        throw new Error("Tool name 'readOnly' is reserved for pipr built-in tools");
-      }
-      const execute = definition.execute;
-      let run = definition.run;
-      if (!run && !execute) {
-        throw new Error(`Tool '${definition.name}' must define run`);
-      }
-      if (!run) {
-        const executeTool = execute;
-        if (!executeTool) {
-          throw new Error(`Tool '${definition.name}' must define run`);
-        }
-        run = (options: ToolRunOptions<unknown>) =>
-          executeTool(options.ctx, options.input as never);
-      }
-      const tool = {
-        kind: "pipr.tool" as const,
-        ...definition,
-        run,
-      };
-      tools.push(tool);
-      return tool;
-    },
-    schema,
-    jsonSchema,
-    prompt(strings, ...values) {
-      let text = "";
-      for (let index = 0; index < strings.length; index += 1) {
-        text += strings[index] ?? "";
-        if (index < values.length) {
-          text += renderPromptValue(values[index]);
-        }
-      }
-      return {
-        kind: "pipr.prompt",
-        value: stripCommonIndent(text).trim(),
-      };
-    },
-    section(title, value) {
-      const rendered = renderPromptValue(value);
-      return {
-        kind: "pipr.prompt",
-        value: `## ${title}\n\n${rendered}`,
-      };
-    },
-    json(value, options) {
-      const text = JSON.stringify(value, null, options?.pretty === false ? 0 : 2);
-      if (options?.maxCharacters !== undefined && text.length > options.maxCharacters) {
-        throw new Error(`JSON prompt value exceeded ${options.maxCharacters} characters`);
-      }
-      return { kind: "pipr.prompt", value: text };
-    },
-  };
-
-  return {
-    api,
-    plan() {
-      assertUnique(
-        tasks.map((task) => task.name),
-        "task",
-      );
-      assertUnique(
-        commands.map((command) => command.pattern),
-        "command",
-      );
-      assertUnique(
-        locals.map((local) => local.name),
-        "local",
-      );
-      assertModelIdentity(models);
-      return {
-        models,
-        agents,
-        tasks,
-        changeRequestTriggers,
-        commands,
-        locals,
-        tools,
-        publication,
-        checks,
-        limits,
-      };
-    },
-  };
-}
-
-function registerReviewRecipe(
-  api: PiprBuilder,
-  publication: RuntimePlan["publication"],
-  options: ReviewRecipeOptions,
-): void {
-  const id = options.id;
-  const agent = options.reviewer ?? createReviewer(api, reviewRecipeReviewerOptions(options, id));
-
-  const task = createReviewRecipeTask(api, id, agent, options);
-  registerReviewRecipeEntrypoints(api, task, options);
-  updateReviewRecipePublication(publication, options);
-}
-
-const reviewRecipeOptionKeys = new Set([
-  "id",
-  "entrypoints",
-  "inlineComments",
-  "comment",
-  "check",
-  "timeout",
-  "paths",
-  "reviewer",
-  "name",
-  "model",
-  "fallbacks",
-  "instructions",
-  "prompt",
-  "tools",
-]);
-
-function assertKnownReviewRecipeOptions(options: ReviewRecipeOptions): void {
-  const unknownKeys = Object.keys(options).filter((key) => !reviewRecipeOptionKeys.has(key));
-  if (unknownKeys.length > 0) {
-    throw new Error(`pipr.review received unsupported option fields: ${unknownKeys.join(", ")}.`);
-  }
-}
-
-function reviewRecipeReviewerOptions(
-  options: ReviewRecipeEntrypointOptions & ReviewerOptions,
-  name: string,
-): ReviewerOptions {
-  if (!options.model || !options.instructions) {
-    throw new Error("pipr.review requires model and instructions when reviewer is not provided");
-  }
-  return {
-    name,
-    model: options.model,
-    fallbacks: options.fallbacks,
-    instructions: options.instructions,
-    prompt: options.prompt,
-    tools: options.tools,
-    timeout: options.timeout,
-  };
-}
-
-function createReviewer(api: PiprBuilder, options: ReviewerOptions): Reviewer {
-  return api.agent<DefaultReviewInput, ReviewResult>({
-    name: options.name ?? "reviewer",
-    model: options.model,
-    fallbacks: options.fallbacks,
-    instructions: options.instructions,
-    tools: options.tools ?? api.tools.readOnly,
-    output: api.schemas.review,
-    timeout: options.timeout,
-    prompt:
-      options.prompt ??
-      (() =>
-        api.prompt`
-          Review this change.
-        `),
-  });
-}
-
-function createReviewRecipeTask(
-  api: PiprBuilder,
-  id: string,
-  agent: Agent<DefaultReviewInput, ReviewResult>,
-  options: ReviewRecipeOptions,
-): Task {
-  return api.task({
-    name: id,
-    check: options.check,
-    async run(context) {
-      const manifest = await context.change.diffManifest({
-        compressed: true,
-        paths: options.paths,
-      });
-      if (options.paths && manifest.files.length === 0) {
-        context.check.neutral("No changed files matched this review's path scope.");
-        await context.comment({ main: "No changed files matched this review's path scope." });
-        return;
-      }
-      const result = await context.pi.run(
-        agent,
-        { manifest, change: context.change },
-        {
-          timeout: options.timeout,
-          paths: options.paths,
-        },
-      );
-      const source =
-        typeof options.comment === "function"
-          ? await options.comment(result, {
-              review: { id },
-              repository: context.repository,
-              change: context.change,
-              platform: context.platform,
-            })
-          : (options.comment ?? defaultReviewComment(result, options.inlineComments !== false));
-      await context.comment(source);
-    },
-  });
-}
-
-function defaultReviewComment(result: ReviewResult, includeInlineFindings: boolean): CommentValue {
-  return {
-    main: includeInlineFindings ? defaultReviewMarkdown(result) : result.summary.body,
-    ...(includeInlineFindings ? { inlineFindings: result.inlineFindings } : {}),
-  };
-}
-
-function defaultReviewMarkdown(result: ReviewResult): Markdown {
-  const findings =
-    result.inlineFindings.length === 0
-      ? "No inline findings."
-      : result.inlineFindings.map((finding) => `- ${finding.body}`).join("\n");
-  return `## Summary\n\n${result.summary.body}\n\n## Findings\n\n${findings}`;
-}
-
-function registerReviewRecipeEntrypoints(
-  api: PiprBuilder,
-  task: Task,
-  options: ReviewRecipeOptions,
-): void {
-  const changeRequest = reviewChangeRequestEntrypoint(options);
-  if (changeRequest) {
-    api.on.changeRequest({ actions: changeRequest, task });
-  }
-  const command = reviewCommandEntrypoint(options);
-  if (command) {
-    api.command({ pattern: command.pattern, ...command.options, task });
-  }
-  const local = reviewLocalEntrypoint(options);
-  if (local) {
-    api.local({ name: local, task });
-  }
-}
-
-function reviewChangeRequestEntrypoint(
-  options: ReviewRecipeOptions,
-): ChangeRequestAction[] | undefined {
-  const entrypoint = options.entrypoints?.changeRequest;
-  return entrypoint === false
-    ? undefined
-    : (entrypoint ?? ["opened", "updated", "reopened", "ready"]);
-}
-
-function reviewCommandEntrypoint(options: ReviewRecipeOptions):
-  | {
-      pattern: string;
-      options: CommandOptions<unknown>;
-    }
-  | undefined {
-  const entrypoint = options.entrypoints?.command;
-  if (entrypoint === false) {
-    return undefined;
-  }
-  if (typeof entrypoint === "object") {
-    return reviewObjectCommandEntrypoint(entrypoint);
-  }
-  return reviewStringCommandEntrypoint(entrypoint);
-}
-
-function reviewObjectCommandEntrypoint(
-  entrypoint: Exclude<ReviewEntrypoints["command"], string | false | undefined>,
-) {
-  return {
-    pattern: entrypoint.pattern ?? "@pipr review",
-    options: {
-      permission: entrypoint.permission ?? "write",
-      description: entrypoint.description,
-    },
-  };
-}
-
-function reviewStringCommandEntrypoint(entrypoint: string | undefined) {
-  return {
-    pattern: entrypoint ?? "@pipr review",
-    options: { permission: "write" as const },
-  };
-}
-
-function reviewLocalEntrypoint(options: ReviewRecipeOptions): string | undefined {
-  const entrypoint = options.entrypoints?.local;
-  return entrypoint === false ? undefined : (entrypoint ?? "review");
-}
-
-function updateReviewRecipePublication(
-  publication: RuntimePlan["publication"],
-  options: ReviewRecipeOptions,
-): void {
-  const maxInlineComments =
-    options.inlineComments === false ? 0 : (options.inlineComments?.max ?? 5);
-  if (
-    publication.maxInlineComments !== undefined &&
-    publication.maxInlineComments !== maxInlineComments
-  ) {
-    throw new Error("pipr.review inlineComments settings must match across review recipes");
-  }
-  publication.maxInlineComments = maxInlineComments;
-}
-
-function mergePublicationConfig(
-  target: RuntimePlan["publication"],
-  next: PublicationOptions | undefined,
-): void {
-  if (!next) {
-    return;
-  }
-  if (next.maxInlineComments !== undefined) {
-    if (
-      target.maxInlineComments !== undefined &&
-      target.maxInlineComments !== next.maxInlineComments
-    ) {
-      throw new Error("pipr.config publication.maxInlineComments conflicts with existing value");
-    }
-    target.maxInlineComments = next.maxInlineComments;
-  }
-  if (next.autoResolve !== undefined) {
-    if (
-      target.autoResolve !== undefined &&
-      stableJson(target.autoResolve) !== stableJson(next.autoResolve)
-    ) {
-      throw new Error("pipr.config publication.autoResolve conflicts with existing value");
-    }
-    target.autoResolve = next.autoResolve;
-  }
-}
-
-function mergeConfigField<T>(
-  name: string,
-  current: T | undefined,
-  next: T | undefined,
-): T | undefined {
-  if (next === undefined) {
-    return current;
-  }
-  if (current !== undefined && stableJson(current) !== stableJson(next)) {
-    throw new Error(`pipr.config ${name} conflicts with existing value`);
-  }
-  return next;
-}
-
-function mergeLimits(current: RuntimeLimits | undefined, next: RuntimeLimits | undefined) {
-  if (!next) {
-    return current;
-  }
-  assertRuntimeLimitConflicts(current, next);
-  return {
-    ...current,
-    ...next,
-    diffManifest:
-      (next.diffManifest ?? current?.diffManifest)
-        ? { ...current?.diffManifest, ...next.diffManifest }
-        : undefined,
-  };
-}
-
-function assertRuntimeLimitConflicts(
-  current: RuntimeLimits | undefined,
-  next: RuntimeLimits,
-): void {
-  const currentRecord = current as Record<string, unknown> | undefined;
-  for (const [key, value] of Object.entries(next)) {
-    if (key === "diffManifest") {
-      continue;
-    }
-    if (
-      value !== undefined &&
-      currentRecord?.[key] !== undefined &&
-      stableJson(currentRecord[key]) !== stableJson(value)
-    ) {
-      throw new Error(`pipr.config limits.${key} conflicts with existing value`);
-    }
-  }
-  assertDiffManifestLimitConflicts(current, next);
-}
-
-function assertDiffManifestLimitConflicts(
-  current: RuntimeLimits | undefined,
-  next: RuntimeLimits,
-): void {
-  if (current?.diffManifest && next.diffManifest) {
-    for (const [key, value] of Object.entries(next.diffManifest)) {
-      if (
-        value !== undefined &&
-        (current.diffManifest as Record<string, unknown>)[key] !== undefined &&
-        (current.diffManifest as Record<string, unknown>)[key] !== value
-      ) {
-        throw new Error(`pipr.config limits.diffManifest.${key} conflicts with existing value`);
-      }
-    }
-  }
-}
-
-/** Parses model output for pipr's main pull request review schema. */
-export function parseReviewResult(value: unknown): ReviewResult {
-  return reviewResultSchema.parse(value) as ReviewResult;
-}
-
-/** Parses a review summary value. */
-export function parseReviewSummary(value: unknown): ReviewSummary {
-  return reviewSummarySchema.parse(value);
-}
-
-/** Parses one inline review finding. */
-export function parseReviewFinding(value: unknown): ReviewFinding {
-  return reviewFindingSchema.parse(value) as ReviewFinding;
-}
-
-/** Returns a small valid example for the main pull request review schema. */
-export function reviewSchemaExample(): ReviewResult {
-  return {
-    summary: {
-      title: "Optional concise review title.",
-      body: "Concise pull request review summary.",
-    },
-    inlineFindings: [
-      {
-        body: "Specific issue and why it matters.",
-        path: "src/example.ts",
-        rangeId: "rng_example",
-        side: "RIGHT",
-        startLine: 1,
-        endLine: 1,
-        suggestedFix: "return safeValue;",
-      },
-    ],
-  };
-}
-
-function createAgent<Input, Output>(
-  definition: AgentDefinition<Input, Output>,
-): Agent<Input, Output> {
-  return {
-    kind: "pipr.agent",
-    name: definition.name,
-    definition,
-    extend(patch) {
-      return createAgent({
-        ...definition,
-        ...patch,
-        instructions:
-          patch.instructions === undefined
-            ? definition.instructions
-            : {
-                kind: "pipr.prompt",
-                value:
-                  `${renderPromptValue(definition.instructions)}\n\n${renderPromptValue(patch.instructions)}`.trim(),
-              },
-      });
-    },
-  };
-}
-
-function createSchema<T>(
-  id: string,
-  parseValue: (value: unknown) => T,
-  schemaJson?: JsonSchema,
-): Schema<T> {
-  return {
-    kind: "pipr.schema",
-    id,
-    jsonSchema: schemaJson,
-    parse(value) {
-      return parseValue(value);
-    },
-    safeParse(value) {
-      try {
-        return { success: true, data: parseValue(value) };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error : new Error(String(error)),
-        };
-      }
-    },
-  };
-}
-
-function createZodSchema<T>(id: string, zodSchema: ZodSchema<T>): Schema<T> {
-  return createSchema(id, (value) => zodSchema.parse(value), jsonSchemaFromZod(id, zodSchema));
-}
-
-function assertUserSchemaId(id: string): void {
-  if (id.startsWith("core/")) {
-    throw new Error(`Schema id '${id}' uses the reserved core/ namespace`);
-  }
-}
-
-function jsonSchemaFromZod<T>(id: string, schemaDefinition: ZodSchema<T>): JsonSchema {
-  try {
-    return z.toJSONSchema(schemaDefinition) as JsonSchema;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Schema '${id}' could not be converted to JSON Schema. Use JSON-Schema-representable Zod or pipr.jsonSchema<T>(). ${detail}`,
-    );
-  }
-}
-
-/** Renders a prompt source/value into plain text for Pi prompts. */
-export function renderPromptValue(value: PromptValue): string {
-  if (value === undefined || value === null) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  if (typeof value === "object" && value !== null && Reflect.get(value, "kind") === "pipr.prompt") {
-    return (value as PromptText).value;
-  }
-  return JSON.stringify(value, null, 2);
-}
-
-function stripCommonIndent(value: string): string {
-  const lines = value.replaceAll("\t", "  ").split(/\r?\n/);
-  const nonEmpty = lines.filter((line) => line.trim().length > 0);
-  const indent = Math.min(...nonEmpty.map((line) => line.match(/^ */)?.[0].length ?? 0));
-  return lines.map((line) => line.slice(indent)).join("\n");
-}
-
-function assertUnique(values: string[], label: string): void {
-  const seen = new Set<string>();
-  for (const value of values) {
-    if (seen.has(value)) {
-      throw new Error(`Duplicate ${label} '${value}'`);
-    }
-    seen.add(value);
-  }
-}
-
-function assertSupportedCommandRestCapture(pattern: string): void {
-  const parts = pattern.match(/\[[^\]]+\]|[^\s]+/g) ?? [];
-  for (const [index, part] of parts.entries()) {
-    if (part.startsWith("[") && part.endsWith("]")) {
-      const optionalRest = part.slice(1, -1).trim().split(/\s+/).find(isRestCaptureToken);
-      if (optionalRest) {
-        throw new Error(finalRequiredRestCaptureMessage(optionalRest));
-      }
-      continue;
-    }
-    if (isRestCaptureToken(part) && index !== parts.length - 1) {
-      throw new Error(finalRequiredRestCaptureMessage(part));
-    }
-  }
-}
-
-function isRestCaptureToken(value: string): boolean {
-  return /^<[a-z0-9-]+\.\.\.>$/.test(value);
-}
-
-function finalRequiredRestCaptureMessage(token: string): string {
-  return `Rest capture '${token}' must be the final required command pattern token`;
-}
-
-function assertModelIdentity(models: ModelProfile[]): void {
-  const ids = new Set<string>();
-  const effectiveConfigs = new Map<string, string>();
-  const providerModels = new Map<string, string>();
-
-  for (const model of models) {
-    const effectiveConfig = stableJson({
-      provider: model.provider,
-      model: model.model,
-      apiKeyEnv: model.apiKey?.name,
-      options: model.options,
-    });
-    const providerModel = `${model.provider}/${model.model}`;
-
-    assertUniqueModelId({ model, providerModel, effectiveConfig, ids, effectiveConfigs });
-    ids.add(model.id);
-
-    const existingConfigId = effectiveConfigs.get(effectiveConfig);
-    if (existingConfigId) {
-      throw new Error(
-        `Duplicate model config for '${model.id}'. Reuse model '${existingConfigId}' instead.`,
-      );
-    }
-    effectiveConfigs.set(effectiveConfig, model.id);
-
-    assertExplicitIdForRepeatedProviderModel(model, providerModel, providerModels);
-    providerModels.set(providerModel, model.id);
-  }
-}
-
-function assertUniqueModelId(options: {
-  model: ModelProfile;
-  providerModel: string;
-  effectiveConfig: string;
-  ids: Set<string>;
-  effectiveConfigs: Map<string, string>;
-}): void {
-  if (!options.ids.has(options.model.id)) {
-    return;
-  }
-  if (options.model.id !== options.providerModel) {
-    throw new Error(`Duplicate model id '${options.model.id}'`);
-  }
-  const existingConfigId = options.effectiveConfigs.get(options.effectiveConfig);
-  if (existingConfigId) {
-    throw new Error(
-      `Duplicate model config for '${options.model.id}'. Reuse model '${existingConfigId}' instead.`,
-    );
-  }
-  throw explicitModelIdError(options.providerModel);
-}
-
-function assertExplicitIdForRepeatedProviderModel(
-  model: ModelProfile,
-  providerModel: string,
-  providerModels: Map<string, string>,
-): void {
-  const existingProviderModelId = providerModels.get(providerModel);
-  if (
-    existingProviderModelId &&
-    (model.id === providerModel || existingProviderModelId === providerModel)
-  ) {
-    throw explicitModelIdError(providerModel);
-  }
-}
-
-function explicitModelIdError(providerModel: string): Error {
-  return new Error(
-    `Model '${providerModel}' is configured more than once with different options. Add an explicit id.`,
-  );
-}
-
-function stableJson(value: unknown): string {
-  return JSON.stringify(stableJsonValue(value));
-}
-
-function stableJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(stableJsonValue);
-  }
-  if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, item]) => item !== undefined)
-        .toSorted(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, stableJsonValue(item)]),
-    );
-  }
-  return value;
-}

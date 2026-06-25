@@ -35,59 +35,13 @@ const z: {
   toJSONSchema(schema: ZodAny): JsonSchema;
 };
 
-//#region src/index.d.ts
-const configFactoryBrand: unique symbol;
-type RepositoryPermission = "read" | "triage" | "write" | "maintain" | "admin";
-type ChangeRequestAction = "opened" | "updated" | "reopened" | "ready" | "closed";
-type DurationInput = number | `${number}s` | `${number}m` | `${number}h`;
-type SecretRef = {
-  readonly kind: "pipr.secret";
-  readonly name: string;
-};
-type SecretOptions = {
-  name: string;
-};
-type ModelOptions = {
-  id?: string;
-  provider: string;
-  model: string;
-  apiKey?: SecretRef;
-  options?: Record<string, unknown>;
-};
-type ModelProfile = {
-  readonly kind: "pipr.model";
-  readonly id: string;
-  readonly provider: string;
-  readonly model: string;
-  readonly apiKey?: SecretRef;
-  readonly options?: Record<string, unknown>;
-};
-type JsonPrimitive = string | number | boolean | null;
-type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
-type JsonObject = {
-  [key: string]: JsonValue;
-};
-type JsonSchema = JsonObject | boolean;
-type SchemaParseResult<T> = {
-  success: true;
-  data: T;
-} | {
-  success: false;
-  error: Error;
-};
-type Schema<T> = {
-  readonly kind: "pipr.schema";
-  readonly id: string;
-  readonly jsonSchema?: JsonSchema;
-  parse(value: unknown): T;
-  safeParse(value: unknown): SchemaParseResult<T>;
-};
-type ZodSchema<T> = ZodType<T>;
-const reviewOutputSchemaId = "core/pr-review";
+//#region src/review-contract.d.ts
+/** Markdown summary produced by a reviewer for the main review comment. */
 type ReviewSummary = {
   title?: string;
   body: string;
 };
+/** One inline review finding targeting a Diff Manifest commentable range. */
 type ReviewFinding = {
   body: string;
   path: string;
@@ -97,15 +51,115 @@ type ReviewFinding = {
   endLine: number;
   suggestedFix?: string;
 };
+/** Core structured review result accepted by pipr review publication. */
 type ReviewResult = {
   summary: ReviewSummary;
   inlineFindings: ReviewFinding[];
 };
+/** Zod schema for a review summary. */
+const reviewSummarySchema: ZodSchema<ReviewSummary>;
+/** Zod schema for one inline review finding. */
+const reviewFindingSchema: ZodSchema<ReviewFinding>;
+/** Zod schema for pipr's core pull request review result. */
+const reviewResultSchema: ZodSchema<ReviewResult>;
+/** Parses model output for pipr's main pull request review schema. */
+function parseReviewResult(value: unknown): ReviewResult;
+/** Parses a review summary value. */
+function parseReviewSummary(value: unknown): ReviewSummary;
+/** Parses one inline review finding. */
+function parseReviewFinding(value: unknown): ReviewFinding;
+/** Returns a small valid example for the main pull request review schema. */
+function reviewSchemaExample(): ReviewResult;
+//#endregion
+//#region src/builder.d.ts
+/** Defines a synchronous pipr configuration factory. */
+function definePipr(configure: (pipr: PiprBuilder) => void): {
+  readonly kind: "pipr.config-factory";
+};
+/** Defines a typed pipr plugin installer. */
+function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle>;
+//#endregion
+//#region src/prompt.d.ts
+/** Creates trimmed Markdown from a template literal with common indentation removed. */
+function md(strings: TemplateStringsArray, ...values: unknown[]): Markdown;
+//#endregion
+//#region src/schema.d.ts
+/** Defines a typed schema from a Zod schema. */
+function schema<T>(definition: SchemaDefinition<T>): Schema<T>;
+/** Defines a typed schema from JSON Schema. The generic type is caller supplied. */
+function jsonSchema<T>(definition: JsonSchemaDefinition): Schema<T>;
+/** Built-in schemas available as reusable agent output contracts. */
+const schemas: BuiltinSchemaCatalog;
+//#endregion
+//#region src/index.d.ts
+/** Repository permission levels used to authorize pipr commands. */
+type RepositoryPermission = "read" | "triage" | "write" | "maintain" | "admin";
+/** Pull request lifecycle actions that can trigger change-request tasks. */
+type ChangeRequestAction = "opened" | "updated" | "reopened" | "ready" | "closed";
+/** Duration accepted by timeout options, either seconds as a number or a suffixed string. */
+type DurationInput = number | `${number}s` | `${number}m` | `${number}h`;
+/** Reference to a secret that pipr resolves from the runtime environment. */
+type SecretRef = {
+  readonly kind: "pipr.secret";
+  readonly name: string;
+};
+/** Options for declaring a secret by environment variable name. */
+type SecretOptions = {
+  name: string;
+};
+/** Options for registering a model provider and model id. */
+type ModelOptions = {
+  id?: string;
+  provider: string;
+  model: string;
+  apiKey?: SecretRef;
+  options?: Record<string, unknown>;
+};
+/** Registered model profile that can be used by reviewers and agents. */
+type ModelProfile = {
+  readonly kind: "pipr.model";
+  readonly id: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly apiKey?: SecretRef;
+  readonly options?: Record<string, unknown>;
+};
+/** Primitive JSON value supported by JSON Schema based configuration. */
+type JsonPrimitive = string | number | boolean | null;
+/** JSON value accepted by pipr schema and prompt helpers. */
+type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+/** JSON object accepted by pipr schema and prompt helpers. */
+type JsonObject = {
+  [key: string]: JsonValue;
+};
+/** JSON Schema document or boolean schema. */
+type JsonSchema = JsonObject | boolean;
+/** Result returned by `Schema.safeParse`. */
+type SchemaParseResult<T> = {
+  success: true;
+  data: T;
+} | {
+  success: false;
+  error: Error;
+};
+/** Runtime schema wrapper used by pipr agents, tools, and user config. */
+type Schema<T> = {
+  readonly kind: "pipr.schema";
+  readonly id: string;
+  readonly jsonSchema?: JsonSchema;
+  parse(value: unknown): T;
+  safeParse(value: unknown): SchemaParseResult<T>;
+};
+/** Zod schema type accepted by `pipr.schema` and built-in schema exports. */
+type ZodSchema<T> = ZodType<T>;
+/** Markdown text accepted by review comments and command replies. */
 type Markdown = string;
+/** Final review comment value produced by a task or review recipe. */
 type CommentValue = Markdown | {
   main?: Markdown;
   inlineFindings?: readonly ReviewFinding[];
 };
+/** Prior inline finding persisted by earlier pipr review state. */
 type PriorInlineFinding = {
   id: string;
   status: "open" | "resolved";
@@ -115,32 +169,41 @@ type PriorInlineFinding = {
   startLine: number;
   endLine: number;
 };
+/** Prior pipr review state available to tasks through `ctx.review.prior()`. */
 type PriorReview = {
   main?: Markdown;
   reviewedHeadSha?: string;
   inlineFindings: readonly PriorInlineFinding[];
 };
+/** Include/exclude path filter for scoped reviews and Diff Manifest projection. */
 type PathFilter = {
   include?: string[];
   exclude?: string[];
 };
+/** Prompt text accepted by agent instructions and prompt functions. */
 type PromptSource = string | PromptText;
+/** Value accepted by prompt rendering helpers. */
 type PromptValue = unknown;
+/** Structured prompt text produced by `pipr.prompt`, `pipr.section`, or `pipr.json`. */
 type PromptText = {
   readonly kind: "pipr.prompt";
   readonly value: string;
 };
+/** Options for rendering a value as JSON prompt text. */
 type JsonPromptOptions = {
   pretty?: boolean;
   maxCharacters?: number;
 };
+/** Built-in tool catalog exposed on the pipr builder. */
 type BuiltinToolCatalog = {
   readonly readOnly: readonly AgentTool[];
 };
+/** Built-in schema catalog exposed on the pipr builder. */
 type BuiltinSchemaCatalog = {
   readonly review: Schema<ReviewResult>;
   readonly summary: Schema<ReviewSummary>;
 };
+/** Tool definition available to Pi agents at runtime. */
 type AgentTool<Input = unknown, Output = unknown> = {
   readonly kind: "pipr.tool";
   readonly name: string;
@@ -150,14 +213,14 @@ type AgentTool<Input = unknown, Output = unknown> = {
   run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
   toModelOutput?(output: Output): PromptValue;
 };
-/** Returns whether a tool is one of pipr's built-in read-only tools. */
-function isBuiltinReadOnlyTool(tool: AgentTool): boolean;
+/** Context passed to an agent prompt function. */
 type AgentPromptContext = {
   runId: string;
   repository: RepositoryInfo;
   change: ChangeRequestInfo;
   platform: PlatformInfo;
 };
+/** Full definition for an agent pipr can run through Pi. */
 type AgentDefinition<Input, Output> = {
   name?: string;
   model?: ModelProfile;
@@ -172,45 +235,55 @@ type AgentDefinition<Input, Output> = {
   };
   timeout?: DurationInput;
 };
+/** Partial patch accepted by `agent.extend`. */
 type AgentExtension<Input, Output> = Partial<AgentDefinition<Input, Output>> & {
   instructions?: PromptSource;
 };
+/** Registered Pi agent with typed input and output. */
 type Agent<Input = unknown, Output = unknown> = {
   readonly kind: "pipr.agent";
   readonly name?: string;
   readonly definition: AgentDefinition<Input, Output>;
   extend(patch: AgentExtension<Input, Output>): Agent<Input, Output>;
 };
+/** Function run by a task entrypoint. */
 type TaskHandler<Input> = (context: TaskContext, input: Input) => void | Promise<void>;
+/** Check-run publication options for one task. */
 type TaskCheckOptions = false | {
   enabled?: boolean;
   name?: string;
   required?: boolean;
 };
+/** Definition used to register a task. */
 type TaskDefinition<Input> = {
   name: string;
   check?: TaskCheckOptions;
   run: TaskHandler<Input>;
 };
+/** Registered task that can be selected by change-request, command, or local entrypoints. */
 type Task<Input = void> = {
   readonly kind: "pipr.task";
   readonly name: string;
   readonly check?: TaskCheckOptions;
   readonly handler: TaskHandler<Input>;
 };
+/** Options shared by command registrations. */
 type CommandOptions<Input> = {
   permission?: RepositoryPermission;
   description?: string;
   parse?: (arguments_: Record<string, string>) => Input;
 };
+/** Definition used to register an `@pipr` command. */
 type CommandRegistrationOptions<Input> = CommandOptions<Input> & {
   pattern: string;
   task: Task<Input>;
 };
+/** Definition used to register a local task entrypoint. */
 type LocalRegistrationOptions<Input> = {
   name: string;
   task: Task<Input>;
 };
+/** Options for creating a reusable reviewer agent. */
 type ReviewerOptions = {
   name?: string;
   model: ModelProfile;
@@ -220,7 +293,9 @@ type ReviewerOptions = {
   tools?: readonly AgentTool[];
   timeout?: DurationInput;
 };
+/** Reviewer agent that emits pipr's core review result. */
 type Reviewer = Agent<DefaultReviewInput, ReviewResult>;
+/** Entrypoints created by `pipr.review`. */
 type ReviewEntrypoints = {
   changeRequest?: ChangeRequestAction[] | false;
   command?: string | false | {
@@ -241,15 +316,18 @@ type ReviewRecipeEntrypointOptions = {
   timeout?: DurationInput;
   paths?: PathFilter;
 };
+/** Options for `pipr.review`, pipr's default review recipe. */
 type ReviewRecipeOptions = (ReviewRecipeEntrypointOptions & {
   reviewer: Reviewer;
 }) | (ReviewRecipeEntrypointOptions & ReviewerOptions & {
   reviewer?: undefined;
 });
+/** Default input passed to a reviewer created by `pipr.review`. */
 type DefaultReviewInput = {
   manifest: DiffManifest;
   change: ChangeRequestInfo;
 };
+/** Context passed to a custom review comment renderer. */
 type ReviewCommentContext = {
   review: {
     id: string;
@@ -258,9 +336,11 @@ type ReviewCommentContext = {
   change: ChangeRequestContext;
   platform: PlatformInfo;
 };
+/** Plugin installer returned by `definePlugin`. */
 type PiprPlugin<Handle> = {
   setup(builder: PiprBuilder): Handle;
 };
+/** Definition for a custom tool registered by config or plugins. */
 type PluginToolDefinition<Input, Output> = {
   name: string;
   description: string;
@@ -270,35 +350,70 @@ type PluginToolDefinition<Input, Output> = {
   run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
   toModelOutput?(output: Output): PromptValue;
 };
+/** Runtime input passed to a tool implementation. */
 type ToolRunOptions<Input> = {
   input: Input;
   ctx: unknown;
   signal?: AbortSignal;
 };
+/** Definition used to register a task for pull request actions. */
 type ChangeRequestRegistrationOptions<Input> = {
   actions: ChangeRequestAction[];
   task: Task<Input>;
 };
+/** Zod-backed schema registration. */
 type SchemaDefinition<T> = {
   id: string;
   schema: ZodSchema<T>;
 };
+/** JSON Schema backed schema registration. */
 type JsonSchemaDefinition = {
   id: string;
   schema: JsonSchema;
 };
+/** Aggregate check-run options for a pipr run. */
 type AggregateCheckOptions = false | {
   enabled?: boolean;
   name?: string;
 };
+/** Check-run settings for a pipr config. */
 type ChecksOptions = {
   aggregate?: AggregateCheckOptions;
 };
+/** Actor policy for auto-resolving inline review threads from user replies. */
+type AutoResolveAllowedActors = "author-or-write" | "write" | "any";
+/** Options controlling auto-resolve behavior for user replies. */
+type AutoResolveUserRepliesOptions = {
+  enabled?: boolean;
+  respondWhenStillValid?: boolean;
+  allowedActors?: AutoResolveAllowedActors;
+};
+/** Options controlling automatic stale-finding resolution. */
+type AutoResolveOptions = false | {
+  enabled?: boolean;
+  model?: ModelProfile;
+  instructions?: string;
+  synchronize?: boolean;
+  userReplies?: boolean | AutoResolveUserRepliesOptions;
+};
+/** Review publication settings. */
+type PublicationOptions = {
+  maxInlineComments?: number;
+  autoResolve?: AutoResolveOptions;
+};
+/** Top-level pipr config settings. */
+type PiprConfigOptions = {
+  publication?: PublicationOptions;
+  checks?: ChecksOptions;
+  limits?: RuntimeLimits;
+};
+/** Handle for reporting task check status from inside a task. */
 type CheckHandle = {
   pass(summary?: string): void;
   fail(summary?: string): void;
   neutral(summary?: string): void;
 };
+/** Builder API available inside `definePipr`. */
 type PiprBuilder = {
   readonly tools: BuiltinToolCatalog;
   readonly schemas: BuiltinSchemaCatalog;
@@ -311,6 +426,7 @@ type PiprBuilder = {
   task<Input = void>(definition: TaskDefinition<Input>): Task<Input>;
   reviewer(options: ReviewerOptions): Reviewer;
   review(options: ReviewRecipeOptions): void;
+  config(options: PiprConfigOptions): void;
   command<Input = void>(options: CommandRegistrationOptions<Input>): void;
   local<Input = void>(options: LocalRegistrationOptions<Input>): void;
   checks(options: ChecksOptions): void;
@@ -323,37 +439,7 @@ type PiprBuilder = {
   section(title: string, value: PromptValue): PromptText;
   json(value: unknown, options?: JsonPromptOptions): PromptText;
 };
-type RuntimePlan = {
-  models: ModelProfile[];
-  agents: Agent[];
-  tasks: Task<unknown>[];
-  changeRequestTriggers: Array<{
-    actions: ChangeRequestAction[];
-    task: Task<unknown>;
-  }>;
-  commands: Array<{
-    pattern: string;
-    permission: RepositoryPermission;
-    description?: string;
-    parse?: (arguments_: Record<string, string>) => unknown;
-    task: Task<unknown>;
-  }>;
-  locals: Array<{
-    name: string;
-    task: Task<unknown>;
-  }>;
-  tools: AgentTool[];
-  publication: {
-    maxInlineComments?: number;
-  };
-  checks?: ChecksOptions;
-  limits?: RuntimeLimits;
-};
-type PiprConfigFactory = {
-  readonly kind: "pipr.config-factory";
-  readonly [configFactoryBrand]: true;
-  build(): RuntimePlan;
-};
+/** Repository metadata available to tasks and agents. */
 type RepositoryInfo = {
   root: string;
   owner?: string;
@@ -361,6 +447,7 @@ type RepositoryInfo = {
   defaultBranch?: string;
   remoteUrl?: string;
 };
+/** Pull request or change-request metadata available to tasks and agents. */
 type ChangeRequestInfo = {
   number?: number;
   title: string;
@@ -379,9 +466,11 @@ type ChangeRequestInfo = {
   };
   isFork?: boolean;
 };
+/** Code hosting platform metadata. */
 type PlatformInfo = {
   id: string;
 };
+/** Diff Manifest exposed to reviewers and tasks. */
 type DiffManifest = {
   baseSha: string;
   headSha: string;
@@ -398,12 +487,14 @@ type DiffManifest = {
     preview?: string;
   }>;
 };
+/** Options for projecting a Diff Manifest for task or prompt use. */
 type DiffManifestOptions = {
   compressed?: boolean;
   includePreviews?: boolean;
   maxPreviewLines?: number;
   paths?: PathFilter;
 };
+/** Size limits for Diff Manifest prompt and runtime-tool payloads. */
 type DiffManifestLimits = {
   fullMaxBytes?: number;
   fullMaxEstimatedTokens?: number;
@@ -411,10 +502,12 @@ type DiffManifestLimits = {
   condensedMaxEstimatedTokens?: number;
   toolResponseMaxBytes?: number;
 };
+/** Runtime limits for a pipr config. */
 type RuntimeLimits = {
   timeoutSeconds?: number;
   diffManifest?: DiffManifestLimits;
 };
+/** Change-request context available inside tasks. */
 type ChangeRequestContext = ChangeRequestInfo & {
   diffManifest(options?: DiffManifestOptions): Promise<DiffManifest>;
   changedFiles(): Promise<Array<{
@@ -424,6 +517,7 @@ type ChangeRequestContext = ChangeRequestInfo & {
   }>>;
   currentHeadSha(): Promise<string>;
 };
+/** Runner for invoking Pi agents from tasks. */
 type PiRunner = {
   run<Input, Output>(agent: Agent<Input, Output>, input: Input, options?: {
     model?: ModelProfile;
@@ -433,12 +527,14 @@ type PiRunner = {
     paths?: PathFilter;
   }): Promise<Output>;
 };
+/** Command context available inside command-triggered tasks. */
 type CommandContext = {
   readonly name: string;
   readonly line: string;
   readonly arguments: Record<string, string>;
   reply(markdown: Markdown): Promise<void>;
 };
+/** Context object passed to task handlers. */
 type TaskContext = {
   readonly run: {
     id: string;
@@ -459,36 +555,15 @@ type TaskContext = {
     error(message: string): void;
   };
 };
-/** Defines a synchronous pipr configuration factory. */
-function definePipr(configure: (pipr: PiprBuilder) => void): PiprConfigFactory;
-/** Checks that an unknown value is a pipr configuration factory. */
-function isPiprConfigFactory(value: unknown): value is PiprConfigFactory;
-/** Builds a runtime plan from a pipr configuration factory. */
-function buildPiprPlan(factory: PiprConfigFactory): RuntimePlan;
-/** Defines a typed pipr plugin installer. */
-function definePlugin<Handle>(setup: (builder: PiprBuilder) => Handle): PiprPlugin<Handle>;
-/** Defines a typed schema from a Zod schema. */
-function schema<T>(definition: SchemaDefinition<T>): Schema<T>;
-/** Defines a typed schema from JSON Schema. The generic type is caller supplied. */
-function jsonSchema<T>(definition: JsonSchemaDefinition): Schema<T>;
-const schemas: BuiltinSchemaCatalog;
-function md(strings: TemplateStringsArray, ...values: unknown[]): Markdown;
-/** Parses model output for pipr's main pull request review schema. */
-function parseReviewResult(value: unknown): ReviewResult;
-/** Parses a review summary value. */
-function parseReviewSummary(value: unknown): ReviewSummary;
-/** Parses one inline review finding. */
-function parseReviewFinding(value: unknown): ReviewFinding;
-/** Returns a small valid example for the main pull request review schema. */
-function reviewSchemaExample(): ReviewResult;
-/** Renders a prompt source/value into plain text for Pi prompts. */
-function renderPromptValue(value: PromptValue): string;
 //#endregion
-export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, AggregateCheckOptions, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, ChangeRequestRegistrationOptions, CheckHandle, ChecksOptions, CommandContext, CommandOptions, CommandRegistrationOptions, CommentValue, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonSchemaDefinition, JsonValue, LocalRegistrationOptions, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigFactory, PiprPlugin, PlatformInfo, PluginToolDefinition, PriorInlineFinding, PriorReview, PromptSource, PromptText, PromptValue, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, ReviewFinding, ReviewRecipeOptions, ReviewResult, ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, RuntimePlan, Schema, SchemaDefinition, SchemaParseResult, SecretOptions, SecretRef, Task, TaskCheckOptions, TaskContext, TaskDefinition, TaskHandler, ToolRunOptions, ZodSchema, buildPiprPlan, definePipr, definePlugin, isBuiltinReadOnlyTool, isPiprConfigFactory, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, renderPromptValue, reviewOutputSchemaId, reviewSchemaExample, schema, schemas, z };
+
+
+
+export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, AggregateCheckOptions, AutoResolveAllowedActors, AutoResolveOptions, AutoResolveUserRepliesOptions, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, ChangeRequestRegistrationOptions, CheckHandle, ChecksOptions, CommandContext, CommandOptions, CommandRegistrationOptions, CommentValue, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonSchemaDefinition, JsonValue, LocalRegistrationOptions, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigOptions, PiprPlugin, PlatformInfo, PluginToolDefinition, PriorInlineFinding, PriorReview, PromptSource, PromptText, PromptValue, PublicationOptions, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, type ReviewFinding, ReviewRecipeOptions, type ReviewResult, type ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, Schema, SchemaDefinition, SchemaParseResult, SecretOptions, SecretRef, Task, TaskCheckOptions, TaskContext, TaskDefinition, TaskHandler, ToolRunOptions, ZodSchema, definePipr, definePlugin, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewFindingSchema, reviewResultSchema, reviewSchemaExample, reviewSummarySchema, schema, schemas, z };
 }
 declare module "@pipr/sdk/review" {
-export { type AgentPromptContext, type ChangeRequestAction, type CommentValue, type DefaultReviewInput, type Markdown, type PathFilter, type PriorInlineFinding, type PriorReview, type ReviewCommentContext, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, md, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewSchemaExample, schemas } from "@pipr/sdk";
+export { type AgentPromptContext, type ChangeRequestAction, type CommentValue, type DefaultReviewInput, type Markdown, type PathFilter, type PriorInlineFinding, type PriorReview, type ReviewCommentContext, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewFindingSchema, reviewResultSchema, reviewSchemaExample, reviewSummarySchema } from "@pipr/sdk";
 }
 declare module "@pipr/sdk/tools" {
-export { type AgentTool, type BuiltinSchemaCatalog, type BuiltinToolCatalog, type JsonObject, type JsonValue, type PluginToolDefinition, type PromptSource, type PromptText, type PromptValue, type Schema, type SchemaParseResult, type ToolRunOptions, isBuiltinReadOnlyTool, renderPromptValue, schemas } from "@pipr/sdk";
+export type { AgentTool, BuiltinSchemaCatalog, BuiltinToolCatalog, JsonObject, JsonValue, PluginToolDefinition, PromptSource, PromptText, PromptValue, Schema, SchemaParseResult, ToolRunOptions } from "@pipr/sdk";
 }

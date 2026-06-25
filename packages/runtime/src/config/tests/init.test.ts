@@ -24,6 +24,9 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).toContain('declare module "@pipr/sdk"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/review"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/tools"');
+    expect(sdkTypes).toContain("reviewResultSchema");
+    expect(sdkTypes).toContain("reviewFindingSchema");
+    expect(sdkTypes).toContain("reviewSummarySchema");
     expect(sdkTypes).toContain("readonly id: string;");
     expect(sdkTypes).toContain("readonly apiKey?: SecretRef;");
     expect(sdkTypes).toContain("readonly options?: Record<string, unknown>;");

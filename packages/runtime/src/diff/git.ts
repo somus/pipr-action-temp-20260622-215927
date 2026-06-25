@@ -6,20 +6,9 @@ export function runGit(args: string[], cwd: string, maxBuffer?: number): string 
     stderr: "pipe",
     stdout: "pipe",
   });
-  const failure = gitFailure(result);
-  if (failure) {
+  if (result.exitCode !== 0) {
+    const failure = result.stderr?.toString().trim() || "unknown error";
     throw new Error(`git ${args.join(" ")} failed: ${failure}`);
   }
   return result.stdout.toString();
-}
-
-function gitFailure(result: ReturnType<typeof Bun.spawnSync>): string | undefined {
-  if (result.exitCode !== 0) {
-    return stderrText(result).trim() || "unknown error";
-  }
-  return undefined;
-}
-
-function stderrText(result: ReturnType<typeof Bun.spawnSync>): string {
-  return result.stderr?.toString() ?? "";
 }

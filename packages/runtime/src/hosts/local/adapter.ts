@@ -1,7 +1,5 @@
-import type { PublicationResult } from "../../review/publication-result.js";
 import type { ChangeRequestEventContext } from "../../types.js";
 import { parseChangeRequestEventContext } from "../../types.js";
-import type { CodeHostAdapter } from "../types.js";
 
 export function createLocalChangeRequestEvent(options: {
   rootDir: string;
@@ -22,29 +20,4 @@ export function createLocalChangeRequestEvent(options: {
     },
     workspace: options.rootDir,
   });
-}
-
-export function createLocalHostAdapter(): CodeHostAdapter {
-  return {
-    id: "local",
-    async parseEvent() {
-      throw new Error("Local host adapter does not parse external events");
-    },
-    async loadChangeRequest() {
-      throw new Error("Local host adapter does not load external change requests");
-    },
-    async resolveCommandComment() {
-      throw new Error("Local host adapter does not resolve command comments");
-    },
-    async getRepositoryPermission() {
-      return "admin";
-    },
-    ensureHeadCheckout() {},
-    async publish(): Promise<PublicationResult> {
-      throw new Error("Local host adapter does not publish review comments");
-    },
-    mapInlineLocation(item) {
-      return item.range;
-    },
-  };
 }

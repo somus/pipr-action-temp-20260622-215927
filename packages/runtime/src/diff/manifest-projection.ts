@@ -1,9 +1,12 @@
+import type { DiffManifestOptions } from "@pipr/sdk";
 import type {
   DiffManifest,
   DiffManifestFile,
   DiffManifestLimitsConfig,
   DiffManifestPromptMetrics,
 } from "../types.js";
+import { parseDiffManifest } from "../types.js";
+import { filterDiffManifestByPaths } from "./path-filter.js";
 
 export type DiffManifestPromptMode = "full" | "condensed";
 
@@ -32,6 +35,33 @@ const defaultDiffManifestPromptLimits: DiffManifestPromptLimits = {
   condensedMaxEstimatedTokens: 64_000,
   toolResponseMaxBytes: 64 * 1024,
 };
+
+export function projectDiffManifest(
+  manifest: DiffManifest,
+  options: DiffManifestOptions | undefined,
+): DiffManifest {
+  if (!manifestOptionsHaveEffect(options)) {
+    return manifest;
+  }
+  const manifestOptions = options ?? {};
+  const scopedManifest = filterDiffManifestByPaths(manifest, manifestOptions.paths);
+  return parseDiffManifest({
+    ...scopedManifest,
+    files: scopedManifest.files.map((file) => ({
+      ...withoutCompressedFileFields(file, manifestOptions.compressed === true),
+      commentableRanges: file.commentableRanges.map((range) => ({
+        ...rangeFieldsForOptions(range, manifestOptions),
+        ...(manifestOptions.includePreviews === false
+          ? {}
+          : { preview: truncatePreview(range.preview, manifestOptions.maxPreviewLines) }),
+      })),
+    })),
+  });
+}
+
+export function cloneDiffManifest(manifest: DiffManifest): DiffManifest {
+  return parseDiffManifest(structuredClone(manifest));
+}
 
 export function prepareDiffManifestPrompt(
   manifest: DiffManifest,
@@ -63,15 +93,6 @@ export function prepareDiffManifestPrompt(
   };
 }
 
-function resolveDiffManifestPromptLimits(
-  config: DiffManifestLimitsConfig | undefined,
-): DiffManifestPromptLimits {
-  return {
-    ...defaultDiffManifestPromptLimits,
-    ...Object.fromEntries(Object.entries(config ?? {}).filter((entry) => entry[1] !== undefined)),
-  };
-}
-
 export function condenseDiffManifest(manifest: DiffManifest): DiffManifest {
   return {
     baseSha: manifest.baseSha,
@@ -88,6 +109,68 @@ export function measureDiffManifestPrompt(manifest: DiffManifest): DiffManifestP
     bytes,
     estimatedTokens: Math.ceil(bytes / 4),
   };
+}
+
+function resolveDiffManifestPromptLimits(
+  config: DiffManifestLimitsConfig | undefined,
+): DiffManifestPromptLimits {
+  return {
+    ...defaultDiffManifestPromptLimits,
+    ...Object.fromEntries(Object.entries(config ?? {}).filter((entry) => entry[1] !== undefined)),
+  };
+}
+
+function manifestOptionsHaveEffect(options: DiffManifestOptions | undefined): boolean {
+  return Boolean(
+    options?.compressed ||
+      options?.includePreviews === false ||
+      options?.maxPreviewLines !== undefined ||
+      options?.paths,
+  );
+}
+
+function withoutCompressedFileFields(
+  file: DiffManifest["files"][number],
+  compressed: boolean,
+): DiffManifest["files"][number] {
+  if (!compressed) {
+    return file;
+  }
+  const { signals: _signals, changedSymbols: _changedSymbols, ...rest } = file;
+  return rest;
+}
+
+function withoutCompressedRangeFields(
+  range: DiffManifest["files"][number]["commentableRanges"][number],
+  compressed: boolean,
+) {
+  if (!compressed) {
+    return range;
+  }
+  const { summary: _summary, ...rest } = range;
+  return rest;
+}
+
+function rangeFieldsForOptions(
+  range: DiffManifest["files"][number]["commentableRanges"][number],
+  options: DiffManifestOptions,
+): DiffManifest["files"][number]["commentableRanges"][number] {
+  const fields = withoutCompressedRangeFields(range, options.compressed === true);
+  if (options.includePreviews === false) {
+    const { preview: _preview, ...rest } = fields;
+    return rest;
+  }
+  return fields;
+}
+
+function truncatePreview(
+  preview: string | undefined,
+  maxLines: number | undefined,
+): string | undefined {
+  if (preview === undefined || maxLines === undefined) {
+    return preview;
+  }
+  return preview.split("\n").slice(0, maxLines).join("\n");
 }
 
 function condenseDiffManifestFile(file: DiffManifestFile): DiffManifestFile {

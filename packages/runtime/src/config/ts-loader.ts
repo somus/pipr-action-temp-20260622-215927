@@ -1,8 +1,9 @@
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { buildPiprPlan, isPiprConfigFactory, type RuntimePlan } from "@pipr/sdk";
+import type { RuntimePlan } from "@pipr/sdk/internal";
+import { buildPiprPlan, isPiprConfigFactory } from "@pipr/sdk/internal";
 import { resolveContainedConfigDir } from "./paths.js";
 import { embeddedSdkAssets } from "./sdk-assets.js";
 
@@ -190,10 +191,5 @@ function isIgnoredConfigCopyPath(source: string, configDir: string): boolean {
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+  return await Bun.file(filePath).exists();
 }

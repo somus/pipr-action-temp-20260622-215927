@@ -122,7 +122,10 @@ export function boundedLineSlice(
   window: LineWindow,
   maxBytes: number,
 ): LineSliceResult {
-  const lines = splitLinesWithEndings(content);
+  const lines = content.match(/[^\n]*(?:\n|$)/g) ?? [];
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
   const slice = lines.slice(window.startLine - 1, window.endLine).join("");
   const buffer = Buffer.from(slice, "utf8");
   return {
@@ -221,14 +224,6 @@ function filterManifestFileRanges(
     ...file,
     commentableRanges: file.commentableRanges.filter((range) => range.id === rangeId),
   };
-}
-
-function splitLinesWithEndings(content: string): string[] {
-  const lines = content.match(/[^\n]*(?:\n|$)/g) ?? [];
-  if (lines.at(-1) === "") {
-    lines.pop();
-  }
-  return lines;
 }
 
 function lineWindowForRange(

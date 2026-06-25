@@ -25,15 +25,22 @@ function declarationModuleBlock(module: SdkDeclarationModule): string {
 function declarationSource(module: SdkDeclarationModule): string {
   const source = module.source
     .replace(/^declare /gm, "")
-    .replace(/^import \{ z \} from "zod";$/gm, zodShimDeclaration())
+    .replace(/^import \{ (?:z|z, z as z\$1|z as z\$1) \} from "zod";$/gm, zodShimDeclaration())
+    .replaceAll("z$1.", "z.")
     .replaceAll("z.ZodType", "ZodType")
     .replaceAll('from "./index.js"', 'from "@pipr/sdk"')
     .replaceAll('from "./index.mjs"', 'from "@pipr/sdk"')
+    .replace(/from "\.\/index-[^"]+\.mjs"/g, 'from "@pipr/sdk"')
     .replace(/^import .* from "@pipr\/sdk";$/gm, "")
     .replace(/^\/\/# sourceMappingURL=.*$/gm, "");
   return module.moduleName === "@pipr/sdk"
     ? source
-    : source.replace(/^export \{(?<exports>.*)\};$/gm, 'export {$<exports>} from "@pipr/sdk";');
+    : source
+        .replace(
+          /^export type \{(?<exports>.*)\};$/gm,
+          'export type {$<exports>} from "@pipr/sdk";',
+        )
+        .replace(/^export \{(?<exports>.*)\};$/gm, 'export {$<exports>} from "@pipr/sdk";');
 }
 
 function zodShimDeclaration(): string {

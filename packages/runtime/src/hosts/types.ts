@@ -1,4 +1,4 @@
-import type { InlinePublicationItem, PublicationPlan, ThreadAction } from "../review/comment.js";
+import type { PublicationPlan, ThreadAction } from "../review/comment.js";
 import type { PriorReviewState } from "../review/prior-state.js";
 import type { PublicationResult } from "../review/publication-result.js";
 import type {
@@ -77,8 +77,7 @@ export type CodeHostCheckRun = {
   name: string;
 };
 
-export type CodeHostAdapter = {
-  id: string;
+export type CodeHostEvents = {
   parseEvent(options: HostEventParseOptions): Promise<ChangeRequestEventContext>;
   loadChangeRequest(ref: {
     repository: RepositoryRef;
@@ -90,11 +89,21 @@ export type CodeHostAdapter = {
   }): Promise<LoadedChangeRequest>;
   resolveCommandComment(options: HostEventParseOptions): Promise<CommandCommentEvent>;
   resolveReviewCommentReply?(options: HostEventParseOptions): Promise<ReviewCommentReplyEvent>;
+};
+
+export type CodeHostPermissions = {
   getRepositoryPermission(options: {
     repository: RepositoryRef;
     actor: string;
   }): Promise<RepositoryPermission>;
+};
+
+export type CodeHostWorkspace = {
   ensureHeadCheckout(options: { rootDir: string; change: ChangeRequestEventContext }): void;
+  ensureWorkspaceSafeDirectory?(options: { rootDir: string; env?: NodeJS.ProcessEnv }): void;
+};
+
+export type CodeHostPublication = {
   publish(options: {
     plan: PublicationPlan;
     change: ChangeRequestEventContext;
@@ -110,6 +119,9 @@ export type CodeHostAdapter = {
     actions: ThreadAction[];
     reviewedHeadSha: string;
   }): Promise<{ errors: string[] }>;
+};
+
+export type CodeHostComments = {
   loadPriorReviewState?(options: {
     change: ChangeRequestEventContext;
   }): Promise<PriorReviewState | undefined>;
@@ -119,6 +131,9 @@ export type CodeHostAdapter = {
   loadInlineThreadContexts?(options: {
     change: ChangeRequestEventContext;
   }): Promise<InlineThreadContext[]>;
+};
+
+export type CodeHostChecks = {
   createCheckRun?(options: {
     change: ChangeRequestEventContext;
     name: string;
@@ -130,6 +145,14 @@ export type CodeHostAdapter = {
     conclusion: CodeHostCheckConclusion;
     summary?: string;
   }): Promise<void>;
-  mapInlineLocation(item: InlinePublicationItem, change: ChangeRequestEventContext): unknown;
-  ensureWorkspaceSafeDirectory?(options: { rootDir: string; env?: NodeJS.ProcessEnv }): void;
+};
+
+export type CodeHostAdapter = {
+  id: string;
+  events: CodeHostEvents;
+  workspace: CodeHostWorkspace;
+  permissions: CodeHostPermissions;
+  publication?: CodeHostPublication;
+  comments?: CodeHostComments;
+  checks?: CodeHostChecks;
 };

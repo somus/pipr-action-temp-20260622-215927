@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { ModelProfile, PiprBuilder, Reviewer } from "../index.js";
+import { definePipr, definePlugin, jsonSchema, schema, schemas, z } from "../index.js";
+import { buildPiprPlan } from "../internal.js";
 import {
-  buildPiprPlan,
-  definePipr,
-  definePlugin,
-  jsonSchema,
-  schema,
-  schemas,
-  z,
-} from "../index.js";
+  parseReviewFinding,
+  parseReviewResult,
+  reviewFindingSchema,
+  reviewResultSchema,
+  reviewSummarySchema,
+} from "../review.js";
 
 describe("definePipr", () => {
   it("registers models, agents, tasks, events, commands, locals, and tools", () => {
@@ -123,39 +123,39 @@ describe("definePipr", () => {
     ).toThrow(error);
   });
 
-  it("rejects old positional builder calls at runtime", () => {
+  it("rejects removed positional builder calls at runtime", () => {
     const factory = definePipr((pipr) => {
       expect(() =>
-        // @ts-expect-error positional secret API was removed.
+        // @ts-expect-error positional secret API is not supported.
         pipr.secret("DEEPSEEK_API_KEY"),
       ).toThrow("pipr.secret requires { name }");
       expect(() =>
-        // @ts-expect-error positional model API was removed.
+        // @ts-expect-error positional model API is not supported.
         pipr.model("deepseek/deepseek-v4-pro", {}),
       ).toThrow("pipr.model requires { provider, model }");
       expect(() =>
-        // @ts-expect-error positional task API was removed.
+        // @ts-expect-error positional task API is not supported.
         pipr.task("review", () => {}),
       ).toThrow("pipr.task requires { name, run }");
       const task = pipr.task({ name: "review", run() {} });
       expect(() =>
-        // @ts-expect-error positional event API was removed.
+        // @ts-expect-error positional event API is not supported.
         pipr.on.changeRequest(["opened"], task),
       ).toThrow("pipr.on.changeRequest requires { actions, task }");
       expect(() =>
-        // @ts-expect-error positional command API was removed.
+        // @ts-expect-error positional command API is not supported.
         pipr.command("@pipr review", {}, task),
       ).toThrow("pipr.command requires { pattern, task }");
       expect(() =>
-        // @ts-expect-error positional local API was removed.
+        // @ts-expect-error positional local API is not supported.
         pipr.local("review", task),
       ).toThrow("pipr.local requires { name, task }");
       expect(() =>
-        // @ts-expect-error positional schema API was removed.
+        // @ts-expect-error positional schema API is not supported.
         pipr.schema("custom/output", z.string()),
       ).toThrow("pipr.schema requires { id, schema }");
       expect(() =>
-        // @ts-expect-error positional JSON schema API was removed.
+        // @ts-expect-error positional JSON schema API is not supported.
         pipr.jsonSchema("custom/output", true),
       ).toThrow("pipr.jsonSchema requires { id, schema }");
     });
@@ -723,6 +723,31 @@ describe("definePipr", () => {
       "deepseek-default",
       "deepseek-thinking",
     ]);
+  });
+});
+
+describe("review schema exports", () => {
+  it("parse valid and invalid review contracts", () => {
+    const summary = { body: "Looks good." };
+    const finding = {
+      body: "Issue.",
+      path: "src/example.ts",
+      rangeId: "rng_1",
+      side: "RIGHT",
+      startLine: 1,
+      endLine: 1,
+    };
+    const result = { summary, inlineFindings: [finding] };
+
+    expect(reviewSummarySchema.parse(summary)).toEqual(summary);
+    expect(parseReviewFinding(finding)).toEqual(finding);
+    expect(parseReviewResult(result)).toEqual(result);
+    expect(reviewFindingSchema.safeParse({ ...finding, startLine: 0 }).success).toBe(false);
+    expect(
+      reviewResultSchema.safeParse({ summary, inlineFindings: [{ ...finding, side: "BOTH" }] })
+        .success,
+    ).toBe(false);
+    expect(reviewSummarySchema.safeParse({ body: "" }).success).toBe(false);
   });
 });
 

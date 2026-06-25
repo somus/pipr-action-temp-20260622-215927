@@ -1,4 +1,4 @@
-import { compact, uniq } from "lodash-es";
+import path from "node:path";
 import picomatch from "picomatch";
 import type { DiffManifest, DiffManifestFile, PathFilter } from "../types.js";
 
@@ -47,12 +47,26 @@ export function diffFileMatchesPathFilter(
   if (!filter) {
     return true;
   }
-  const paths = candidatePaths(file).map(normalizePath);
+  const paths = [
+    ...new Set([file.path, file.previousPath].filter((item) => item !== undefined)),
+  ].map((item) => item.replaceAll("\\", "/").replace(/^\.\/+/, ""));
   const compiled = readCompiledFilter(filter);
   const include = compiled.include;
   const exclude = compiled.exclude;
-  const included = include ? paths.some((filePath) => matchesAnyPattern(filePath, include)) : true;
-  const excluded = exclude ? paths.some((filePath) => matchesAnyPattern(filePath, exclude)) : false;
+  const included = include
+    ? paths.some((filePath) =>
+        include.some((pattern) =>
+          pattern.matches(pattern.matchBasename ? path.posix.basename(filePath) : filePath),
+        ),
+      )
+    : true;
+  const excluded = exclude
+    ? paths.some((filePath) =>
+        exclude.some((pattern) =>
+          pattern.matches(pattern.matchBasename ? path.posix.basename(filePath) : filePath),
+        ),
+      )
+    : false;
   return included && !excluded;
 }
 
@@ -60,21 +74,25 @@ export function pathMatchesFilter(filePath: string, filter: PathFilter | undefin
   if (!filter) {
     return true;
   }
-  const normalizedPath = normalizePath(filePath);
+  const normalizedPath = filePath.replaceAll("\\", "/").replace(/^\.\/+/, "");
   const compiled = readCompiledFilter(filter);
-  const included = compiled.include ? matchesAnyPattern(normalizedPath, compiled.include) : true;
+  const included = compiled.include
+    ? compiled.include.some((pattern) =>
+        pattern.matches(
+          pattern.matchBasename ? path.posix.basename(normalizedPath) : normalizedPath,
+        ),
+      )
+    : true;
   if (!included) {
     return false;
   }
-  return compiled.exclude ? !matchesAnyPattern(normalizedPath, compiled.exclude) : true;
-}
-
-function candidatePaths(file: Pick<DiffManifestFile, "path" | "previousPath">): string[] {
-  return uniq(compact([file.path, file.previousPath]));
-}
-
-function normalizePath(filePath: string): string {
-  return filePath.replaceAll("\\", "/").replace(/^\.\/+/, "");
+  return compiled.exclude
+    ? !compiled.exclude.some((pattern) =>
+        pattern.matches(
+          pattern.matchBasename ? path.posix.basename(normalizedPath) : normalizedPath,
+        ),
+      )
+    : true;
 }
 
 function readCompiledFilter(filter: PathFilter): CompiledFilter {
@@ -95,14 +113,4 @@ function compilePattern(pattern: string): CompiledPattern {
     matches: picomatch(pattern, matcherOptions),
     matchBasename: !pattern.includes("/"),
   };
-}
-
-function matchesAnyPattern(filePath: string, patterns: CompiledPattern[]): boolean {
-  return patterns.some((pattern) =>
-    pattern.matches(pattern.matchBasename ? basename(filePath) : filePath),
-  );
-}
-
-function basename(filePath: string): string {
-  return filePath.split("/").at(-1) ?? filePath;
 }

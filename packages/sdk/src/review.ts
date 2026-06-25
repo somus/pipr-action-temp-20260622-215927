@@ -17,10 +17,11 @@ export type {
   ReviewSummary,
 } from "./index.js";
 export {
-  md,
   parseReviewFinding,
   parseReviewResult,
   parseReviewSummary,
+  reviewFindingSchema,
+  reviewResultSchema,
   reviewSchemaExample,
-  schemas,
+  reviewSummarySchema,
 } from "./index.js";

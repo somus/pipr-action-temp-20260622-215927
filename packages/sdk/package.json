@@ -34,10 +34,14 @@
     "./tools": {
       "types": "./dist/tools.d.mts",
       "default": "./dist/tools.mjs"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.mts",
+      "default": "./dist/internal.mjs"
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/review.ts src/tools.ts --dts --format esm --out-dir dist",
+    "build": "tsdown src/index.ts src/review.ts src/tools.ts src/internal.ts --dts --format esm --out-dir dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "biome check src",

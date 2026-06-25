@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { chmod, cp, lstat, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { compact } from "lodash-es";
+import { compact, isPlainObject } from "lodash-es";
 import type { DiffManifest, ProviderConfig } from "../types.js";
 import type { PiReadOnlyToolName } from "./contract.js";
 import {
@@ -258,8 +258,23 @@ async function chmodRecursive(target: string, mode: number): Promise<void> {
 }
 
 function extractAssistantTextFromJsonEvents(stdout: string): string | undefined {
-  const events = parseJsonEventLines(stdout);
-  if (!events) {
+  const events: Record<string, unknown>[] = [];
+  for (const line of stdout
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)) {
+    try {
+      const value = JSON.parse(line) as unknown;
+      if (!isPlainObject(value)) {
+        return undefined;
+      }
+      events.push(value as Record<string, unknown>);
+    } catch {
+      return undefined;
+    }
+  }
+  const hasTypedEvent = events.some((event) => typeof event.type === "string");
+  if (!hasTypedEvent) {
     return undefined;
   }
   let text: string | undefined;
@@ -267,34 +282,6 @@ function extractAssistantTextFromJsonEvents(stdout: string): string | undefined 
     text = assistantTextFromEvent(event) ?? text;
   }
   return text;
-}
-
-function parseJsonEventLines(stdout: string): Record<string, unknown>[] | undefined {
-  const events: Record<string, unknown>[] = [];
-  for (const line of eventLines(stdout)) {
-    const event = parseJsonRecord(line);
-    if (!event) {
-      return undefined;
-    }
-    events.push(event);
-  }
-  return events.some((event) => typeof event.type === "string") ? events : undefined;
-}
-
-function eventLines(stdout: string): string[] {
-  return stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function parseJsonRecord(line: string): Record<string, unknown> | undefined {
-  try {
-    const value = JSON.parse(line) as unknown;
-    return isRecord(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function assistantTextFromEvent(event: Record<string, unknown>): string | undefined {
@@ -318,10 +305,14 @@ function lastAssistantMessageText(messages: unknown): string | undefined {
 }
 
 function assistantMessageText(message: unknown): string | undefined {
-  if (!isRecord(message) || message.role !== "assistant") {
+  if (!isPlainObject(message)) {
     return undefined;
   }
-  return textContent(message.content);
+  const record = message as Record<string, unknown>;
+  if (record.role !== "assistant") {
+    return undefined;
+  }
+  return textContent(record.content);
 }
 
 function textContent(content: unknown): string {
@@ -332,14 +323,14 @@ function textContent(content: unknown): string {
     return "";
   }
   return content
-    .map((block) =>
-      isRecord(block) && block.type === "text" && typeof block.text === "string" ? block.text : "",
-    )
+    .map((block) => {
+      if (!isPlainObject(block)) {
+        return "";
+      }
+      const record = block as Record<string, unknown>;
+      return record.type === "text" && typeof record.text === "string" ? record.text : "";
+    })
     .join("");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function runProcess(
