@@ -1,0 +1,106 @@
+packages/runtime/src/index.ts
+  s_1e72251497eac4::t_f9014693ebcb18 26-29
+  s_1e72251497eac4::t_fcac9b30eb2c9e 23-24
+docs/configuration.md
+  s_1e72251497eac4::t_ea8cf19343cf5e 6
+packages/runtime/src/config/recipes/dependency-risk.ts
+  s_1e72251497eac4::t_087f45c850c817 1-86
+packages/runtime/src/config/sdk-declaration.ts
+  s_1e72251497eac4::t_c9b5abfb288caa 1-2,8-25
+packages/sdk/src/builder.ts
+  s_1e72251497eac4::t_68c0c61ddff6d2 23
+packages/runtime/src/config/recipes/pr-briefing.ts
+  s_1e72251497eac4::t_38984c66a89495 1-48
+docs/recipes.md
+  s_1e72251497eac4::t_b5b9e9fea1b9ad 1-80,82-93
+  s_1e72251497eac4::t_fd50cf21f0064f 81
+packages/runtime/src/action/types.ts
+  s_1e72251497eac4::t_e84e7aee9f9f1f 20
+docs/index.md
+  s_1e72251497eac4::t_9a7c60127da9fd 25-26,90
+docs/sdk-reference.md
+  s_1e72251497eac4::t_6a28e770e74532 481,495-499,501-505,508,516-517,519-525,527-552
+  s_1e72251497eac4::t_72592f23cc082e 151-204,471,474-480,482-486,491-494,500,506-507,509,515,518,526
+packages/runtime/src/review/tests/task-runtime.test.ts
+  s_1e72251497eac4::t_a9b97a91d59e20 253-255,269-271
+  s_1e72251497eac4::t_8b382a8bc6b9e9 1494-1500
+packages/runtime/src/config/recipes.ts
+  s_1e72251497eac4::t_0b419b944bbb2b 35-49
+  s_1e72251497eac4::t_7c22e3be52e39c 1-15,33-34
+  s_1e72251497eac4::t_15f617343f4e77 16-32,50-69
+packages/cli/src/tests/main.test.ts
+  s_1e72251497eac4::t_6a54229b05b718 28,31,119-140,146-150,160-163
+packages/runtime/src/config/recipes/bug-hunter.ts
+  s_1e72251497eac4::t_c7f282207d3527 1-59
+packages/cli/src/main.ts
+  s_1e72251497eac4::t_1bf91b2dae5475 15,26,262
+  s_1e72251497eac4::t_51a19266f92e7e 55
+packages/runtime/src/config/recipes/plugin-tool-review.ts
+  s_1e72251497eac4::t_38984c66a89495 1-45,47-64,67,70,73,102-103,108-110
+  s_1e72251497eac4::t_4a04fc95e97f6f 65-66,68-69,71-72,74-101,104-107
+  s_1e72251497eac4::t_8a1c59e5580026 46
+packages/runtime/src/config/recipes/quality-gate.ts
+  s_1e72251497eac4::t_0c9b4ecd0a3533 1-60
+packages/runtime/src/action/commands.ts
+  s_1e72251497eac4::t_9f9c5459782392 77
+  s_1e72251497eac4::t_3dda9bb277e60a 570
+  s_1e72251497eac4::t_38272539941c46 254-270
+  s_1e72251497eac4::t_eedb2d1e182dca 211
+  s_1e72251497eac4::t_3f896da59cf83f 413
+packages/runtime/src/config/recipes/multi-agent-review.ts
+  s_1e72251497eac4::t_087f45c850c817 1-105
+packages/runtime/src/config/recipes/default-review.ts
+  s_1e72251497eac4::t_c7f282207d3527 1-31
+packages/runtime/src/config/recipes/pr-hygiene.ts
+  s_1e72251497eac4::t_0c9b4ecd0a3533 1-54
+packages/runtime/src/config/init.ts
+  s_1e72251497eac4::t_9fd87fe296ca65 8-12,246
+  s_1e72251497eac4::t_41ae692d3997ac 6,19,92,125,128-131
+packages/cli/src/release/sdk-declaration.ts
+  s_1e72251497eac4::t_f488c66441989b 2-6,24
+packages/runtime/src/config/recipes/ci-triage-command.ts
+  s_1e72251497eac4::t_087f45c850c817 1-56
+packages/runtime/src/review/agent/review-run.ts
+  s_1e72251497eac4::t_0da195d41d0785 295-297
+  s_1e72251497eac4::t_afeffbbe6f6954 269-271,282-294,298-325
+packages/runtime/src/shared/tests/logging.test.ts
+  s_1e72251497eac4::t_8d2cd9b5ad3d85 2-3,7,9,21-25,38,40-43
+packages/runtime/src/config/tests/init.test.ts
+  s_1e72251497eac4::t_31e23c4baca993 6-7,88-93,95-137,139-147,266-272
+  s_1e72251497eac4::t_7937ac40ff008e 138
+  s_1e72251497eac4::t_91d3071bb61aa2 76,94,313-322
+packages/runtime/src/action/tests/commands.test.ts
+  s_1e72251497eac4::t_5444713045dd72 615,646
+  s_1e72251497eac4::t_796e4360f1e433 16
+  s_1e72251497eac4::t_edb71f66778d8c 894-904
+packages/runtime/src/config/recipes/security-sast.ts
+  s_1e72251497eac4::t_c7f282207d3527 1-114
+packages/runtime/src/config/recipes/diff-diagnostics.ts
+  s_1e72251497eac4::t_0c9b4ecd0a3533 1-74
+packages/runtime/src/config/recipes/interactive-ask.ts
+  s_1e72251497eac4::t_38984c66a89495 1-55
+packages/runtime/src/tests/helpers/action-log-sink.ts
+  s_1e72251497eac4::t_9accc4250819cb 1-41
+docs/quickstart.md
+  s_1e72251497eac4::t_259a1d27109294 38-41
+packages/runtime/src/config/recipes/changelog-draft.ts
+  s_1e72251497eac4::t_38984c66a89495 1-65
+packages/runtime/src/config/recipes/types.ts
+  s_1e72251497eac4::t_503598ea53f67c 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "14f5b2614cde990743ecf2e2c02a9bfd04c3ee9e",
+  "prompts": {},
+  "sessions": {
+    "s_1e72251497eac4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eff35-f3fa-76c2-80bd-a2f59135c0f1",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
