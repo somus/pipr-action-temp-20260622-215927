@@ -158,6 +158,7 @@ describe("runInternalVerifier", () => {
     });
 
     expect(observedPrompt).toContain("treat a user's technical explanation as evidence");
+    expect(observedPrompt).toContain("Respect the PR author's or maintainer's stated intent");
     expect(observedPrompt).toContain("makes the requested change unnecessary");
     expect(observedPrompt).toContain("This behavior is intentional");
   });
