@@ -1,0 +1,101 @@
+packages/runtime/package.json
+  s_8cd722e649fada::t_d9a6507ef168a1 39
+packages/runtime/src/shared/logging.ts
+  s_8cd722e649fada::t_d3cae485486b76 5,19,23,37-38,56,62-64,81-82,84,194,198,209,211,220,225-232,241
+  s_8cd722e649fada::t_a95be70b3c4f26 34,76
+  s_8cd722e649fada::t_5715563f7bd848 4,6-11,17,31-33,35-36,39-41,43-53,73-75,80,88,92,94,102,105,120,122-132,137-143,148-162,223-224,237-238,240,242-248
+  s_8cd722e649fada::t_5a132012feb929 190,192-193
+  s_8cd722e649fada::t_4048d3e4671c19 1-2,12-16,18,20-22,55,57-58,60-61,65-72,77-78,85-86,89-90,93,95,97-101,104,121,163-164,169-170,176-179,188-189,195-197,199-208,210,212-219,221-222,233-236
+  s_8cd722e649fada::t_b3f188da8f62eb 3,42,54,191,239
+  s_8cd722e649fada::t_9559703fb9edf7 24-29,59,79,83,87,91,96,103,106-109,113-116,165-168,171-175
+  s_8cd722e649fada::t_38c07a887f7e4c 30,110-112,117-119,180-187
+  s_8cd722e649fada::t_af378d755983e7 133-136,144-147
+packages/runtime/src/action/action-logging.ts
+  s_8cd722e649fada::t_aa16e88173576c 1-63
+packages/runtime/src/review/task/task-runtime.ts
+  s_8cd722e649fada::t_72ceb4680fcc6e 143,157,169,187,193,201,205,207,220,224,279,284
+  s_8cd722e649fada::t_5a132012feb929 7,188-192,202-204,221-223,280-283
+  s_8cd722e649fada::t_78e0f2e62e3ead 363
+  s_8cd722e649fada::t_2db535f3bd622f 126-136
+  s_8cd722e649fada::t_58f1f3bb044daa 67,168,206,208
+packages/cli/src/main.ts
+  s_8cd722e649fada::t_d3a32b68eefb9c 120-122
+  s_8cd722e649fada::t_2c4a873c8c01bd 117-119,123-135
+  s_8cd722e649fada::t_b3f188da8f62eb 6,112,116
+packages/runtime/src/action/types.ts
+  s_8cd722e649fada::t_b3f188da8f62eb 7,28
+packages/runtime/src/action/review-publishing.ts
+  s_8cd722e649fada::t_d3a32b68eefb9c 91
+  s_8cd722e649fada::t_c20c7fdafb82c5 34
+  s_8cd722e649fada::t_5a132012feb929 4,84-85,92-96,110
+  s_8cd722e649fada::t_1947973c3be1f6 83,86,97,109,111
+  s_8cd722e649fada::t_3077727d3c3bf4 26,49,82,87-90,98
+packages/runtime/src/shared/tests/logging.test.ts
+  s_8cd722e649fada::t_c058ab650f552b 1,3-70
+  s_8cd722e649fada::t_ef007179f1fa1c 2
+packages/runtime/src/action/commands.ts
+  s_8cd722e649fada::t_80a286a90c5bcc 171-172,179-180,185-191,195
+  s_8cd722e649fada::t_4b4df6e18959ec 174
+  s_8cd722e649fada::t_996159a4dd2e59 178,234-235,450
+  s_8cd722e649fada::t_de60e8ec6879dd 260-266,268-271
+  s_8cd722e649fada::t_5a132012feb929 175-177,323-324,446-449,619-621
+  s_8cd722e649fada::t_5ae8dabe7b4cfc 272-273
+  s_8cd722e649fada::t_9adb43bd4a1e82 460
+  s_8cd722e649fada::t_168f94b6395206 208-210,215-217,382-383,390-391,401-410,547-548,555-556,566-575
+  s_8cd722e649fada::t_d3a32b68eefb9c 173,219,233,245,281,294,306,311,322,445,618
+  s_8cd722e649fada::t_b3f188da8f62eb 55
+  s_8cd722e649fada::t_510e7fb542f9fd 181-184,443-444
+  s_8cd722e649fada::t_f3e77c3d6f5ca8 421,659-665
+  s_8cd722e649fada::t_175d2b9b2b93f4 192,194,196-207,218,226,232,241-242
+  s_8cd722e649fada::t_a02a3169e7c95e 277,279,284,290,297-303,309,314-321,377,384-389,434,467,534,536-542,549-554,606,612-617,685
+  s_8cd722e649fada::t_e997a87c1d00b8 170
+  s_8cd722e649fada::t_31aef618fd0212 19,23-28,267
+packages/runtime/src/index.ts
+  s_8cd722e649fada::t_b3f188da8f62eb 4
+packages/runtime/src/action/tests/commands.test.ts
+  s_8cd722e649fada::t_b3f188da8f62eb 16,585,611,911,1027
+  s_8cd722e649fada::t_434bec92d6c5ba 913,915-917,919-921,923,925-926,931-948
+  s_8cd722e649fada::t_88e0a4195faa71 582-584,586,588-590,602-610,612-635,637-640,642-648
+  s_8cd722e649fada::t_a0f52ac6444c56 591-600,641
+  s_8cd722e649fada::t_a1be816bb65e4c 601,914,918,922,927-930
+  s_8cd722e649fada::t_122eccd2d1dd87 185,188-195,202-206,874,882,884-888,1005,1019,1051,1064
+  s_8cd722e649fada::t_82363b92d43c3d 1113,1121
+  s_8cd722e649fada::t_e997a87c1d00b8 587,636,912,924,1041
+  s_8cd722e649fada::t_727cb2c93baeac 649-691
+packages/runtime/src/review/agent/review-run.ts
+  s_8cd722e649fada::t_5a132012feb929 187-191,278-280,295-301
+  s_8cd722e649fada::t_f439887d695450 1
+  s_8cd722e649fada::t_2ee7b1ef1ef0ea 13,186,192,277,283,293-294
+  s_8cd722e649fada::t_0d684587826638 185,268-276,281-282,290-292,302,356,359-360,364-365
+  s_8cd722e649fada::t_90b053a8fff5b1 48,304,351,355,357-358,366
+  s_8cd722e649fada::t_bced0a5bd8e687 361
+  s_8cd722e649fada::t_eccee194a8e1d3 362-363
+packages/runtime/src/review/verifier.ts
+  s_8cd722e649fada::t_5a132012feb929 4,91-94,123
+  s_8cd722e649fada::t_160e52200f2837 90,95,122,124
+  s_8cd722e649fada::t_7cb7bb9c3f00f4 46,116
+packages/runtime/src/action/runtime-checks.ts
+  s_8cd722e649fada::t_5a132012feb929 5,198-200,205-206
+  s_8cd722e649fada::t_b509f243324400 33
+  s_8cd722e649fada::t_acd12d630dfb60 18,55
+  s_8cd722e649fada::t_34bd0b6a9d537d 70,120-124,197,201,204,207
+  s_8cd722e649fada::t_60dd43532fd8d6 118-119
+packages/cli/src/tests/main.test.ts
+  s_8cd722e649fada::t_122eccd2d1dd87 131-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "4345893378f60fd72465377c07a514cf46af1174",
+  "prompts": {},
+  "sessions": {
+    "s_8cd722e649fada": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efeaa-a806-7760-b01c-80e67c5be7f6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
