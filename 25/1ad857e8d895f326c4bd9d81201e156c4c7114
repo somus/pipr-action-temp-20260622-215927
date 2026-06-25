@@ -1,0 +1,26 @@
+docs/configuration.md
+  s_647b279dc72317::t_3099b45ef402f8 126
+packages/runtime/src/action/commands.ts
+  s_647b279dc72317::t_550412fcf7a2b1 918,929,935
+docs/sdk-reference.md
+  s_647b279dc72317::t_276d053d991ef9 158,198,208,212
+packages/runtime/src/action/tests/commands.test.ts
+  s_647b279dc72317::t_d51640a6d10ede 312,379,385,391,410,420,424
+  s_647b279dc72317::t_5c206776d36db6 923,931,985,992,999
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "251ad857e8d895f326c4bd9d81201e156c4c7114",
+  "prompts": {},
+  "sessions": {
+    "s_647b279dc72317": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efceb-4eaf-72d3-bfa3-691bccddb4c7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
