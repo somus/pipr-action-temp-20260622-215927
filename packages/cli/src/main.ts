@@ -150,6 +150,7 @@ function writeVerifierActionResult(
   core.info(
     `pipr verifier processed review comment reply with ${result.errors.length} publication error(s)`,
   );
+  warnInlineResolutionErrors(result.errors);
   core.setOutput("publication", JSON.stringify({ inlineResolutionErrors: result.errors }));
 }
 
@@ -163,6 +164,7 @@ function writeReviewActionResult(result: Extract<ActionCommandResult, { kind: "r
       `${result.publication.inlineComments.posted} inline comment(s); ` +
       `${result.publication.inlineComments.skipped} skipped`,
   );
+  warnInlineResolutionErrors(result.publication.metadata.inlineResolutionErrors);
   if (result.review.repairAttempted) {
     core.info("pipr repaired reviewer JSON once before validation");
   }
@@ -170,6 +172,12 @@ function writeReviewActionResult(result: Extract<ActionCommandResult, { kind: "r
   core.setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
   core.setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
   core.setOutput("publication", JSON.stringify(result.publication));
+}
+
+function warnInlineResolutionErrors(errors: string[]): void {
+  for (const error of errors) {
+    core.warning(`pipr inline resolution failed: ${error}`);
+  }
 }
 
 async function runInit(options: CliOptions): Promise<void> {

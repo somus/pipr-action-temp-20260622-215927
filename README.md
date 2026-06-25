@@ -35,7 +35,7 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
   checks: write

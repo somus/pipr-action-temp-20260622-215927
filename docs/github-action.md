@@ -15,7 +15,7 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
   checks: write
@@ -41,7 +41,7 @@ jobs:
 
 Provider settings come from the base-commit `.pipr/config.ts`, not from pull request code. The Action uses the base config's default model and configured fallbacks, including provider backend, model name, API key env name, and provider options.
 
-`checks: write` lets pipr publish task and aggregate Check Runs when enabled by config. `pull-requests: write` publishes Inline Review Comments, lets pipr resolve verified fixed threads, and lets pipr respond to user replies on pipr-owned Inline Review Comments. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
+`contents: write` is required by GitHub's integration token for resolving review threads. `checks: write` lets pipr publish task and aggregate Check Runs when enabled by config. `pull-requests: write` publishes Inline Review Comments and lets pipr respond to user replies on pipr-owned Inline Review Comments. `issues: write` publishes and updates the Main Review Comment and command help. If GitHub denies the cleanup call or the API fails, the review still succeeds and records the issue in `publication.metadata.inlineResolutionErrors`.
 
 ## Outputs
 
