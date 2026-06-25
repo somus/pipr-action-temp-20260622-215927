@@ -50,6 +50,7 @@ const autoResolveAllowedActorsSchema = z.enum(["author-or-write", "write", "any"
 const autoResolveConfigSchema = z.strictObject({
   enabled: z.boolean(),
   model: nonEmptyStringSchema.optional(),
+  instructions: z.string().min(1).max(4000).optional(),
   synchronize: z.boolean(),
   userReplies: z.strictObject({
     enabled: z.boolean(),

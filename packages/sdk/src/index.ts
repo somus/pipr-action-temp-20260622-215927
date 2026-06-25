@@ -335,6 +335,7 @@ export type AutoResolveOptions =
   | {
       enabled?: boolean;
       model?: ModelProfile;
+      instructions?: string;
       synchronize?: boolean;
       userReplies?: boolean | AutoResolveUserRepliesOptions;
     };

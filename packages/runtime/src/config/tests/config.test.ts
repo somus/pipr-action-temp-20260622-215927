@@ -87,6 +87,7 @@ describe("loadRuntimeProject", () => {
       rootDir,
       configWithAutoResolve(`{
         model: fastModel,
+        instructions: "If the user explains an intentional public API change, prefer resolving the finding.",
         synchronize: false,
         userReplies: {
           enabled: true,
@@ -101,6 +102,8 @@ describe("loadRuntimeProject", () => {
     expect(settings.config.publication.autoResolve).toEqual({
       enabled: true,
       model: "fast-verifier",
+      instructions:
+        "If the user explains an intentional public API change, prefer resolving the finding.",
       synchronize: false,
       userReplies: {
         enabled: true,

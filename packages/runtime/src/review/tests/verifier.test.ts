@@ -139,6 +139,53 @@ describe("runInternalVerifier", () => {
     expect(observedPrompt).not.toContain("private reviewer context that should not leak");
   });
 
+  it("instructs the verifier to respect valid user explanations", async () => {
+    let observedPrompt = "";
+    await runVerifier({
+      replyBody: "This behavior is intentional and documented by the new API contract.",
+      output: {
+        findings: [
+          {
+            id: "fnd_existing",
+            status: "fixed",
+            response: "Accepted; the explanation makes this finding unnecessary.",
+          },
+        ],
+      },
+      observePrompt: (prompt) => {
+        observedPrompt = prompt;
+      },
+    });
+
+    expect(observedPrompt).toContain("treat a user's technical explanation as evidence");
+    expect(observedPrompt).toContain("makes the requested change unnecessary");
+    expect(observedPrompt).toContain("This behavior is intentional");
+  });
+
+  it("includes configured verifier instructions", async () => {
+    let observedPrompt = "";
+    await runVerifier({
+      config: {
+        ...config,
+        publication: {
+          ...config.publication,
+          autoResolve: {
+            ...config.publication.autoResolve,
+            instructions: "Resolve when maintainers explain a deliberate product contract.",
+          },
+        },
+      },
+      output: { findings: [{ id: "fnd_existing", status: "unknown" }] },
+      observePrompt: (prompt) => {
+        observedPrompt = prompt;
+      },
+    });
+
+    expect(observedPrompt).toContain(
+      "Resolve when maintainers explain a deliberate product contract.",
+    );
+  });
+
   it("replies to still-valid user replies when configured", async () => {
     const result = await runVerifier({
       output: {

@@ -136,6 +136,7 @@ function enabledAutoResolveConfig(
   return {
     enabled: options.enabled ?? true,
     model: options.model?.id ?? defaultProvider,
+    ...(options.instructions ? { instructions: options.instructions } : {}),
     synchronize: options.synchronize ?? true,
     userReplies: normalizeUserReplyAutoResolveConfig(options),
   };

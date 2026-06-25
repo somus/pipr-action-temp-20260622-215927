@@ -225,6 +225,7 @@ pipr.config({
     maxInlineComments: 5,
     autoResolve: {
       model,
+      instructions: "Respect maintainer explanations about deliberate product behavior.",
       synchronize: true,
       userReplies: {
         enabled: true,
@@ -242,7 +243,7 @@ pipr.config({
 });
 ```
 
-`publication.autoResolve` defaults to enabled. Use `autoResolve: false` to disable verifier-driven thread cleanup and user-reply handling. If `model` is omitted, pipr uses the default provider.
+`publication.autoResolve` defaults to enabled. Use `autoResolve: false` to disable verifier-driven thread cleanup and user-reply handling. If `model` is omitted, pipr uses the default provider. Use `instructions` to add project-specific guidance for the internal verifier.
 
 `userReplies.allowedActors` controls who can trigger verifier replies:
 
