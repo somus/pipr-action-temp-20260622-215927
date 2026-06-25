@@ -1,0 +1,113 @@
+docs/github-action.md
+  s_439d125ac53dc4::t_ada1602ece3541 44
+  s_439d125ac53dc4::t_8d543187d49125 50
+  s_439d125ac53dc4::t_a2624fe0ff053d 76-77
+  s_439d125ac53dc4::t_06008b902281b1 53
+docs/code-host-adapters.md
+  s_439d125ac53dc4::t_4f3b63be60c7fd 68,87,134,164
+packages/runtime/src/review/task-runtime.ts
+  s_439d125ac53dc4::t_b810a30371f23b 286-325
+  s_439d125ac53dc4::t_cf9db3c9348563 3,68,71-72,95,112-116,212-214,281,409-418,628-630,643-652
+  s_439d125ac53dc4::t_552f09d6c7cc97 74,85-90
+  s_439d125ac53dc4::t_3cc065e8ec908a 451-452,460-493
+  s_439d125ac53dc4::t_851f31d932d184 494,653,758-763,766-771,773-777,779-811,813-816
+  s_439d125ac53dc4::t_7eff43d7392112 108-111,215-226,228,230
+  s_439d125ac53dc4::t_7a87987adcb3d6 227,764-765,772,778,812
+docs/runtime.md
+  s_439d125ac53dc4::t_66305798abacb0 147,149,156
+packages/runtime/src/action/tests/commands.test.ts
+  s_439d125ac53dc4::t_93dfea737f6a47 67-81,200-204,210-216,218-227,234-243,245-262,264-269,273-275
+  s_439d125ac53dc4::t_0aa38da05eef7b 206-209,230-231,847-848
+  s_439d125ac53dc4::t_333b0cbd749be9 836,1031-1045,1047-1061,1170,1336
+  s_439d125ac53dc4::t_d3cc64b9ad3f77 276,902-951
+  s_439d125ac53dc4::t_33ee16c9e8bb00 29
+  s_439d125ac53dc4::t_13831e3174233e 670-671,684-685,718-720,738-740,752-754,756
+  s_439d125ac53dc4::t_be1b77ab8dda8f 205,217,228-229,232-233,244,263,270-272
+  s_439d125ac53dc4::t_313e84cc46901f 1046,1318-1335
+packages/runtime/src/hosts/github/event.ts
+  s_439d125ac53dc4::t_4e1bb7f2f95b48 76,126-129,272
+.pipr/types/pipr-sdk.d.ts
+  s_439d125ac53dc4::t_cdd4ecb8566068 436-441,450,487
+packages/sdk/src/tests/index.test.ts
+  s_439d125ac53dc4::t_62ffd47d3f2698 105-125
+.pipr/config.ts
+  s_439d125ac53dc4::t_a7956fb68b692c 21-57,69-75
+packages/runtime/src/hosts/github/adapter.ts
+  s_439d125ac53dc4::t_337cc7310bb579 17,69-75
+packages/cli/src/main.ts
+  s_439d125ac53dc4::t_8d543187d49125 123,125-147,153-154,156-161
+  s_439d125ac53dc4::t_89a8d9f82bb2f0 277,279
+  s_439d125ac53dc4::t_ec56f83a0360d7 175,177-184
+  s_439d125ac53dc4::t_d45c8bdcf0ced3 122,124,148,163,165-167,170-171,173-174,274-276
+  s_439d125ac53dc4::t_ab7b4a0a8ff48c 278
+  s_439d125ac53dc4::t_02d657e210c71a 168,172
+packages/e2e/action-fixture.ts
+  s_439d125ac53dc4::t_730463147c3cf8 32,139-142,146
+  s_439d125ac53dc4::t_d2a23657767b38 143-145
+docs/architecture.md
+  s_439d125ac53dc4::t_de90127b661e7e 14-17
+packages/runtime/src/review/tests/publish.test.ts
+  s_439d125ac53dc4::t_918c0677a4ec98 881-885
+  s_439d125ac53dc4::t_a4c11f814472d6 4,167-179
+  s_439d125ac53dc4::t_bba950e0b03bda 284,307,338,354,365,373
+  s_439d125ac53dc4::t_e65974a8ec3fbb 180,853-880
+  s_439d125ac53dc4::t_2eef4906650b6f 298,321
+packages/runtime/src/commands/tests/grammar.test.ts
+  s_439d125ac53dc4::t_a954dff82d7fd3 50-60
+  s_439d125ac53dc4::t_583d891568dc82 61-74
+packages/runtime/src/review/tests/task-runtime.test.ts
+  s_439d125ac53dc4::t_a548517b9a0da6 314-341,374-375
+  s_439d125ac53dc4::t_238343885b4c4a 286-313,342-373
+  s_439d125ac53dc4::t_0047b39ce53852 208-285
+packages/runtime/src/commands/grammar.ts
+  s_439d125ac53dc4::t_73bc6e8648c418 20-23,58-60,122-139
+  s_439d125ac53dc4::t_9ec34b03fee706 35-43,140,147-151
+packages/sdk/src/index.ts
+  s_439d125ac53dc4::t_c273160608d4c0 491-497,504
+  s_439d125ac53dc4::t_9c5603684eaa7a 1292-1295,1297-1315
+  s_439d125ac53dc4::t_33e3e8c7b84d23 735
+  s_439d125ac53dc4::t_be224788831167 1296
+packages/runtime/src/action/commands.ts
+  s_439d125ac53dc4::t_d2ab64d8bdbbbe 297-299
+  s_439d125ac53dc4::t_e1c5b40130a3c1 34
+  s_439d125ac53dc4::t_7d9d0c5e9d919c 25,124-132,632-636,658,666,729,748,752-760
+  s_439d125ac53dc4::t_55ff14be603cb6 93-96,228,237-240
+  s_439d125ac53dc4::t_2ef6dcd2b65b34 638-657,659-665,670-701,712-713
+  s_439d125ac53dc4::t_006f8ba558c994 749-751
+  s_439d125ac53dc4::t_81d4a60eaabe9d 123,145-154
+action.yml
+  s_439d125ac53dc4::t_8d543187d49125 13
+  s_439d125ac53dc4::t_aebc2cc3ee2ed1 19
+docs/configuration.md
+  s_439d125ac53dc4::t_907e73c39e37e7 191-209
+docs/adr/0005-pipr-owned-comment-publishing.md
+  s_439d125ac53dc4::t_de90127b661e7e 5,9
+  s_439d125ac53dc4::t_8d543187d49125 10-11
+docs/sdk-reference.md
+  s_439d125ac53dc4::t_fd78c689f5f3a5 182,190
+  s_439d125ac53dc4::t_ada1602ece3541 265
+packages/runtime/src/hosts/github/publication.ts
+  s_439d125ac53dc4::t_c0fd186587419f 24-25
+  s_439d125ac53dc4::t_02cc40b2ea91fc 1015-1019,1027,1041-1048
+  s_439d125ac53dc4::t_98dec5c743a29d 1010-1011,1020-1026,1028,1038
+  s_439d125ac53dc4::t_5b0acfd022d115 529-530
+  s_439d125ac53dc4::t_36483905b57dd4 522-528,531-561,1014
+packages/runtime/src/hosts/types.ts
+  s_439d125ac53dc4::t_3e59bb1424e482 23,30-34,102-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "9f0a118ec6acae16b89c4ed05339ab5313aedbd5",
+  "prompts": {},
+  "sessions": {
+    "s_439d125ac53dc4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efc6d-3d13-7633-926a-d3f3a9ab6f50",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
