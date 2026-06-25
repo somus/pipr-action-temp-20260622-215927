@@ -74,6 +74,7 @@ export async function runInitCommand(
     configDir: options.configDir,
     force: options.force,
     adapters: options.adapters,
+    recipe: options.recipe,
   });
 }
 
@@ -207,15 +208,7 @@ async function runPullRequestActionCommand(
     }),
   );
   logEventContext(log, event);
-  const trustedRuntime = await logPhase(log, "load trusted config", async () =>
-    loadRuntimeProjectFromGitCommit({
-      rootDir: options.rootDir,
-      configDir: options.configDir,
-      commitSha: event.change.base.sha,
-      env: options.env,
-    }),
-  );
-  logTrustedRuntime(log, trustedRuntime);
+  const trustedRuntime = await loadTrustedRuntimeForEvent(options, event, log);
   if (options.dryRun) {
     log.notice("dry run stop before review runtime, model, or GitHub publishing calls");
     return {
@@ -256,6 +249,23 @@ async function runPullRequestActionCommand(
     review: completed.review,
     publication: completed.publication,
   };
+}
+
+async function loadTrustedRuntimeForEvent(
+  options: ActionCommandDependencyOptions,
+  event: ChangeRequestEventContext,
+  log: RuntimeActionLog,
+): Promise<TrustedRuntimeProject> {
+  const trustedRuntime = await logPhase(log, "load trusted config", async () =>
+    loadRuntimeProjectFromGitCommit({
+      rootDir: options.rootDir,
+      configDir: options.configDir,
+      commitSha: event.change.base.sha,
+      env: options.env,
+    }),
+  );
+  logTrustedRuntime(log, trustedRuntime);
+  return trustedRuntime;
 }
 
 async function prepareTrustedHeadCheckout(
@@ -400,15 +410,7 @@ async function prepareReviewCommentVerifier(
     workspace: loaded.workspace ?? reply.workspace,
   });
   logEventContext(log, event);
-  const trustedRuntime = await logPhase(log, "load trusted config", async () =>
-    loadRuntimeProjectFromGitCommit({
-      rootDir: options.rootDir,
-      configDir: options.configDir,
-      commitSha: event.change.base.sha,
-      env: options.env,
-    }),
-  );
-  logTrustedRuntime(log, trustedRuntime);
+  const trustedRuntime = await loadTrustedRuntimeForEvent(options, event, log);
   const config = trustedRuntime.settings.config;
   if (!config.publication.autoResolve.enabled) {
     return { kind: "ignored", reason: "publication.autoResolve is disabled" };
@@ -565,15 +567,7 @@ async function prepareIssueCommentCommand(
     workspace: loaded.workspace ?? comment.workspace,
   });
   logEventContext(log, event);
-  const trustedRuntime = await logPhase(log, "load trusted config", async () =>
-    loadRuntimeProjectFromGitCommit({
-      rootDir: options.rootDir,
-      configDir: options.configDir,
-      commitSha: event.change.base.sha,
-      env: options.env,
-    }),
-  );
-  logTrustedRuntime(log, trustedRuntime);
+  const trustedRuntime = await loadTrustedRuntimeForEvent(options, event, log);
   const resolution = resolvePlanCommand(trustedRuntime.plan, runnable.line);
   if (resolution.kind === "ignored") {
     return { kind: "ignored", reason: resolution.reason };

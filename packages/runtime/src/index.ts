@@ -20,8 +20,13 @@ export {
 } from "./action/commands.js";
 export type { OfficialInitAdapter } from "./config/init.js";
 export { supportedOfficialInitAdapters } from "./config/init.js";
+export type { OfficialInitRecipe, OfficialInitRecipeId } from "./config/recipes.js";
+export { listOfficialInitRecipes, supportedOfficialInitRecipes } from "./config/recipes.js";
 export type { SdkDeclarationModule } from "./config/sdk-declaration.js";
-export { embeddedSdkDeclaration } from "./config/sdk-declaration.js";
+export {
+  embeddedSdkDeclaration,
+  readSdkDeclarationSourceWithChunk,
+} from "./config/sdk-declaration.js";
 export type { PublicationResult } from "./review/publication-result.js";
 export { PublicationError } from "./review/publication-result.js";
 export type {

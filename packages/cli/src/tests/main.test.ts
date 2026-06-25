@@ -25,8 +25,10 @@ describe("pipr CLI", () => {
     expect(result.stdout).toContain("run [options] <name>");
     const init = await runCli(["init", "--help"]);
     expect(init.stdout).toContain("--adapters <adapters>");
+    expect(init.stdout).toContain("--recipe <recipe>");
     expect(init.stdout).toContain("github");
     expect(init.stdout).toContain("none");
+    expect(init.stdout).toContain("multi-agent-review");
     expect(action.stdout).toContain("--config-dir <dir>");
     expect(action.stdout).not.toContain("--provider <name>");
   });
@@ -114,11 +116,38 @@ describe("pipr CLI", () => {
     }
   });
 
+  it("initializes a selected starter recipe", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
+    try {
+      const init = await runCli(
+        ["init", "--adapters", "none", "--recipe", "plugin-tool-review"],
+        {},
+        workspace,
+      );
+      const inspect = await runCli(["inspect"], {}, workspace);
+
+      expect(init.exitCode, `${init.stdout}\n${init.stderr}`).toBe(0);
+      expect(init.stdout).toContain("created 3 file(s)");
+      expect(inspect.exitCode, `${inspect.stdout}\n${inspect.stderr}`).toBe(0);
+      expect(inspect.stdout).toContain("owner_lookup");
+      expect(await Bun.file(path.join(workspace, ".pipr", "config.ts")).text()).toContain(
+        "definePlugin",
+      );
+    } finally {
+      await removeWorkspace(workspace);
+    }
+  });
+
   it("rejects unsupported init adapters", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
     try {
       const unsupported = await runCli(["init", "--adapters", "gitlab"], {}, workspace);
       const mixedNone = await runCli(["init", "--adapters", "none,github"], {}, workspace);
+      const unsupportedRecipe = await runCli(
+        ["init", "--adapters", "none", "--recipe", "missing"],
+        {},
+        workspace,
+      );
 
       expect(unsupported.exitCode).toBe(1);
       expect(`${unsupported.stdout}\n${unsupported.stderr}`).toContain(
@@ -127,6 +156,10 @@ describe("pipr CLI", () => {
       expect(mixedNone.exitCode).toBe(1);
       expect(`${mixedNone.stdout}\n${mixedNone.stderr}`).toContain(
         "Adapter 'none' cannot be mixed with other init adapters",
+      );
+      expect(unsupportedRecipe.exitCode).toBe(1);
+      expect(`${unsupportedRecipe.stdout}\n${unsupportedRecipe.stderr}`).toContain(
+        "Unsupported pipr init recipe 'missing'. Supported recipes:",
       );
     } finally {
       await removeWorkspace(workspace);

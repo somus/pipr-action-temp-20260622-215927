@@ -3,6 +3,7 @@
 pipr uses `.pipr/config.ts` as the repository-local authoring surface. The config is TypeScript and must export `definePipr(...)`.
 
 This page shows common recipes. For the full public API, see [PIPR SDK Reference](sdk-reference.md).
+For generated starter configs, see [Init Recipes](recipes.md).
 
 `pipr init` writes generated SDK declarations under `.pipr/types`. If you prefer package-managed types, install the SDK:
 

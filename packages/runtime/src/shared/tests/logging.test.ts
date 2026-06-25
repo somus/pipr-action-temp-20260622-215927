@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { type ActionLogSink, createRuntimeActionLog } from "../logging.js";
+import { memoryActionLogSink } from "../../tests/helpers/action-log-sink.js";
+import { createRuntimeActionLog } from "../logging.js";
 
 describe("createRuntimeActionLog", () => {
   it("redacts JSON-escaped secrets in structured fields", () => {
-    const sink = memoryLogSink();
+    const sink = memoryActionLogSink();
     const secret = 'abc"def';
-    const log = createRuntimeActionLog({ logSink: sink, env: { API_KEY: secret } });
+    const log = createRuntimeActionLog({ logSink: sink.logSink, env: { API_KEY: secret } });
 
     log.error("boom", { error: secret, values: [secret] });
 
@@ -17,8 +18,11 @@ describe("createRuntimeActionLog", () => {
   });
 
   it("emits structured debug logs when PIPR_LOG_LEVEL enables debug", () => {
-    const sink = memoryLogSink();
-    const log = createRuntimeActionLog({ logSink: sink, env: { PIPR_LOG_LEVEL: "debug" } });
+    const sink = memoryActionLogSink();
+    const log = createRuntimeActionLog({
+      logSink: sink.logSink,
+      env: { PIPR_LOG_LEVEL: "debug" },
+    });
 
     log.debug("debug event", { flag: true });
     log.text("debug", "debug text", "body");
@@ -31,9 +35,12 @@ describe("createRuntimeActionLog", () => {
   });
 
   it("redacts text snippets before bounding output", () => {
-    const sink = memoryLogSink();
+    const sink = memoryActionLogSink();
     const secret = "sk-live-abcdefghijklmnopqrstuvwxyz123456";
-    const log = createRuntimeActionLog({ logSink: sink, env: { DEEPSEEK_API_KEY: secret } });
+    const log = createRuntimeActionLog({
+      logSink: sink.logSink,
+      env: { DEEPSEEK_API_KEY: secret },
+    });
 
     log.textSnippet("error", "pi stderr", `${"x".repeat(8180)}${secret}\nafter`);
 
@@ -43,28 +50,3 @@ describe("createRuntimeActionLog", () => {
     expect(output).not.toContain(secret.slice(0, 24));
   });
 });
-
-function memoryLogSink(): ActionLogSink & { messages: string[] } {
-  const messages: string[] = [];
-  return {
-    messages,
-    info(message) {
-      messages.push(message);
-    },
-    notice(message) {
-      messages.push(message);
-    },
-    warning(message) {
-      messages.push(message);
-    },
-    error(message) {
-      messages.push(message);
-    },
-    debug(message) {
-      messages.push(message);
-    },
-    async group(_name, run) {
-      return await run();
-    },
-  };
-}

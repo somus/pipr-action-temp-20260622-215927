@@ -148,6 +148,60 @@ const strictSecurity = security.extend({
 });
 ```
 
+## Multi-agent orchestration
+
+Use one task when multiple agents should produce one published review:
+
+```ts
+const base = pipr.agent({
+  name: "base-specialist",
+  model,
+  instructions: "Return only actionable findings with valid ranges.",
+  output: pipr.schemas.review,
+  prompt: (input: { manifest: unknown; focus: string }) => pipr.prompt`
+    ${pipr.section("Focus", input.focus)}
+    ${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
+  `,
+});
+
+const security = base.extend({
+  name: "security-specialist",
+  instructions: "Focus on exploitable security issues.",
+});
+const tests = base.extend({
+  name: "test-specialist",
+  instructions: "Focus on missing regression tests.",
+});
+
+const aggregator = pipr.agent({
+  name: "review-aggregator",
+  model,
+  instructions: "Deduplicate specialist results into one review.",
+  output: pipr.schemas.review,
+  prompt: (input: { specialistResults: unknown; prior: unknown }) => pipr.prompt`
+    ${pipr.section("Prior review", pipr.json(input.prior, { maxCharacters: 20000 }))}
+    ${pipr.section("Specialist results", pipr.json(input.specialistResults))}
+  `,
+});
+
+const task = pipr.task({
+  name: "multi-agent-review",
+  async run(ctx) {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const prior = await ctx.review.prior();
+    const [securityResult, testResult] = await Promise.all([
+      ctx.pi.run(security, { manifest, focus: "security" }),
+      ctx.pi.run(tests, { manifest, focus: "tests" }),
+    ]);
+    const result = await ctx.pi.run(aggregator, {
+      specialistResults: { securityResult, testResult },
+      prior,
+    });
+    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  },
+});
+```
+
 ## Tasks
 
 Tasks are the executable review units. They receive a `TaskContext` and optional parsed input.
@@ -414,21 +468,88 @@ These limits control runtime timeout and Diff Manifest prompt sizing.
 Plugins install config-time handles through the builder:
 
 ```ts
-import { definePlugin } from "@pipr/sdk";
+import { definePlugin, z } from "@pipr/sdk";
 
 const owners = definePlugin((pipr) => {
+  const input = pipr.schema({
+    id: "owners/input",
+    schema: z.strictObject({ path: z.string() }),
+  });
+  const output = pipr.schema({
+    id: "owners/output",
+    schema: z.strictObject({
+      path: z.string(),
+      owner: z.string(),
+      policy: z.string(),
+    }),
+  });
+
   return {
     tool: pipr.tool({
       name: "owner_lookup",
       description: "Look up path owners.",
-      input: ownerInputSchema,
-      output: ownerOutputSchema,
-      run: ({ input }) => ownerCatalog.get(input.path),
+      input,
+      output,
+      run({ input }) {
+        if (input.path.startsWith("packages/runtime/")) {
+          return {
+            path: input.path,
+            owner: "runtime",
+            policy: "Review publication behavior strictly.",
+          };
+        }
+        return {
+          path: input.path,
+          owner: "general",
+          policy: "Use the default repository policy.",
+        };
+      },
+      toModelOutput(result) {
+        return { path: result.path, owner: result.owner, policy: result.policy };
+      },
     }),
   };
 });
 
 const ownerTools = pipr.use(owners);
+
+const reviewer = pipr.agent({
+  name: "owner-aware-review",
+  model,
+  output: pipr.schemas.review,
+  tools: pipr.tools.readOnly,
+  instructions: "Review with the precomputed owner policy context.",
+  prompt: (input: { manifest: unknown; ownerPolicies: unknown }) => pipr.prompt`
+    ${pipr.section("Diff Manifest", input.manifest)}
+    ${pipr.section("Owner Policies", pipr.json(input.ownerPolicies))}
+  `,
+});
+
+const ownerReview = pipr.task({
+  name: "owner-aware-review",
+  async run(ctx) {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const ownerPolicies = await Promise.all(
+      manifest.files.map(async (file) => {
+        const output = await ownerTools.tool.run?.({
+          input: { path: file.path },
+          ctx,
+        });
+        if (!output) {
+          throw new Error("owner_lookup returned no output");
+        }
+        return ownerTools.tool.toModelOutput?.(output) ?? output;
+      }),
+    );
+    const review = await ctx.pi.run(reviewer, { manifest, ownerPolicies });
+    await ctx.comment({
+      main: review.summary.body,
+      inlineFindings: review.inlineFindings,
+    });
+  },
+});
+
+pipr.on.changeRequest({ actions: ["opened", "updated"], task: ownerReview });
 ```
 
 Plugin setup runs during config loading. Runtime effects still belong in tasks and tools.

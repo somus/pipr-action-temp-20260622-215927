@@ -22,6 +22,8 @@ repo/
 
 Use `pipr init --adapters none` to skip adapter files and create only the `.pipr` tree.
 Run `pipr init --help` to list supported init adapters.
+Use `pipr init --recipe <id>` to start from a focused config recipe. See
+[Init Recipes](recipes.md).
 
 The config is the only public authoring surface. Do not put runtime settings in `.pi`; pipr creates any Pi home it needs inside the Action image.
 
@@ -85,6 +87,7 @@ Pi executes the agent. pipr owns orchestration, validation, and publication poli
 | --- | --- |
 | [Quickstart](quickstart.md) | Install pipr, create config, add the GitHub Action, trigger first review. |
 | [Configuration](configuration.md) | Common config recipes and examples. |
+| [Init Recipes](recipes.md) | Starter configs for review workflows, commands, plugins, tools, and multi-agent orchestration. |
 | [PIPR SDK Reference](sdk-reference.md) | Public SDK imports, builder methods, task context, schemas, tools, and entrypoints. |
 | [Runtime Guide](runtime.md) | Run modes, trust model, Diff Manifest, Pi execution, validation, publication. |
 | [GitHub Action](github-action.md) | Workflow YAML, trusted options, outputs, permissions, dry run. |

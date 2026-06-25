@@ -266,21 +266,9 @@ async function runPiForPrompt(
   prompt: string,
 ): Promise<PiRunResult> {
   const builtinTools = builtinToolsForPrompt(options.toolMode ?? "read-only");
-  const runtimeTools =
-    options.toolMode === "none"
-      ? undefined
-      : runtimeToolsForPrompt(options.manifest, options.manifestPrompt);
-  const timeoutSeconds = effectiveTimeoutSeconds(
-    options.runOptions?.timeout ?? options.agent.definition.timeout,
-    options.runtime.config.limits?.timeoutSeconds,
-  );
-  options.runtime.log?.info("pi start", {
-    agent: options.agent.name ?? "anonymous-agent",
-    provider: provider.id,
-    model: provider.model,
-    promptBytes: Buffer.byteLength(prompt, "utf8"),
-    tools: [...builtinTools, ...(runtimeTools ? ["pipr-runtime-tools"] : [])],
-  });
+  const runtimeTools = runtimeToolsForRun(options);
+  const timeoutSeconds = promptTimeoutSeconds(options);
+  logPiStart(options, provider, prompt, builtinTools, runtimeTools);
   const result = await (options.runtime.piRunner ?? runPi)({
     workspace: options.runtime.workspace,
     provider,
@@ -291,6 +279,50 @@ async function runPiForPrompt(
     runtimeTools,
     timeoutSeconds,
   });
+  logPiResult(options, provider, result, timeoutSeconds);
+  assertSuccessfulPiResult(result, options.runtime.log);
+  return result;
+}
+
+function runtimeToolsForRun(
+  options: RunReviewAgentOptions & PreparedAgentContext,
+): Parameters<typeof runPi>[0]["runtimeTools"] {
+  return options.toolMode === "none"
+    ? undefined
+    : runtimeToolsForPrompt(options.manifest, options.manifestPrompt);
+}
+
+function promptTimeoutSeconds(
+  options: RunReviewAgentOptions & PreparedAgentContext,
+): number | undefined {
+  return effectiveTimeoutSeconds(
+    options.runOptions?.timeout ?? options.agent.definition.timeout,
+    options.runtime.config.limits?.timeoutSeconds,
+  );
+}
+
+function logPiStart(
+  options: RunReviewAgentOptions & PreparedAgentContext,
+  provider: ProviderConfig,
+  prompt: string,
+  builtinTools: readonly PiReadOnlyToolName[],
+  runtimeTools: Parameters<typeof runPi>[0]["runtimeTools"],
+): void {
+  options.runtime.log?.info("pi start", {
+    agent: options.agent.name ?? "anonymous-agent",
+    provider: provider.id,
+    model: provider.model,
+    promptBytes: Buffer.byteLength(prompt, "utf8"),
+    tools: [...builtinTools, ...(runtimeTools ? ["pipr-runtime-tools"] : [])],
+  });
+}
+
+function logPiResult(
+  options: RunReviewAgentOptions & PreparedAgentContext,
+  provider: ProviderConfig,
+  result: PiRunResult,
+  timeoutSeconds: number | undefined,
+): void {
   options.runtime.log?.info("pi run", {
     agent: options.agent.name ?? "anonymous-agent",
     provider: provider.id,
@@ -301,8 +333,6 @@ async function runPiForPrompt(
     stderrBytes: result.stderr.length,
     timeoutSeconds,
   });
-  assertSuccessfulPiResult(result, options.runtime.log);
-  return result;
 }
 
 function builtinToolsForPrompt(toolMode: "read-only" | "none"): readonly PiReadOnlyToolName[] {

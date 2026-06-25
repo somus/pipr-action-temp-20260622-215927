@@ -3,14 +3,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPathContained, resolveContainedConfigDir } from "./paths.js";
 import { loadRuntimeProject } from "./project.js";
+import { officialInitRecipeConfigTs } from "./recipes.js";
 import { embeddedSdkAssets } from "./sdk-assets.js";
-import { embeddedSdkDeclaration, type SdkDeclarationModule } from "./sdk-declaration.js";
+import {
+  embeddedSdkDeclaration,
+  readSdkDeclarationSourceWithChunk,
+  type SdkDeclarationModule,
+} from "./sdk-declaration.js";
 
 export type InitOfficialMinimalProjectOptions = {
   rootDir: string;
   configDir?: string;
   force?: boolean;
   adapters?: readonly string[];
+  recipe?: string;
 };
 
 export type InitOfficialMinimalProjectResult = {
@@ -83,7 +89,7 @@ export async function initOfficialMinimalProject(
   const { configDir, relativeConfigDir } = resolveContainedConfigDir(options);
   const adapters = resolveOfficialInitAdapters(options.adapters);
   const rootDir = path.resolve(options.rootDir);
-  const targets = (await starterFiles(relativeConfigDir, adapters)).map((file) => ({
+  const targets = (await starterFiles(relativeConfigDir, adapters, options.recipe)).map((file) => ({
     ...file,
     absolutePath: path.join(rootDir, file.relativePath),
   }));
@@ -116,9 +122,13 @@ export async function initOfficialMinimalProject(
 async function starterFiles(
   relativeConfigDir: string,
   adapters: readonly OfficialInitAdapter[],
+  recipe?: string,
 ): Promise<StarterFile[]> {
   const files = [
-    { relativePath: path.join(relativeConfigDir, "config.ts"), contents: starterConfigTs },
+    {
+      relativePath: path.join(relativeConfigDir, "config.ts"),
+      contents: officialInitRecipeConfigTs(recipe),
+    },
     { relativePath: path.join(relativeConfigDir, "tsconfig.json"), contents: starterTsconfig },
     {
       relativePath: path.join(relativeConfigDir, "types", "pipr-sdk.d.ts"),
@@ -233,7 +243,7 @@ async function rawSdkDeclarations(): Promise<SdkDeclarationModule[]> {
     sdkDeclarationModules.map(async (module) => {
       const declarationPath = await sdkDeclarationPath(module.fileName);
       return declarationPath
-        ? { ...module, source: await rawSdkDeclarationSource(module, declarationPath) }
+        ? { ...module, source: await readSdkDeclarationSourceWithChunk(module, declarationPath) }
         : undefined;
     }),
   );
@@ -245,25 +255,6 @@ async function rawSdkDeclarations(): Promise<SdkDeclarationModule[]> {
     return [{ moduleName: sdkDeclarationModules[0].moduleName, source: embedded }];
   }
   throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
-}
-
-async function rawSdkDeclarationSource(
-  module: SdkDeclarationAsset,
-  declarationPath: string,
-): Promise<string> {
-  const source = await Bun.file(declarationPath).text();
-  if (module.moduleName !== "@pipr/sdk") {
-    return source;
-  }
-  const chunkFileName = source.match(/from "\.\/(?<chunk>index-[A-Za-z0-9_-]+)\.mjs"/)?.groups
-    ?.chunk;
-  if (!chunkFileName) {
-    return source;
-  }
-  const chunkPath = path.join(path.dirname(declarationPath), `${chunkFileName}.d.mts`);
-  const chunk = await Bun.file(chunkPath).text();
-  const declarations = chunk.replace(/^export \{.*\};$/gm, "");
-  return `${declarations}\n${source}`;
 }
 
 async function sdkDeclarationPath(fileName: string): Promise<string | undefined> {
@@ -280,30 +271,6 @@ async function sdkDeclarationPath(fileName: string): Promise<string | undefined>
   }
   return undefined;
 }
-
-const starterConfigTs = `import { definePipr } from "@pipr/sdk";
-
-export default definePipr((pipr) => {
-  const model = pipr.model({
-    provider: "deepseek",
-    model: "deepseek-v4-pro",
-    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
-    options: { thinking: "high" },
-  });
-
-  pipr.review({
-    id: "review",
-    model,
-    instructions: \`
-      Review the pull request diff for correctness, security,
-      maintainability, and test coverage.
-      Return only actionable findings that target valid diff ranges.
-    \`,
-    inlineComments: { max: 5 },
-    timeout: "5m",
-  });
-});
-`;
 
 const starterTsconfig = `{
   "compilerOptions": {

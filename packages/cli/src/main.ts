@@ -12,6 +12,7 @@ import {
   runLocalTaskCommand,
   runValidateCommand,
   supportedOfficialInitAdapters,
+  supportedOfficialInitRecipes,
 } from "@pipr/runtime";
 import { Command } from "commander";
 
@@ -22,6 +23,7 @@ type CliOptions = {
   event?: string;
   force?: boolean;
   adapters?: string;
+  recipe?: string;
   requireEnv?: boolean;
   base?: string;
   head?: string;
@@ -50,6 +52,7 @@ function createProgram(): Command {
       `Adapters to initialize (${supportedOfficialInitAdapters.join(", ")}; use 'none' to skip adapter files)`,
       "github",
     )
+    .option("--recipe <recipe>", `Starter recipe (${supportedOfficialInitRecipes.join(", ")})`)
     .option("--force", "Overwrite existing pipr files")
     .action(runInit);
 
@@ -256,6 +259,7 @@ async function runInit(options: CliOptions): Promise<void> {
     configDir: options.configDir,
     force: options.force === true,
     adapters: parseInitAdapters(options.adapters),
+    recipe: options.recipe,
   });
   console.log(
     `created ${result.created.length} file(s)` +

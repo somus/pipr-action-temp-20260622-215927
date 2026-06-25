@@ -35,6 +35,10 @@ pipr check
 Use `pipr init --adapters none` to create only the `.pipr` config files. Run
 `pipr init --help` to list supported init adapters.
 
+Use `pipr init --recipe <id>` to choose a focused starter config such as
+`security-sast`, `multi-agent-review`, or `plugin-tool-review`. See
+[Init Recipes](recipes.md).
+
 Existing pipr files are not overwritten unless `pipr init --force` is used.
 
 The resulting project layout is:

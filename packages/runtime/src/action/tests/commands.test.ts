@@ -13,6 +13,7 @@ import {
   renderResolvedFindingMarker,
   renderVerifierResponseMarker,
 } from "../../review/prior-state.js";
+import { memoryActionLogSink } from "../../tests/helpers/action-log-sink.js";
 import { type ActionLogSink, runActionCommandWithDependencies } from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {
@@ -611,16 +612,7 @@ describe("runActionCommand pull_request dispatch", () => {
     const logs = memoryActionLogSink();
     const secret = "super-secret-deepseek-key";
     try {
-      await Bun.write(
-        workspace.piExecutable,
-        [
-          "#!/bin/sh",
-          'printf "%s\\n" "$DEEPSEEK_API_KEY" >&2',
-          'printf "%s\\n" "model exploded" >&2',
-          "exit 42",
-        ].join("\n"),
-      );
-      await chmod(workspace.piExecutable, 0o755);
+      await writeFailingPiExecutable(workspace.piExecutable);
       const eventPath = path.join(workspace.rootDir, "event.json");
       await writePullRequestEvent(eventPath, workspace);
 
@@ -651,16 +643,7 @@ describe("runActionCommand pull_request dispatch", () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     const secret = "super-secret-deepseek-key";
     try {
-      await Bun.write(
-        workspace.piExecutable,
-        [
-          "#!/bin/sh",
-          'printf "%s\\n" "$DEEPSEEK_API_KEY" >&2',
-          'printf "%s\\n" "model exploded" >&2',
-          "exit 42",
-        ].join("\n"),
-      );
-      await chmod(workspace.piExecutable, 0o755);
+      await writeFailingPiExecutable(workspace.piExecutable);
       const eventPath = path.join(workspace.rootDir, "event.json");
       await writePullRequestEvent(eventPath, workspace);
 
@@ -908,42 +891,17 @@ type FakeCheckRuns = {
   updated: Array<{ checkRunId: number; name: string; conclusion: string; summary?: string }>;
 };
 
-function memoryActionLogSink(): {
-  logSink: ActionLogSink;
-  messages: string[];
-  notices: string[];
-  groups: string[];
-} {
-  const messages: string[] = [];
-  const notices: string[] = [];
-  const groups: string[] = [];
-  return {
-    messages,
-    notices,
-    groups,
-    logSink: {
-      info(message) {
-        messages.push(message);
-      },
-      notice(message) {
-        messages.push(message);
-        notices.push(message);
-      },
-      warning(message) {
-        messages.push(message);
-      },
-      error(message) {
-        messages.push(message);
-      },
-      debug(message) {
-        messages.push(message);
-      },
-      async group(name, run) {
-        groups.push(name);
-        return await run();
-      },
-    },
-  };
+async function writeFailingPiExecutable(piExecutable: string): Promise<void> {
+  await Bun.write(
+    piExecutable,
+    [
+      "#!/bin/sh",
+      'printf "%s\\n" "$DEEPSEEK_API_KEY" >&2',
+      'printf "%s\\n" "model exploded" >&2',
+      "exit 42",
+    ].join("\n"),
+  );
+  await chmod(piExecutable, 0o755);
 }
 
 async function createCommandWorkspace(

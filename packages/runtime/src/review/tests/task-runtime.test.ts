@@ -250,15 +250,9 @@ describe("runTaskRuntime", () => {
   });
 
   it("rejects tasks that emit both a review comment and a command reply", async () => {
-    const plan = testPlan((pipr) => {
-      const task = pipr.task({
-        name: "ask",
-        async run(ctx) {
-          await ctx.command?.reply("Answer.");
-          await ctx.comment("Review summary.");
-        },
-      });
-      pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task });
+    const plan = commandTaskPlan(async (ctx) => {
+      await ctx.command?.reply("Answer.");
+      await ctx.comment("Review summary.");
     });
 
     await expect(
@@ -272,15 +266,9 @@ describe("runTaskRuntime", () => {
   });
 
   it("rejects multiple command replies from one task", async () => {
-    const plan = testPlan((pipr) => {
-      const task = pipr.task({
-        name: "ask",
-        async run(ctx) {
-          await ctx.command?.reply("First.");
-          await ctx.command?.reply("Second.");
-        },
-      });
-      pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task });
+    const plan = commandTaskPlan(async (ctx) => {
+      await ctx.command?.reply("First.");
+      await ctx.command?.reply("Second.");
     });
 
     await expect(
@@ -1500,6 +1488,13 @@ function singleTaskPlan(options: {
       run: options.run,
     });
     pipr.on.changeRequest({ actions: ["opened"], task });
+  });
+}
+
+function commandTaskPlan(run: Parameters<PiprApi["task"]>[0]["run"]) {
+  return testPlan((pipr) => {
+    const task = pipr.task({ name: "ask", run });
+    pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task });
   });
 }
 

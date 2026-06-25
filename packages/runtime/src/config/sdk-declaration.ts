@@ -1,7 +1,28 @@
+import path from "node:path";
+
 export type SdkDeclarationModule = {
   moduleName: string;
   source: string;
 };
+
+export async function readSdkDeclarationSourceWithChunk(
+  module: { moduleName: string },
+  declarationPath: string,
+): Promise<string> {
+  const source = await Bun.file(declarationPath).text();
+  if (module.moduleName !== "@pipr/sdk") {
+    return source;
+  }
+  const chunkFileName = source.match(/from "\.\/(?<chunk>index-[A-Za-z0-9_-]+)\.mjs"/)?.groups
+    ?.chunk;
+  if (!chunkFileName) {
+    return source;
+  }
+  const chunkPath = path.join(path.dirname(declarationPath), `${chunkFileName}.d.mts`);
+  const chunk = await Bun.file(chunkPath).text();
+  const declarations = chunk.replace(/^export \{.*\};$/gm, "");
+  return `${declarations}\n${source}`;
+}
 
 export function embeddedSdkDeclaration(modules: SdkDeclarationModule[]): string {
   const declaration = [

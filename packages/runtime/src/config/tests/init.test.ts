@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, readdir, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { initOfficialMinimalProject, listOfficialMinimalFiles } from "../init.js";
-import { validateProject } from "../project.js";
+import { inspectRuntimePlan, validateProject } from "../project.js";
+import { listOfficialInitRecipes, supportedOfficialInitRecipes } from "../recipes.js";
 
 const configOnlyInitFiles = [
   path.join(".pipr", "config.ts"),
@@ -72,10 +73,7 @@ describe("initOfficialMinimalProject", () => {
   });
 
   it("can initialize only the pipr config files without adapter files", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
-
-    const result = await initOfficialMinimalProject({ rootDir, adapters: [] });
-    const validation = await validateProject({ rootDir });
+    const { rootDir, result, validation } = await initializedConfigOnlyProject();
 
     expect(result.created.sort()).toEqual(configOnlyInitFiles);
     expect(result.overwritten).toEqual([]);
@@ -85,6 +83,66 @@ describe("initOfficialMinimalProject", () => {
       ".pipr/types/pipr-sdk.d.ts",
     ]);
     expect(validation.kind).toBe("typescript");
+  });
+
+  it("initializes every official recipe and validates the generated config", async () => {
+    expect(listOfficialInitRecipes().map((recipe) => recipe.id)).toEqual([
+      ...supportedOfficialInitRecipes,
+    ]);
+
+    for (const recipe of supportedOfficialInitRecipes) {
+      const { rootDir, result, validation } = await initializedConfigOnlyProject(recipe);
+
+      expect(result.created.sort()).toEqual(configOnlyInitFiles);
+      expect(result.overwritten).toEqual([]);
+      expect(validation.kind).toBe("typescript");
+      expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toContain(
+        "definePipr",
+      );
+    }
+  });
+
+  it("initializes advanced recipes with inspectable agents, tools, commands, and locals", async () => {
+    const multiAgentRootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-multi-agent-"));
+    const pluginRootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-plugin-tool-"));
+    const commandRootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-command-"));
+
+    await initOfficialMinimalProject({
+      rootDir: multiAgentRootDir,
+      adapters: [],
+      recipe: "multi-agent-review",
+    });
+    await initOfficialMinimalProject({
+      rootDir: pluginRootDir,
+      adapters: [],
+      recipe: "plugin-tool-review",
+    });
+    await initOfficialMinimalProject({
+      rootDir: commandRootDir,
+      adapters: [],
+      recipe: "interactive-ask",
+    });
+
+    const multiAgent = await validateProject({ rootDir: multiAgentRootDir });
+    const pluginTool = await validateProject({ rootDir: pluginRootDir });
+    const command = await validateProject({ rootDir: commandRootDir });
+
+    expect(inspectRuntimePlan(multiAgent.plan, ".pipr/config.ts").agents).toEqual(
+      expect.arrayContaining([
+        "security-specialist",
+        "test-specialist",
+        "maintainability-specialist",
+        "review-aggregator",
+      ]),
+    );
+    expect(inspectRuntimePlan(pluginTool.plan, ".pipr/config.ts").tools).toEqual(["owner_lookup"]);
+    expect(inspectRuntimePlan(command.plan, ".pipr/config.ts").commands).toEqual([
+      {
+        pattern: "@pipr ask <question...>",
+        task: "interactive-ask",
+        permission: "read",
+      },
+    ]);
   });
 
   it("generates SDK types that preserve optional Zod object fields", async () => {
@@ -205,6 +263,14 @@ export default definePipr((pipr) => {
     );
   });
 
+  it("rejects unsupported init recipes", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+
+    await expect(
+      initOfficialMinimalProject({ rootDir, adapters: [], recipe: "missing" }),
+    ).rejects.toThrow("Unsupported pipr init recipe 'missing'. Supported recipes:");
+  });
+
   it("rejects symlinked target parent directories", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
     const outsideDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-outside-"));
@@ -243,4 +309,15 @@ async function listFiles(rootDir: string, prefix = ""): Promise<string[]> {
     }
   }
   return files.sort();
+}
+
+async function initializedConfigOnlyProject(recipe?: string): Promise<{
+  rootDir: string;
+  result: Awaited<ReturnType<typeof initOfficialMinimalProject>>;
+  validation: Awaited<ReturnType<typeof validateProject>>;
+}> {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+  const result = await initOfficialMinimalProject({ rootDir, adapters: [], recipe });
+  const validation = await validateProject({ rootDir });
+  return { rootDir, result, validation };
 }
