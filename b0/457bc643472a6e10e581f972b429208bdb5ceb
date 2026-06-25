@@ -1,0 +1,21 @@
+packages/runtime/src/review/tests/publish.test.ts
+  s_647b279dc72317::t_ca039678894f62 354-370
+packages/runtime/src/hosts/github/publication.ts
+  s_647b279dc72317::t_a43cfd0ae3a020 723,728,758,786,819-825,832-835,838-842,888-892,894,897,901,905-915
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "b0457bc643472a6e10e581f972b429208bdb5ceb",
+  "prompts": {},
+  "sessions": {
+    "s_647b279dc72317": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efceb-4eaf-72d3-bfa3-691bccddb4c7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
