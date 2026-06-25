@@ -8,13 +8,16 @@ GitHub is the first delivery target. Internally, GitHub is a code host adapter, 
 
 ## Quickstart
 
-Create the TypeScript config and GitHub Action workflow:
+Create the TypeScript config and default GitHub Action workflow:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/somus/pipr/main/install.sh | sh
 pipr init
 pipr check
 ```
+
+Use `pipr init --adapters none` to create only `.pipr` config files. Run
+`pipr init --help` to list supported init adapters.
 
 Set the provider secret used by the default config:
 

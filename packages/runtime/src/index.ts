@@ -18,6 +18,8 @@ export {
   runLocalTaskCommand,
   runValidateCommand,
 } from "./action/commands.js";
+export type { OfficialInitAdapter } from "./config/init.js";
+export { supportedOfficialInitAdapters } from "./config/init.js";
 export type { SdkDeclarationModule } from "./config/sdk-declaration.js";
 export { embeddedSdkDeclaration } from "./config/sdk-declaration.js";
 export type { PublicationResult } from "./review/publication-result.js";

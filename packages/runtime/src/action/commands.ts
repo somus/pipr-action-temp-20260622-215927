@@ -73,6 +73,7 @@ export async function runInitCommand(
     rootDir: options.rootDir,
     configDir: options.configDir,
     force: options.force,
+    adapters: options.adapters,
   });
 }
 

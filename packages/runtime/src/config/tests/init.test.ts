@@ -5,6 +5,12 @@ import path from "node:path";
 import { initOfficialMinimalProject, listOfficialMinimalFiles } from "../init.js";
 import { validateProject } from "../project.js";
 
+const configOnlyInitFiles = [
+  path.join(".pipr", "config.ts"),
+  path.join(".pipr", "tsconfig.json"),
+  path.join(".pipr", "types", "pipr-sdk.d.ts"),
+];
+
 describe("initOfficialMinimalProject", () => {
   it("creates the official minimal .pipr tree and validates it", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
@@ -42,6 +48,7 @@ describe("initOfficialMinimalProject", () => {
     expect(workflow).toContain("pull_request_review_comment:");
     expect(workflow).toContain("types: [created]");
     expect(workflow).not.toContain("config-dir:");
+    expect([...workflow.matchAll(/^ {8}with:$/gm)]).toHaveLength(1);
     expect(workflow).not.toContain("provider-id:");
     expect(workflow).not.toContain("provider: deepseek");
     expect(workflow).not.toContain("model: deepseek-v4-pro");
@@ -62,6 +69,22 @@ describe("initOfficialMinimalProject", () => {
     expect(validation.kind).toBe("typescript");
     expect(validation.settings.config.defaultProvider).toBe("deepseek/deepseek-v4-pro");
     expect(validation.settings.config.publication.maxInlineComments).toBe(5);
+  });
+
+  it("can initialize only the pipr config files without adapter files", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+
+    const result = await initOfficialMinimalProject({ rootDir, adapters: [] });
+    const validation = await validateProject({ rootDir });
+
+    expect(result.created.sort()).toEqual(configOnlyInitFiles);
+    expect(result.overwritten).toEqual([]);
+    expect(await listFiles(rootDir)).toEqual([
+      ".pipr/config.ts",
+      ".pipr/tsconfig.json",
+      ".pipr/types/pipr-sdk.d.ts",
+    ]);
+    expect(validation.kind).toBe("typescript");
   });
 
   it("generates SDK types that preserve optional Zod object fields", async () => {
@@ -128,6 +151,7 @@ export default definePipr((pipr) => {
 
     expect(result.created).toContain(path.join(".github", "workflows", "pipr.yml"));
     expect(workflow).toContain("config-dir: config/pipr");
+    expect([...workflow.matchAll(/^ {8}with:$/gm)]).toHaveLength(2);
     expect(await Bun.file(path.join(rootDir, "config", "pipr", "config.ts")).text()).toContain(
       "pipr.review",
     );
@@ -150,6 +174,34 @@ export default definePipr((pipr) => {
     expect(result.overwritten).toEqual([path.join(".github", "workflows", "pipr.yml")]);
     expect(await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text()).toContain(
       "uses: somus/pipr@main",
+    );
+  });
+
+  it("does not conflict with an existing GitHub workflow when no adapter is selected", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+    await mkdir(path.join(rootDir, ".github", "workflows"), { recursive: true });
+    await Bun.write(path.join(rootDir, ".github", "workflows", "pipr.yml"), "custom: true\n");
+
+    const result = await initOfficialMinimalProject({ rootDir, adapters: [] });
+
+    expect(result.created.sort()).toEqual(configOnlyInitFiles);
+    expect(result.overwritten).toEqual([]);
+    expect(await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text()).toBe(
+      "custom: true\n",
+    );
+  });
+
+  it("rejects unsupported init adapters", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+
+    await expect(initOfficialMinimalProject({ rootDir, adapters: ["gitlab"] })).rejects.toThrow(
+      "Unsupported pipr init adapter 'gitlab'. Supported adapters: github",
+    );
+    await expect(
+      initOfficialMinimalProject({ rootDir, adapters: ["none", "github"] }),
+    ).rejects.toThrow("Adapter 'none' cannot be mixed with other init adapters");
+    await expect(initOfficialMinimalProject({ rootDir, adapters: [""] })).rejects.toThrow(
+      "Unsupported pipr init adapter ''. Supported adapters: github",
     );
   });
 

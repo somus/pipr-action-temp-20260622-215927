@@ -10,6 +10,7 @@ export type InitOfficialMinimalProjectOptions = {
   rootDir: string;
   configDir?: string;
   force?: boolean;
+  adapters?: readonly string[];
 };
 
 export type InitOfficialMinimalProjectResult = {
@@ -18,26 +19,71 @@ export type InitOfficialMinimalProjectResult = {
   overwritten: string[];
 };
 
+export const supportedOfficialInitAdapters = ["github"] as const;
+
+export type OfficialInitAdapter = (typeof supportedOfficialInitAdapters)[number];
+
 type StarterFile = {
   relativePath: string;
   contents: string;
 };
 
-export function listOfficialMinimalFiles(): string[] {
-  return [
+export function listOfficialMinimalFiles(adapters?: readonly string[]): string[] {
+  return officialMinimalFilePaths(resolveOfficialInitAdapters(adapters));
+}
+
+function resolveOfficialInitAdapters(adapters?: readonly string[]): OfficialInitAdapter[] {
+  if (adapters === undefined) {
+    return [...supportedOfficialInitAdapters];
+  }
+  if (adapters.length === 0) {
+    return [];
+  }
+  const selected = new Set<OfficialInitAdapter>();
+  for (const adapter of adapters) {
+    if (adapter === "") {
+      throw unsupportedAdapterError(adapter);
+    }
+    if (adapter === "none") {
+      if (adapters.length > 1) {
+        throw new Error("Adapter 'none' cannot be mixed with other init adapters.");
+      }
+      return [];
+    }
+    if (adapter !== "github") {
+      throw unsupportedAdapterError(adapter);
+    }
+    selected.add(adapter);
+  }
+  return [...selected];
+}
+
+function officialMinimalFilePaths(adapters: readonly OfficialInitAdapter[]): string[] {
+  const files = [
     path.join(".pipr", "config.ts"),
     path.join(".pipr", "tsconfig.json"),
     path.join(".pipr", "types", "pipr-sdk.d.ts"),
-    path.join(".github", "workflows", "pipr.yml"),
   ];
+  if (adapters.includes("github")) {
+    files.push(path.join(".github", "workflows", "pipr.yml"));
+  }
+  return files;
+}
+
+function unsupportedAdapterError(adapter: string): Error {
+  return new Error(
+    `Unsupported pipr init adapter '${adapter}'. Supported adapters: ` +
+      `${supportedOfficialInitAdapters.join(", ")}; use 'none' to skip adapter files.`,
+  );
 }
 
 export async function initOfficialMinimalProject(
   options: InitOfficialMinimalProjectOptions,
 ): Promise<InitOfficialMinimalProjectResult> {
   const { configDir, relativeConfigDir } = resolveContainedConfigDir(options);
+  const adapters = resolveOfficialInitAdapters(options.adapters);
   const rootDir = path.resolve(options.rootDir);
-  const targets = (await starterFiles(relativeConfigDir)).map((file) => ({
+  const targets = (await starterFiles(relativeConfigDir, adapters)).map((file) => ({
     ...file,
     absolutePath: path.join(rootDir, file.relativePath),
   }));
@@ -67,19 +113,25 @@ export async function initOfficialMinimalProject(
   return { configDir, created, overwritten };
 }
 
-async function starterFiles(relativeConfigDir: string): Promise<StarterFile[]> {
-  return [
+async function starterFiles(
+  relativeConfigDir: string,
+  adapters: readonly OfficialInitAdapter[],
+): Promise<StarterFile[]> {
+  const files = [
     { relativePath: path.join(relativeConfigDir, "config.ts"), contents: starterConfigTs },
     { relativePath: path.join(relativeConfigDir, "tsconfig.json"), contents: starterTsconfig },
     {
       relativePath: path.join(relativeConfigDir, "types", "pipr-sdk.d.ts"),
       contents: await sdkDeclaration(),
     },
-    {
+  ];
+  if (adapters.includes("github")) {
+    files.push({
       relativePath: path.join(".github", "workflows", "pipr.yml"),
       contents: starterWorkflow(relativeConfigDir.split(path.sep).join("/")),
-    },
-  ];
+    });
+  }
+  return files;
 }
 
 async function assertSafeTargetAncestors(
@@ -293,7 +345,6 @@ function starterWorkflow(relativeConfigDir: string): string {
     "        env:",
     `          DEEPSEEK_API_KEY: $${["{{ ", "secrets.DEEPSEEK_API_KEY", " }}"].join("")}`,
     `          GITHUB_TOKEN: $${["{{ ", "github.token", " }}"].join("")}`,
-    "        with:",
   ];
   if (relativeConfigDir !== ".pipr") {
     lines.push("        with:");

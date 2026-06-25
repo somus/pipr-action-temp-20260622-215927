@@ -32,6 +32,9 @@ pipr check
 - `.pipr/types/pipr-sdk.d.ts`
 - `.github/workflows/pipr.yml`
 
+Use `pipr init --adapters none` to create only the `.pipr` config files. Run
+`pipr init --help` to list supported init adapters.
+
 Existing pipr files are not overwritten unless `pipr init --force` is used.
 
 The resulting project layout is:

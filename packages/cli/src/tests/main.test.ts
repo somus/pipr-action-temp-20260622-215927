@@ -3,9 +3,13 @@ import { access, chmod, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { embeddedSdkDeclaration, readSdkDeclarationModules } from "../release/sdk-declaration.js";
 
-const cliPath = path.resolve("src/main.ts");
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const cliProjectDir = path.resolve(testDir, "../..");
+const repoRoot = path.resolve(cliProjectDir, "../..");
+const cliPath = path.join(cliProjectDir, "src", "main.ts");
 
 describe("pipr CLI", () => {
   it("prints TS-first subcommands", async () => {
@@ -19,6 +23,10 @@ describe("pipr CLI", () => {
     expect(result.stdout).toContain("inspect [options]");
     expect(result.stdout).toContain("review [options]");
     expect(result.stdout).toContain("run [options] <name>");
+    const init = await runCli(["init", "--help"]);
+    expect(init.stdout).toContain("--adapters <adapters>");
+    expect(init.stdout).toContain("github");
+    expect(init.stdout).toContain("none");
     expect(action.stdout).toContain("--config-dir <dir>");
     expect(action.stdout).not.toContain("--provider <name>");
   });
@@ -88,8 +96,44 @@ describe("pipr CLI", () => {
     }
   });
 
+  it("initializes config files without adapter files", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
+    try {
+      const init = await runCli(["init", "--adapters", "none"], {}, workspace);
+      const check = await runCli(["check"], {}, workspace);
+
+      expect(init.exitCode, `${init.stdout}\n${init.stderr}`).toBe(0);
+      expect(init.stdout).toContain("created 3 file(s)");
+      expect(check.exitCode).toBe(0);
+      expect(check.stdout).toContain("valid:");
+      expect(await fileExists(path.join(workspace, ".github", "workflows", "pipr.yml"))).toBe(
+        false,
+      );
+    } finally {
+      await removeWorkspace(workspace);
+    }
+  });
+
+  it("rejects unsupported init adapters", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
+    try {
+      const unsupported = await runCli(["init", "--adapters", "gitlab"], {}, workspace);
+      const mixedNone = await runCli(["init", "--adapters", "none,github"], {}, workspace);
+
+      expect(unsupported.exitCode).toBe(1);
+      expect(`${unsupported.stdout}\n${unsupported.stderr}`).toContain(
+        "Unsupported pipr init adapter 'gitlab'. Supported adapters: github",
+      );
+      expect(mixedNone.exitCode).toBe(1);
+      expect(`${mixedNone.stdout}\n${mixedNone.stderr}`).toContain(
+        "Adapter 'none' cannot be mixed with other init adapters",
+      );
+    } finally {
+      await removeWorkspace(workspace);
+    }
+  });
+
   it("checks the repo root dogfood config", async () => {
-    const repoRoot = path.resolve("../..");
     const result = await runCli(["check"], {}, repoRoot);
 
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -174,7 +218,6 @@ describe("pipr CLI", () => {
   });
 
   it("embeds standalone SDK declarations for release init", async () => {
-    const repoRoot = path.resolve("../..");
     const declaration = embeddedSdkDeclaration(await readSdkDeclarationModules(repoRoot));
 
     expect(declaration).toContain('declare module "@pipr/sdk"');

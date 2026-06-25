@@ -20,6 +20,9 @@ repo/
         └── pipr.yml           # GitHub Action delivery target
 ```
 
+Use `pipr init --adapters none` to skip adapter files and create only the `.pipr` tree.
+Run `pipr init --help` to list supported init adapters.
+
 The config is the only public authoring surface. Do not put runtime settings in `.pi`; pipr creates any Pi home it needs inside the Action image.
 
 ## Minimal config

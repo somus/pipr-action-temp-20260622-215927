@@ -16,6 +16,7 @@ export type RuntimeCommandOptions = {
 
 export type InitCommandOptions = RuntimeCommandOptions & {
   force: boolean;
+  adapters?: readonly string[];
 };
 
 export type DryRunCommandOptions = RuntimeCommandOptions & {

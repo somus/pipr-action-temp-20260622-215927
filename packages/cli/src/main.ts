@@ -11,6 +11,7 @@ import {
   runInspectCommand,
   runLocalTaskCommand,
   runValidateCommand,
+  supportedOfficialInitAdapters,
 } from "@pipr/runtime";
 import { Command } from "commander";
 
@@ -20,6 +21,7 @@ type CliOptions = {
   configDir: string;
   event?: string;
   force?: boolean;
+  adapters?: string;
   requireEnv?: boolean;
   base?: string;
   head?: string;
@@ -43,6 +45,11 @@ function createProgram(): Command {
     .command("init")
     .description("Create editable TypeScript config")
     .option("--config-dir <dir>", "Config directory", ".pipr")
+    .option(
+      "--adapters <adapters>",
+      `Adapters to initialize (${supportedOfficialInitAdapters.join(", ")}; use 'none' to skip adapter files)`,
+      "github",
+    )
     .option("--force", "Overwrite existing pipr files")
     .action(runInit);
 
@@ -248,11 +255,16 @@ async function runInit(options: CliOptions): Promise<void> {
     rootDir: process.cwd(),
     configDir: options.configDir,
     force: options.force === true,
+    adapters: parseInitAdapters(options.adapters),
   });
   console.log(
     `created ${result.created.length} file(s)` +
       (result.overwritten.length > 0 ? `; overwrote ${result.overwritten.length}` : ""),
   );
+}
+
+function parseInitAdapters(adapters: string | undefined): string[] | undefined {
+  return adapters?.split(",").map((adapter) => adapter.trim());
 }
 
 async function runCheck(options: CliOptions): Promise<void> {
