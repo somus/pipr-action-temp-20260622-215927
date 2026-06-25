@@ -102,6 +102,27 @@ describe("definePipr", () => {
     ).toThrow("must start with @pipr");
   });
 
+  it("rejects rest command captures outside the final required position", () => {
+    const error = "Rest capture '<question...>' must be the final required command pattern token";
+    expect(() =>
+      buildPiprPlan(
+        definePipr((pipr) => {
+          const task = pipr.task({ name: "ask", run() {} });
+          pipr.command({ pattern: "@pipr ask [<question...>]", task });
+        }),
+      ),
+    ).toThrow(error);
+
+    expect(() =>
+      buildPiprPlan(
+        definePipr((pipr) => {
+          const task = pipr.task({ name: "ask", run() {} });
+          pipr.command({ pattern: "@pipr ask <question...> --json", task });
+        }),
+      ),
+    ).toThrow(error);
+  });
+
   it("rejects old positional builder calls at runtime", () => {
     const factory = definePipr((pipr) => {
       expect(() =>

@@ -21,6 +21,8 @@ import type { ChangeRequestEventContext } from "../../types.js";
 import type { InlineThreadContext } from "../types.js";
 import { mapFindingToGithubReviewCommentLocation } from "./inline.js";
 
+const commandResponseMarker = "pipr:command-response";
+
 const githubCommentFields = {
   id: z.number().int().positive(),
   body: z.string().nullable().optional(),
@@ -517,6 +519,46 @@ export async function publishGitHubPublicationPlan(options: {
   return result;
 }
 
+export async function publishGitHubCommandResponse(options: {
+  client: GitHubPublicationClient;
+  change: ChangeRequestEventContext;
+  sourceCommentId: number;
+  commandName: string;
+  body: string;
+}): Promise<{ action: "created" | "updated"; id: number }> {
+  await assertCurrentHeadSha(options.client, options.change, options.change.change.head.sha);
+
+  const ownerLogin = await options.client.getAuthenticatedUserLogin();
+  const marker = renderCommandResponseMarker({
+    changeNumber: options.change.change.number,
+    sourceCommentId: options.sourceCommentId,
+    commandName: options.commandName,
+  });
+  const body = [marker, "", options.body, ""].join("\n");
+  const existing = findCommandResponseComment(
+    await options.client.listIssueComments({
+      repo: options.change.repository.slug,
+      issueNumber: options.change.change.number,
+    }),
+    marker,
+    ownerLogin,
+  );
+  if (existing) {
+    const updated = await options.client.updateIssueComment({
+      repo: options.change.repository.slug,
+      commentId: existing.id,
+      body,
+    });
+    return { action: "updated", id: updated.id };
+  }
+  const created = await options.client.createIssueComment({
+    repo: options.change.repository.slug,
+    issueNumber: options.change.change.number,
+    body,
+  });
+  return { action: "created", id: created.id };
+}
+
 export async function publishGitHubThreadActions(options: {
   client: GitHubPublicationClient;
   change: ChangeRequestEventContext;
@@ -966,6 +1008,25 @@ function findMainComment(
   changeNumber: number,
   ownerLogin: string,
 ): GitHubIssueComment | undefined {
+  return findOwnedIssueComment(comments, ownerLogin, (firstLine) => {
+    const parsed = parseMainCommentIdentity(firstLine);
+    return parsed?.marker === marker && parsed.changeNumber === changeNumber;
+  });
+}
+
+function findCommandResponseComment(
+  comments: GitHubIssueComment[],
+  marker: string,
+  ownerLogin: string,
+): GitHubIssueComment | undefined {
+  return findOwnedIssueComment(comments, ownerLogin, (firstLine) => firstLine === marker);
+}
+
+function findOwnedIssueComment(
+  comments: GitHubIssueComment[],
+  ownerLogin: string,
+  matchesFirstLine: (firstLine: string | undefined) => boolean,
+): GitHubIssueComment | undefined {
   return comments.find((comment) => {
     if (comment.authorLogin !== ownerLogin) {
       return false;
@@ -974,7 +1035,14 @@ function findMainComment(
       comment.body === null || comment.body === undefined
         ? undefined
         : firstNonEmptyLine(comment.body);
-    const parsed = parseMainCommentIdentity(firstLine);
-    return parsed?.marker === marker && parsed.changeNumber === changeNumber;
+    return matchesFirstLine(firstLine);
   });
+}
+
+function renderCommandResponseMarker(options: {
+  changeNumber: number;
+  sourceCommentId: number;
+  commandName: string;
+}): string {
+  return `<!-- ${commandResponseMarker} change=${options.changeNumber} source=${options.sourceCommentId} command=${options.commandName} -->`;
 }

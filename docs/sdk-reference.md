@@ -179,12 +179,15 @@ pipr.local({ name: "security", task });
 | `ctx.repository` | Provider-neutral repository metadata. |
 | `ctx.change` | Provider-neutral change request metadata plus diff helpers. |
 | `ctx.pi.run(agent, input, options?)` | Execute a Pi-backed agent and validate structured output. |
+| `ctx.command` | Present only for command-triggered tasks. Includes `name`, `line`, parsed `arguments`, and `reply(markdown)`. |
 | `ctx.review.prior()` | Read prior review state: `main?`, `reviewedHeadSha?`, and `inlineFindings[]` with `id`, `status`, `path`, `rangeId`, `side`, `startLine`, and `endLine`. |
 | `ctx.check.pass/fail/neutral(summary?)` | Set one explicit task check result. Check failure does not fail the Action process by itself. |
 | `ctx.comment(value)` | Emit the selected run's final Main Review Comment markdown and Inline Review Comments. |
 | `ctx.log` | Write runtime logs. |
 
 `ctx.change.diffManifest(...)` returns commentable file ranges. Findings must reference those ranges by `rangeId`.
+
+`ctx.command.reply(...)` emits a normal pull request issue comment response for command tasks. A task must emit exactly one final output: either `ctx.comment(...)` for review publication or `ctx.command.reply(...)` for command response publication.
 
 When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)` and `ctx.pi.run(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops findings from that scoped Pi result when they are outside the scope. That scope is preserved when passing returned findings or cloning them with object spread.
 
@@ -259,7 +262,7 @@ Set `respondWhenStillValid: false` to keep user-reply verifier runs silent unles
 
 ## Comment output
 
-Each selected run must call `ctx.comment(value)` exactly once. Missing or duplicate calls fail the run.
+Each selected run must emit exactly one final output. Use `ctx.comment(value)` for review publication, or `ctx.command.reply(value)` for command response publication. Missing or duplicate final outputs fail the run.
 
 Use `ctx.comment(...)` for Main Review Comment markdown:
 

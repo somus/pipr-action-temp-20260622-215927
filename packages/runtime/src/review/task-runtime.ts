@@ -1,5 +1,6 @@
 import type {
   CheckHandle,
+  CommandContext,
   CommentValue,
   DiffManifestOptions,
   PathFilter,
@@ -64,10 +65,13 @@ export type RunTaskRuntimeOptions = {
   loadPriorMainComment?: () => Promise<string | undefined>;
   loadInlineThreadContexts?: () => Promise<import("../hosts/types.js").InlineThreadContext[]>;
   checkSink?: RuntimeCheckSink;
+  commandInvocation?: RuntimeCommandInvocation;
 };
 
+export type RuntimeCommandInvocation = Pick<CommandContext, "name" | "line" | "arguments">;
+
 export type ReviewRuntimeResult = {
-  kind: "review" | "skipped";
+  kind: "review" | "skipped" | "command-response";
   skipReason?: string;
   provider: ProviderConfig;
   diffManifest: DiffManifest;
@@ -78,10 +82,17 @@ export type ReviewRuntimeResult = {
   inlineCommentDrafts: InlineCommentDraft[];
   taskChecks: RuntimeTaskCheckResult[];
   repairAttempted: boolean;
+  commandResponse?: {
+    commandName: string;
+    line: string;
+    arguments: Record<string, string>;
+    body: string;
+  };
 };
 
 type OutputState = {
   comment?: CommentContribution;
+  commandResponse?: CommandResponseContribution;
   findings: FindingContribution[];
   findingScopes: WeakMap<readonly ReviewFinding[], PathFilter>;
   providerModels: string[];
@@ -92,6 +103,15 @@ type OutputState = {
 type CommentContribution = {
   taskName: string;
   value: CommentValue;
+};
+
+type OutputStateWithComment = OutputState & {
+  comment: CommentContribution;
+};
+
+type CommandResponseContribution = {
+  taskName: string;
+  value: string;
 };
 
 type FindingContribution = {
@@ -189,9 +209,25 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       : new Error(String(failedTask.error));
   }
   const output = mergeTaskOutputs(taskResults);
-  if (!output.comment) {
-    throw new Error("ctx.comment(...) must be called exactly once per selected run");
+  const taskChecks = taskResults.map((result) =>
+    runtimeTaskCheckResult(result.taskName, result.output.check ?? { conclusion: "success" }),
+  );
+  const commandResponse = commandResponseResultFromOutput({
+    config,
+    event: options.event,
+    provider,
+    diffManifest,
+    selectedTasks,
+    output,
+    taskChecks,
+    commandInvocation: options.commandInvocation,
+    trustedConfigSha: options.trustedConfigSha,
+    trustedConfigHash: options.trustedConfigHash,
+  });
+  if (commandResponse) {
+    return commandResponse;
   }
+  assertReviewCommentOutput(output, options.commandInvocation !== undefined);
 
   const review = collectedReview(output);
   const validated = validatePrReview(review, diffManifest, {
@@ -242,11 +278,49 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     publicationPlan,
     mainComment: publicationPlan.mainComment,
     inlineCommentDrafts: publishing.inlineCommentDrafts,
-    taskChecks: taskResults.map((result) =>
-      runtimeTaskCheckResult(result.taskName, result.output.check ?? { conclusion: "success" }),
-    ),
+    taskChecks,
     repairAttempted: output.repairAttempted,
   };
+}
+
+function commandResponseResultFromOutput(options: {
+  config: PiprConfig;
+  event: ChangeRequestEventContext;
+  provider: ProviderConfig;
+  diffManifest: DiffManifest;
+  selectedTasks: string[];
+  output: OutputState;
+  taskChecks: RuntimeTaskCheckResult[];
+  commandInvocation?: RuntimeCommandInvocation;
+  trustedConfigSha?: string;
+  trustedConfigHash?: string;
+}): ReviewRuntimeResult | undefined {
+  const commandResponse = options.output.commandResponse;
+  if (!commandResponse) {
+    return undefined;
+  }
+  if (!options.commandInvocation) {
+    throw new Error("ctx.command.reply(...) is only available for command-triggered tasks");
+  }
+  return commandResponseRuntimeResult({
+    ...options,
+    commandResponse,
+    commandInvocation: options.commandInvocation,
+  });
+}
+
+function assertReviewCommentOutput(
+  output: OutputState,
+  hasCommandInvocation: boolean,
+): asserts output is OutputStateWithComment {
+  if (output.comment) {
+    return;
+  }
+  throw new Error(
+    hasCommandInvocation
+      ? "ctx.comment(...) or ctx.command.reply(...) must be called exactly once per selected run"
+      : "ctx.comment(...) must be called exactly once per selected run",
+  );
 }
 
 async function runSynchronizeVerifier(options: {
@@ -332,6 +406,16 @@ function createTaskContext(
       },
     },
     platform: { id: options.event.platform.id },
+    command: options.commandInvocation
+      ? {
+          name: options.commandInvocation.name,
+          line: options.commandInvocation.line,
+          arguments: { ...options.commandInvocation.arguments },
+          async reply(markdown) {
+            collectCommandResponse(options.output, markdown, options.taskName);
+          },
+        }
+      : undefined,
     pi: {
       async run(agent, input, runOptions) {
         const result = await runReviewAgent({
@@ -364,19 +448,49 @@ function createTaskContext(
 function mergeTaskOutputs(results: TaskRunResult[]): OutputState {
   const merged = createOutputState();
   for (const { output } of results) {
-    if (output.comment) {
-      if (merged.comment) {
-        throw new Error(
-          `ctx.comment(...) may be called once per selected run; received comments from '${merged.comment.taskName}' and '${output.comment.taskName}'`,
-        );
-      }
-      merged.comment = output.comment;
-    }
+    mergeCommentContribution(merged, output.comment);
+    mergeCommandResponseContribution(merged, output.commandResponse);
     merged.findings.push(...output.findings);
     merged.providerModels.push(...output.providerModels);
     merged.repairAttempted ||= output.repairAttempted;
   }
   return merged;
+}
+
+function mergeCommentContribution(
+  merged: OutputState,
+  comment: CommentContribution | undefined,
+): void {
+  if (!comment) {
+    return;
+  }
+  if (merged.comment) {
+    throw new Error(
+      `ctx.comment(...) may be called once per selected run; received comments from '${merged.comment.taskName}' and '${comment.taskName}'`,
+    );
+  }
+  if (merged.commandResponse) {
+    throw new Error("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
+  }
+  merged.comment = comment;
+}
+
+function mergeCommandResponseContribution(
+  merged: OutputState,
+  commandResponse: CommandResponseContribution | undefined,
+): void {
+  if (!commandResponse) {
+    return;
+  }
+  if (merged.commandResponse) {
+    throw new Error(
+      `ctx.command.reply(...) may be called once per selected run; received replies from '${merged.commandResponse.taskName}' and '${commandResponse.taskName}'`,
+    );
+  }
+  if (merged.comment) {
+    throw new Error("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
+  }
+  merged.commandResponse = commandResponse;
 }
 
 function manifestForOptions(
@@ -511,6 +625,9 @@ function runtimeTaskCheckResult(
 }
 
 function collectComment(state: OutputState, value: CommentValue, taskName: string): void {
+  if (state.commandResponse) {
+    throw new Error("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
+  }
   if (state.comment) {
     throw new Error(
       `ctx.comment(...) may be called once per selected run; '${taskName}' called it more than once`,
@@ -521,6 +638,18 @@ function collectComment(state: OutputState, value: CommentValue, taskName: strin
     return;
   }
   collectInlineFindings(state, value.inlineFindings);
+}
+
+function collectCommandResponse(state: OutputState, value: string, taskName: string): void {
+  if (state.comment) {
+    throw new Error("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
+  }
+  if (state.commandResponse) {
+    throw new Error(
+      `ctx.command.reply(...) may be called once per selected run; '${taskName}' called it more than once`,
+    );
+  }
+  state.commandResponse = { taskName, value };
 }
 
 function priorReviewForTask(
@@ -623,6 +752,65 @@ function collectedReview(output: OutputState): PrReview {
   return {
     summary: { body: "Review completed." },
     inlineFindings: output.findings.map((item) => item.finding),
+  };
+}
+
+function commandResponseRuntimeResult(options: {
+  config: PiprConfig;
+  event: ChangeRequestEventContext;
+  provider: ProviderConfig;
+  diffManifest: DiffManifest;
+  selectedTasks: string[];
+  output: OutputState;
+  commandResponse: CommandResponseContribution;
+  taskChecks: RuntimeTaskCheckResult[];
+  commandInvocation: RuntimeCommandInvocation;
+  trustedConfigSha?: string;
+  trustedConfigHash?: string;
+}): ReviewRuntimeResult {
+  const review: PrReview = {
+    summary: { body: options.commandResponse.value },
+    inlineFindings: [],
+  };
+  const validated: ValidatedReview = { review, validFindings: [], droppedFindings: [] };
+  const publishing = buildCommentPublishingPlan({
+    event: options.event,
+    main: options.commandResponse.value,
+    validated,
+    manifest: options.diffManifest,
+    maxInlineComments: options.config.publication.maxInlineComments,
+    metadata: {
+      runtimeVersion,
+      trustedConfigSha: options.trustedConfigSha,
+      trustedConfigHash: options.trustedConfigHash,
+      reviewedHeadSha: options.event.change.head.sha,
+      providerModels:
+        options.output.providerModels.length > 0
+          ? uniq(options.output.providerModels)
+          : [options.provider.model],
+      selectedTasks: options.selectedTasks,
+      failedTasks: [],
+      validFindings: 0,
+      droppedFindings: 0,
+    },
+  });
+  return {
+    kind: "command-response",
+    provider: options.provider,
+    diffManifest: options.diffManifest,
+    review,
+    validated,
+    publicationPlan: publishing.publicationPlan,
+    mainComment: publishing.publicationPlan.mainComment,
+    inlineCommentDrafts: [],
+    taskChecks: options.taskChecks,
+    repairAttempted: options.output.repairAttempted,
+    commandResponse: {
+      commandName: options.commandInvocation.name,
+      line: options.commandInvocation.line,
+      arguments: options.commandInvocation.arguments,
+      body: options.commandResponse.value,
+    },
   };
 }
 

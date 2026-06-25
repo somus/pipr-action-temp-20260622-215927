@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   loadGitHubPriorReviewState,
+  publishGitHubCommandResponse,
   publishGitHubThreadActions,
 } from "../../hosts/github/publication.js";
 import type { ChangeRequestEventContext, DiffManifest, ValidatedReview } from "../../types.js";
@@ -163,6 +164,21 @@ describe("publishPublicationPlan", () => {
     ).rejects.toThrow("Change request head changed");
   });
 
+  it("blocks command response publication when the PR head changed", async () => {
+    const client = new FakePublicationClient("new-head");
+
+    await expect(
+      publishGitHubCommandResponse({
+        client,
+        change: event,
+        sourceCommentId: 123,
+        commandName: "ask",
+        body: "Answer.",
+      }),
+    ).rejects.toThrow("Change request head changed");
+    expect(client.issueComments).toHaveLength(0);
+  });
+
   it("dedupes existing inline markers before posting", async () => {
     const client = new FakePublicationClient("head");
     const publicationPlan = plan({ maxInlineComments: 1 });
@@ -265,21 +281,7 @@ describe("publishPublicationPlan", () => {
         },
       ],
     };
-    const reintroducedPlan = {
-      ...publicationPlan,
-      mainComment: buildPublicationPlan({
-        event,
-        main: "Review completed.",
-        inlineItems: [],
-        metadata: publicationPlan.metadata,
-        reviewState,
-      }).mainComment,
-    };
-    client.issueComments.push({
-      id: 20,
-      body: reintroducedPlan.mainComment,
-      authorLogin: client.ownerLogin,
-    });
+    addPriorMainComment(client, publicationPlan, reviewState);
     client.reviewComments.push(
       fakeReviewComment({
         id: 11,
@@ -293,9 +295,7 @@ describe("publishPublicationPlan", () => {
       }),
     );
 
-    const state = await loadGitHubPriorReviewState({ client, change: event });
-
-    expect(state?.findings[0]?.status).toBe("open");
+    await expectPriorFindingOpen(client);
   });
 
   it("ignores nested resolved markers in pipr-owned comment bodies", async () => {
@@ -304,17 +304,7 @@ describe("publishPublicationPlan", () => {
       ...publicationPlan.reviewState,
       findings: [{ ...finding, status: "open" as const }],
     };
-    client.issueComments.push({
-      id: 20,
-      body: buildPublicationPlan({
-        event,
-        main: "Review completed.",
-        inlineItems: [],
-        metadata: publicationPlan.metadata,
-        reviewState,
-      }).mainComment,
-      authorLogin: client.ownerLogin,
-    });
+    addPriorMainComment(client, publicationPlan, reviewState);
     client.reviewComments.push(
       fakeReviewComment({
         id: 11,
@@ -328,9 +318,7 @@ describe("publishPublicationPlan", () => {
       }),
     );
 
-    const state = await loadGitHubPriorReviewState({ client, change: event });
-
-    expect(state?.findings[0]?.status).toBe("open");
+    await expectPriorFindingOpen(client);
   });
 
   it("replies to and resolves stale inline threads for resolved findings", async () => {
@@ -347,8 +335,7 @@ describe("publishPublicationPlan", () => {
     expect(client.reviewReplies[0]?.body).toContain(
       "Resolved in https://github.com/local/pipr/commit/head.",
     );
-    expect(client.resolvedThreadIds).toEqual(["thread-1"]);
-    expect(client.reviewThreads[0]?.isResolved).toBe(true);
+    expectThreadResolved(client, "thread-1");
   });
 
   it("resolves stale inline threads by parent comment when verifier action lacks a thread id", async () => {
@@ -364,8 +351,7 @@ describe("publishPublicationPlan", () => {
 
     expect(result.metadata.inlineResolutionErrors).toEqual([]);
     expect(client.reviewReplies).toHaveLength(1);
-    expect(client.resolvedThreadIds).toEqual(["thread-1"]);
-    expect(client.reviewThreads[0]?.isResolved).toBe(true);
+    expectThreadResolved(client, "thread-1");
   });
 
   it("does not duplicate stale inline resolution replies", async () => {
@@ -376,8 +362,7 @@ describe("publishPublicationPlan", () => {
 
     await publishPublicationPlan({ client, change: event, plan: publicationPlan });
 
-    expect(client.reviewReplies).toHaveLength(0);
-    expect(client.resolvedThreadIds).toHaveLength(0);
+    expectNoResolutionActivity(client);
   });
 
   it("does not reply to already-resolved threads", async () => {
@@ -385,8 +370,7 @@ describe("publishPublicationPlan", () => {
 
     await publishPublicationPlan({ client, change: event, plan: publicationPlan });
 
-    expect(client.reviewReplies).toHaveLength(0);
-    expect(client.resolvedThreadIds).toHaveLength(0);
+    expectNoResolutionActivity(client);
   });
 
   it("does not add a new resolution reply for each rerun head", async () => {
@@ -864,6 +848,39 @@ function addStaleInlineThread(
     commentIds.push(11);
   }
   client.reviewThreads.push({ id: "thread-1", isResolved: options.resolved, commentIds });
+}
+
+function addPriorMainComment(
+  client: FakePublicationClient,
+  publicationPlan: ReturnType<typeof resolvedPriorPlan>,
+  reviewState: PriorReviewState,
+): void {
+  client.issueComments.push({
+    id: 20,
+    body: buildPublicationPlan({
+      event,
+      main: "Review completed.",
+      inlineItems: [],
+      metadata: publicationPlan.metadata,
+      reviewState,
+    }).mainComment,
+    authorLogin: client.ownerLogin,
+  });
+}
+
+function expectThreadResolved(client: FakePublicationClient, threadId: string): void {
+  expect(client.resolvedThreadIds).toEqual([threadId]);
+  expect(client.reviewThreads.find((thread) => thread.id === threadId)?.isResolved).toBe(true);
+}
+
+function expectNoResolutionActivity(client: FakePublicationClient): void {
+  expect(client.reviewReplies).toHaveLength(0);
+  expect(client.resolvedThreadIds).toHaveLength(0);
+}
+
+async function expectPriorFindingOpen(client: FakePublicationClient): Promise<void> {
+  const state = await loadGitHubPriorReviewState({ client, change: event });
+  expect(state?.findings[0]?.status).toBe("open");
 }
 
 function staleResolutionFixture(options: { resolved: boolean; withResolutionReply?: boolean }): {

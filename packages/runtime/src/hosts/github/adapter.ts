@@ -14,6 +14,7 @@ import {
   loadGitHubInlineThreadContexts,
   loadGitHubPriorMainComment,
   loadGitHubPriorReviewState,
+  publishGitHubCommandResponse,
   publishGitHubPublicationPlan,
   publishGitHubThreadActions,
 } from "./publication.js";
@@ -63,6 +64,15 @@ export function createGitHubHostAdapter(options: GitHubHostAdapterOptions = {}):
         client: publicationClient,
         change: options.change,
         plan: options.plan,
+      });
+    },
+    publishCommandResponse(options) {
+      return publishGitHubCommandResponse({
+        client: publicationClient,
+        change: options.change,
+        sourceCommentId: options.sourceCommentId,
+        commandName: options.commandName,
+        body: options.body,
       });
     },
     publishThreadActions(options) {

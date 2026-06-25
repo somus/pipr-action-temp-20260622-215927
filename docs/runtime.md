@@ -144,13 +144,16 @@ Review Tasks do not write code host comments. A selected run emits one final out
 
 - `ctx.comment(markdown)`
 - `ctx.comment({ main, inlineFindings })`
+- `ctx.command.reply(markdown)` for command-triggered response tasks
 
-pipr turns that output into a provider-neutral `PublicationPlan`:
+For review output, pipr turns that output into a provider-neutral `PublicationPlan`:
 
 - one Main Review Comment
 - zero or more Inline Review Comment drafts
 - dropped finding metadata
 - run metadata
+
+Command response output publishes a normal pull request issue comment keyed by the source command comment. Rerunning the same source command updates the previous bot response.
 
 Before publishing, pipr checks the current head SHA. It upserts the Main Review Comment by hidden marker and replaces the visible main body wholesale. That marker also carries pipr-owned review state for prior finding IDs, locations, statuses, task scope, and head metadata. Reruns pass matching open prior finding locations back to the reviewer and keep open findings visible in state unless the internal verifier explicitly marks them fixed. On `pull_request.synchronize`, the verifier can recheck prior pipr Inline Review Comments against the current diff, reply with the resolving commit, and resolve the GitHub review thread when permissions allow. On `pull_request_review_comment.created`, the verifier can process user replies to pipr Inline Review Comments, resolve fixed findings, or explain why a still-valid finding remains open. Cleanup failures are recorded in publication metadata without failing the review. Inline Review Comments are deduped by stable finding id, reviewed head SHA, and pipr-owned same-head location overlap.
 

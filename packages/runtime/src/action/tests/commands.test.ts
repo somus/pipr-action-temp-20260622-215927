@@ -26,7 +26,7 @@ describe("runActionCommand issue_comment dispatch", () => {
           action: "created",
           repository: { full_name: "local/pipr" },
           issue: { number: 1 },
-          comment: { body: "@pipr review", user: { login: "somu" } },
+          comment: { id: 123, body: "@pipr review", user: { login: "somu" } },
         }),
       );
 
@@ -58,6 +58,21 @@ describe("runActionCommand issue_comment dispatch", () => {
         reason: "Input 'scope' must be one of: changed, full",
       });
       expect(result.kind === "command-help" ? result.body : "").toContain("@pipr review");
+      await expectPiNotCalled(workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("returns command help for ask without a question without running Pi", async () => {
+    const workspace = await createCommandWorkspace({ baseConfigTs: askConfigTs() });
+    try {
+      const result = await runIssueCommentCommand(workspace, "@pipr ask", "read");
+
+      expect(result).toMatchObject({
+        kind: "command-help",
+        reason: "Expected '<question...>'",
+      });
       await expectPiNotCalled(workspace);
     } finally {
       await removeWorkspace(workspace.rootDir);
@@ -177,6 +192,84 @@ describe("runActionCommand issue_comment dispatch", () => {
       });
       expect(result.kind === "review" ? result.review.validated.validFindings : []).toEqual([]);
       await expectReviewRanAtHead(result, workspace);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("publishes command replies from configured ask commands", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: askConfigTs(),
+      checkoutBaseBeforeRun: true,
+    });
+    const publication = recordingCommandPublicationClient(workspace);
+    await writePiExecutable(
+      workspace.piExecutable,
+      '{"body":"The change updates command output."}',
+    );
+
+    try {
+      const result = await runIssueCommentCommand(
+        workspace,
+        "@pipr ask what changed?",
+        "read",
+        undefined,
+        publication.client,
+      );
+
+      expect(result).toMatchObject({
+        kind: "command-response",
+        command: "ask",
+        response: {
+          body: "The change updates command output.",
+        },
+        publication: { action: "created", id: 10 },
+      });
+      expect(publication.writes.created).toHaveLength(1);
+      expect(publication.writes.created[0]).toContain(
+        "<!-- pipr:command-response change=1 source=123 command=ask -->",
+      );
+      expect(publication.writes.created[0]).toContain("The change updates command output.");
+      expect(publication.writes.updated).toEqual([]);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("updates command replies for repeated source comments", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: askConfigTs(),
+      checkoutBaseBeforeRun: true,
+    });
+    const publication = recordingCommandPublicationClient(workspace, [
+      {
+        id: 88,
+        body: [
+          "<!-- pipr:command-response change=1 source=123 command=ask -->",
+          "",
+          "Prior answer.",
+        ].join("\n"),
+        authorLogin: "github-actions[bot]",
+      },
+    ]);
+    await writePiExecutable(workspace.piExecutable, '{"body":"Updated answer."}');
+
+    try {
+      const result = await runIssueCommentCommand(
+        workspace,
+        "@pipr ask what changed?",
+        "read",
+        undefined,
+        publication.client,
+      );
+
+      expect(result).toMatchObject({
+        kind: "command-response",
+        publication: { action: "updated", id: 88 },
+      });
+      expect(publication.writes.created).toEqual([]);
+      expect(publication.writes.updated).toHaveLength(1);
+      expect(publication.writes.updated[0]).toContain("Updated answer.");
     } finally {
       await removeWorkspace(workspace.rootDir);
     }
@@ -574,19 +667,10 @@ describe("runActionCommand pull_request_review_comment dispatch", () => {
       baseConfigTs: reviewConfigTs({ autoResolve: false }),
     });
     try {
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writeReviewCommentEvent(eventPath);
-
-      await expect(
-        runReviewCommentAction(workspace, {
-          githubClient: fakeGitHubClient(workspace, "write"),
-          githubPublicationClient: failingGitHubPublishingClient(),
-        }),
-      ).resolves.toMatchObject({
-        kind: "ignored",
+      await expectReviewCommentIgnored(workspace, {
+        githubClient: fakeGitHubClient(workspace, "write"),
         reason: "publication.autoResolve is disabled",
       });
-      await expectPiNotCalled(workspace);
     } finally {
       await removeWorkspace(workspace.rootDir);
     }
@@ -597,19 +681,10 @@ describe("runActionCommand pull_request_review_comment dispatch", () => {
       baseConfigTs: reviewConfigTs({ autoResolve: "userRepliesDisabled" }),
     });
     try {
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writeReviewCommentEvent(eventPath);
-
-      await expect(
-        runReviewCommentAction(workspace, {
-          githubClient: fakeGitHubClient(workspace, "write"),
-          githubPublicationClient: failingGitHubPublishingClient(),
-        }),
-      ).resolves.toMatchObject({
-        kind: "ignored",
+      await expectReviewCommentIgnored(workspace, {
+        githubClient: fakeGitHubClient(workspace, "write"),
         reason: "publication.autoResolve.userReplies is disabled",
       });
-      await expectPiNotCalled(workspace);
     } finally {
       await removeWorkspace(workspace.rootDir);
     }
@@ -640,32 +715,14 @@ describe("runActionCommand pull_request_review_comment dispatch", () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     const publication = verifierPublicationClient(workspace);
     try {
-      await writePiExecutable(
-        workspace.piExecutable,
-        JSON.stringify({
-          findings: [
-            {
-              id: "fnd_existing",
-              status: "still-valid",
-              response: "This still applies.",
-            },
-          ],
-        }),
-      );
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writeReviewCommentEvent(eventPath, { actor: "somu" });
-
-      const result = await runReviewCommentAction(workspace, {
+      await writeStillValidVerifierOutput(workspace);
+      await expectVerifierReplyPublished(workspace, publication, {
+        event: { actor: "somu" },
         githubClient: fakeGitHubClient(workspace, "read", {
           author: "somu",
           failPermission: true,
         }),
-        githubPublicationClient: publication,
       });
-
-      expect(result).toMatchObject({ kind: "verifier", errors: [] });
-      expect(publication.reviewReplies).toHaveLength(1);
-      await expectPiCalled(workspace);
     } finally {
       await removeWorkspace(workspace.rootDir);
     }
@@ -678,29 +735,11 @@ describe("runActionCommand pull_request_review_comment dispatch", () => {
     });
     const publication = verifierPublicationClient(workspace);
     try {
-      await writePiExecutable(
-        workspace.piExecutable,
-        JSON.stringify({
-          findings: [
-            {
-              id: "fnd_existing",
-              status: "still-valid",
-              response: "This still applies.",
-            },
-          ],
-        }),
-      );
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writeReviewCommentEvent(eventPath, { actor: "outsider" });
-
-      const result = await runReviewCommentAction(workspace, {
+      await writeStillValidVerifierOutput(workspace);
+      await expectVerifierReplyPublished(workspace, publication, {
+        event: { actor: "outsider" },
         githubClient: fakeGitHubClient(workspace, "read", { failPermission: true }),
-        githubPublicationClient: publication,
       });
-
-      expect(result).toMatchObject({ kind: "verifier", errors: [] });
-      expect(publication.reviewReplies).toHaveLength(1);
-      await expectPiCalled(workspace);
     } finally {
       await removeWorkspace(workspace.rootDir);
     }
@@ -710,32 +749,16 @@ describe("runActionCommand pull_request_review_comment dispatch", () => {
     const workspace = await createCommandWorkspace({ checkoutBaseBeforeRun: true });
     const publication = verifierPublicationClient(workspace);
     try {
-      await writePiExecutable(
-        workspace.piExecutable,
-        JSON.stringify({
-          findings: [
-            {
-              id: "fnd_existing",
-              status: "still-valid",
-              response: "This still applies because the unsafe path remains.",
-            },
-          ],
-        }),
+      await writeStillValidVerifierOutput(
+        workspace,
+        "This still applies because the unsafe path remains.",
       );
-      const eventPath = path.join(workspace.rootDir, "event.json");
-      await writeReviewCommentEvent(eventPath);
-
-      const result = await runReviewCommentAction(workspace, {
+      await expectVerifierReplyPublished(workspace, publication, {
         githubClient: fakeGitHubClient(workspace, "write"),
-        githubPublicationClient: publication,
       });
-
-      expect(result).toMatchObject({ kind: "verifier", errors: [] });
-      expect(publication.reviewReplies).toHaveLength(1);
       expect(publication.reviewReplies[0]?.body).toContain(
         renderVerifierResponseMarker("fnd_existing", "reply-11:still-valid:fnd_existing"),
       );
-      await expectPiCalled(workspace);
       expect(currentGitHead(workspace.rootDir)).toBe(workspace.headSha);
     } finally {
       await removeWorkspace(workspace.rootDir);
@@ -810,6 +833,7 @@ async function runIssueCommentCommand(
   body: string,
   permission: RepositoryPermission,
   checks?: FakeCheckRuns,
+  githubPublicationClient?: GitHubPublicationClient,
 ) {
   const eventPath = path.join(workspace.rootDir, "event.json");
   await writeIssueCommentEvent(eventPath, body);
@@ -820,7 +844,8 @@ async function runIssueCommentCommand(
     dryRun: false,
     env: issueCommentEnv(workspace.rootDir, eventPath),
     githubClient: fakeGitHubClient(workspace, permission),
-    githubPublicationClient: fakeGitHubPublicationClient(workspace, [], checks),
+    githubPublicationClient:
+      githubPublicationClient ?? fakeGitHubPublicationClient(workspace, [], checks),
     piExecutable: workspace.piExecutable,
   });
 }
@@ -872,6 +897,56 @@ async function expectPiNotCalled(workspace: CommandWorkspace): Promise<void> {
 
 async function expectPiCalled(workspace: CommandWorkspace): Promise<void> {
   await expect(Bun.file(path.join(workspace.rootDir, "pi-called")).text()).resolves.toBe("");
+}
+
+async function expectReviewCommentIgnored(
+  workspace: CommandWorkspace,
+  options: {
+    githubClient: GitHubCommandClient;
+    reason: string;
+    event?: Parameters<typeof writeReviewCommentEvent>[1];
+  },
+): Promise<void> {
+  const eventPath = path.join(workspace.rootDir, "event.json");
+  await writeReviewCommentEvent(eventPath, options.event);
+  await expect(
+    runReviewCommentAction(workspace, {
+      githubClient: options.githubClient,
+      githubPublicationClient: failingGitHubPublishingClient(),
+    }),
+  ).resolves.toMatchObject({ kind: "ignored", reason: options.reason });
+  await expectPiNotCalled(workspace);
+}
+
+async function writeStillValidVerifierOutput(
+  workspace: CommandWorkspace,
+  response = "This still applies.",
+): Promise<void> {
+  await writePiExecutable(
+    workspace.piExecutable,
+    JSON.stringify({
+      findings: [{ id: "fnd_existing", status: "still-valid", response }],
+    }),
+  );
+}
+
+async function expectVerifierReplyPublished(
+  workspace: CommandWorkspace,
+  publication: ReturnType<typeof verifierPublicationClient>,
+  options: {
+    githubClient: GitHubCommandClient;
+    event?: Parameters<typeof writeReviewCommentEvent>[1];
+  },
+): Promise<void> {
+  const eventPath = path.join(workspace.rootDir, "event.json");
+  await writeReviewCommentEvent(eventPath, options.event);
+  const result = await runReviewCommentAction(workspace, {
+    githubClient: options.githubClient,
+    githubPublicationClient: publication,
+  });
+  expect(result).toMatchObject({ kind: "verifier", errors: [] });
+  expect(publication.reviewReplies).toHaveLength(1);
+  await expectPiCalled(workspace);
 }
 
 async function expectReviewRanAtHead(
@@ -951,6 +1026,37 @@ function reviewConfigTs(
   ]
     .filter((line) => line !== "")
     .join("\n");
+}
+
+function askConfigTs(): string {
+  return [
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "export default definePipr((pipr) => {",
+    "  const model = pipr.model({",
+    '    provider: "deepseek",',
+    '    model: "deepseek-reasoner",',
+    '    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),',
+    "  });",
+    "  const askAgent = pipr.agent({",
+    '    name: "ask",',
+    "    model,",
+    '    instructions: "Answer questions about this pull request.",',
+    "    output: pipr.schemas.summary,",
+    '    prompt: (input) => "Question: " + input.question,',
+    "  });",
+    "  const ask = pipr.task({",
+    '    name: "ask",',
+    "    async run(ctx, input) {",
+    "      const manifest = await ctx.change.diffManifest({ compressed: true });",
+    "      const prior = await ctx.review.prior();",
+    "      const answer = await ctx.pi.run(askAgent, { question: input.question, manifest, prior });",
+    "      await ctx.command?.reply(answer.body);",
+    "    },",
+    "  });",
+    '  pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task: ask });',
+    "});",
+  ].join("\n");
 }
 
 function headOnlyConfigTs(): string {
@@ -1061,7 +1167,7 @@ async function writeIssueCommentEvent(
       action,
       repository: { full_name: "local/pipr" },
       issue: { number: 1, pull_request: {} },
-      comment: { body, user: { login: "somu" } },
+      comment: { id: 123, body, user: { login: "somu" } },
     }),
   );
 }
@@ -1207,6 +1313,26 @@ function fakeGitHubPublicationClient(
       });
     },
   };
+}
+
+function recordingCommandPublicationClient(
+  workspace: CommandWorkspace,
+  issueComments: Awaited<ReturnType<GitHubPublicationClient["listIssueComments"]>> = [],
+): {
+  client: GitHubPublicationClient;
+  writes: { created: string[]; updated: string[] };
+} {
+  const writes = { created: [] as string[], updated: [] as string[] };
+  const client = fakeGitHubPublicationClient(workspace, issueComments);
+  client.createIssueComment = async (options) => {
+    writes.created.push(options.body);
+    return { id: 10 };
+  };
+  client.updateIssueComment = async (options) => {
+    writes.updated.push(options.body);
+    return { id: options.commentId };
+  };
+  return { client, writes };
 }
 
 function verifierPublicationClient(workspace: CommandWorkspace): GitHubPublicationClient & {

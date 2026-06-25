@@ -29,6 +29,7 @@ const actionResultHandlers: ActionResultHandlers = {
   ignored: handleIgnoredActionResult,
   "dry-run": handleDryRunActionResult,
   "command-help": handleCommandHelpActionResult,
+  "command-response": handleCommandResponseActionResult,
   review: handleReviewActionResult,
   verifier: handleVerifierActionResult,
 };
@@ -132,6 +133,17 @@ async function handleReviewActionResult(
   await setOutput("main-comment", result.review.mainComment);
   await setOutput("inline-comments", JSON.stringify(result.review.inlineCommentDrafts));
   await setOutput("dropped-findings", JSON.stringify(result.review.validated.droppedFindings));
+  await setOutput("publication", JSON.stringify(result.publication));
+}
+
+async function handleCommandResponseActionResult(
+  result: Extract<ActionCommandResult, { kind: "command-response" }>,
+): Promise<void> {
+  logActionContext(result);
+  info(
+    `pipr command '${result.command}' published response comment (${result.publication.action})`,
+  );
+  await setOutput("main-comment", result.response.body);
   await setOutput("publication", JSON.stringify(result.publication));
 }
 

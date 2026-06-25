@@ -205,6 +205,174 @@ describe("runTaskRuntime", () => {
     expect(result.inlineCommentDrafts.map((item) => item.finding.body)).toEqual(["inline body"]);
   });
 
+  it("records command replies from command-triggered tasks", async () => {
+    let observedCommand: unknown;
+    const plan = testPlan((pipr) => {
+      const task = pipr.task<{ question: string }>({
+        name: "ask",
+        async run(ctx, input) {
+          observedCommand = ctx.command;
+          await ctx.command?.reply(`Answer: ${input.question}`);
+        },
+      });
+      pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task });
+    });
+
+    const result = await runRuntime({
+      plan,
+      taskName: "ask",
+      taskInput: { question: "what changed?" },
+      commandInvocation: {
+        name: "ask",
+        line: "@pipr ask what changed?",
+        arguments: { question: "what changed?" },
+      },
+    });
+
+    expect(observedCommand).toMatchObject({
+      name: "ask",
+      line: "@pipr ask what changed?",
+      arguments: { question: "what changed?" },
+    });
+    expect(result).toMatchObject({
+      kind: "command-response",
+      commandResponse: {
+        commandName: "ask",
+        body: "Answer: what changed?",
+      },
+    });
+  });
+
+  it("does not expose command context outside command-triggered tasks", async () => {
+    let observedCommand: unknown = "unset";
+    const plan = singleTaskPlan({
+      async run(ctx) {
+        observedCommand = ctx.command;
+        await ctx.comment("Review summary.");
+      },
+    });
+
+    await runRuntime({ plan });
+
+    expect(observedCommand).toBeUndefined();
+  });
+
+  it("rejects tasks that emit both a review comment and a command reply", async () => {
+    const plan = testPlan((pipr) => {
+      const task = pipr.task({
+        name: "ask",
+        async run(ctx) {
+          await ctx.command?.reply("Answer.");
+          await ctx.comment("Review summary.");
+        },
+      });
+      pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task });
+    });
+
+    await expect(
+      runRuntime({
+        plan,
+        taskName: "ask",
+        taskInput: { question: "what changed?" },
+        commandInvocation: {
+          name: "ask",
+          line: "@pipr ask what changed?",
+          arguments: { question: "what changed?" },
+        },
+      }),
+    ).rejects.toThrow("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
+  });
+
+  it("rejects multiple command replies from one task", async () => {
+    const plan = testPlan((pipr) => {
+      const task = pipr.task({
+        name: "ask",
+        async run(ctx) {
+          await ctx.command?.reply("First.");
+          await ctx.command?.reply("Second.");
+        },
+      });
+      pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task });
+    });
+
+    await expect(
+      runRuntime({
+        plan,
+        taskName: "ask",
+        taskInput: { question: "what changed?" },
+        commandInvocation: {
+          name: "ask",
+          line: "@pipr ask what changed?",
+          arguments: { question: "what changed?" },
+        },
+      }),
+    ).rejects.toThrow(
+      "ctx.command.reply(...) may be called once per selected run; 'ask' called it more than once",
+    );
+  });
+
+  it("rejects mixed review comments and command replies across selected tasks", async () => {
+    const plan = testPlan((pipr) => {
+      const ask = pipr.task({
+        name: "ask",
+        async run(ctx) {
+          await ctx.command?.reply("Answer.");
+        },
+      });
+      const review = pipr.task({
+        name: "review",
+        async run(ctx) {
+          await ctx.comment("Review summary.");
+        },
+      });
+      pipr.on.changeRequest({ actions: ["opened"], task: ask });
+      pipr.on.changeRequest({ actions: ["opened"], task: review });
+    });
+
+    await expect(
+      runRuntime({
+        plan,
+        commandInvocation: {
+          name: "ask",
+          line: "@pipr ask what changed?",
+          arguments: { question: "what changed?" },
+        },
+      }),
+    ).rejects.toThrow("ctx.comment(...) and ctx.command.reply(...) cannot both be called");
+  });
+
+  it("rejects multiple command replies across selected tasks", async () => {
+    const plan = testPlan((pipr) => {
+      const ask = pipr.task({
+        name: "ask",
+        async run(ctx) {
+          await ctx.command?.reply("Ask answer.");
+        },
+      });
+      const explain = pipr.task({
+        name: "explain",
+        async run(ctx) {
+          await ctx.command?.reply("Explain answer.");
+        },
+      });
+      pipr.on.changeRequest({ actions: ["opened"], task: ask });
+      pipr.on.changeRequest({ actions: ["opened"], task: explain });
+    });
+
+    await expect(
+      runRuntime({
+        plan,
+        commandInvocation: {
+          name: "ask",
+          line: "@pipr ask what changed?",
+          arguments: { question: "what changed?" },
+        },
+      }),
+    ).rejects.toThrow(
+      "ctx.command.reply(...) may be called once per selected run; received replies from 'ask' and 'explain'",
+    );
+  });
+
   it("records explicit ctx.check outcomes without failing the review", async () => {
     const plan = testPlan((pipr) => {
       const task = pipr.task({

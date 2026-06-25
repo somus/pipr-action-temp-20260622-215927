@@ -11,9 +11,10 @@ For a broader introduction, see [pipr Docs](index.md). For the public TypeScript
 3. Build the Diff Manifest from local git state.
 4. Run selected Review Tasks.
 5. Call Pi through `ctx.pi.run()`.
-6. Validate structured review output against the Diff Manifest.
-7. Build the Main Review Comment and Inline Review Comments.
-8. Publish comments through the code host adapter after stale-head checks.
+6. Emit exactly one final output from the task.
+7. For review output, validate structured findings against the Diff Manifest and build the Main Review Comment and Inline Review Comments.
+8. For command response output, build a normal pull request issue comment keyed to the source command comment.
+9. Publish comments through the code host adapter after stale-head checks.
 
 ## Trust boundaries
 

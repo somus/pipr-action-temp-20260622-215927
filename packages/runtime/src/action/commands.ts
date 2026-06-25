@@ -22,6 +22,7 @@ import type {
   CodeHostCheckConclusion,
   CodeHostCheckRun,
   CommandCommentEvent,
+  CommandResponsePublicationResult,
   ReviewCommentReplyEvent,
 } from "../hosts/types.js";
 import { isPiprThreadActionReplyBody } from "../review/prior-state.js";
@@ -30,6 +31,7 @@ import { resolveProvider } from "../review/review-run.js";
 import {
   type ReviewRuntimeResult,
   type RuntimeCheckSink,
+  type RuntimeCommandInvocation,
   type RuntimeTaskCheckResult,
   runTaskRuntime,
 } from "../review/task-runtime.js";
@@ -88,7 +90,10 @@ export type DryRunCommandResult = {
 
 export type InspectCommandResult = import("../config/project.js").InspectRuntimePlan;
 
-export type LocalTaskCommandResult = ReviewRuntimeResult;
+export type LocalTaskCommandResult = ReviewRuntimeResult & {
+  kind: "review" | "skipped";
+  commandResponse?: never;
+};
 
 export type ActionCommandResult =
   | {
@@ -116,6 +121,16 @@ export type ActionCommandResult =
       publication: PublicationResult;
     }
   | {
+      kind: "command-response";
+      event: ChangeRequestEventContext;
+      configSource: string;
+      command: string;
+      response: {
+        body: string;
+      };
+      publication: CommandResponsePublicationResult;
+    }
+  | {
       kind: "verifier";
       event: ChangeRequestEventContext;
       configSource: string;
@@ -126,6 +141,17 @@ type TrustedRuntimeProject = LoadedRuntimeProject & {
   trustedConfigSha: string;
   trustedConfigHash: string;
 };
+
+type TrustedReviewAndPublishResult =
+  | { kind: "skipped"; reason: string }
+  | { kind: "completed"; review: ReviewRuntimeResult; publication: PublicationResult }
+  | {
+      kind: "command-response";
+      response: {
+        commandName: string;
+        body: string;
+      };
+    };
 
 /** Initializes the official minimal `.pipr` project files. */
 export async function runInitCommand(
@@ -199,7 +225,7 @@ export async function runLocalTaskCommand(
     }),
   });
   localAdapter.ensureHeadCheckout({ rootDir: options.rootDir, change: event });
-  return await runTaskRuntime({
+  const result = await runTaskRuntime({
     workspace: options.rootDir,
     config: runtime.settings.config,
     event,
@@ -208,6 +234,10 @@ export async function runLocalTaskCommand(
     taskName: local.task.name,
     piExecutable: options.piExecutable,
   });
+  if (result.kind === "command-response") {
+    throw new Error("command response result is only supported for issue_comment commands");
+  }
+  return result as LocalTaskCommandResult;
 }
 
 /** Runs the GitHub Action workflow for pull request and issue-comment events. */
@@ -263,6 +293,9 @@ export async function runActionCommandWithDependencies(
   });
   if (completed.kind === "skipped") {
     return { kind: "ignored", reason: completed.reason };
+  }
+  if (completed.kind === "command-response") {
+    throw new Error("command response result is only supported for issue_comment commands");
   }
 
   return {
@@ -596,17 +629,76 @@ async function dispatchIssueCommentCommand(
     event: prepared.event,
     taskName: parsedResolution.invocation.taskName,
     taskInput: parsedResolution.invocation.inputs,
+    commandInvocation: {
+      name: parsedResolution.invocation.commandName,
+      line: parsedResolution.invocation.line,
+      arguments: parsedResolution.invocation.arguments,
+    },
   });
-  if (completed.kind === "skipped") {
-    return { kind: "ignored", reason: completed.reason };
+  return await issueCommentCommandResult({
+    adapter,
+    completed,
+    event: prepared.event,
+    commandName: parsedResolution.invocation.commandName,
+    sourceCommentId: prepared.comment.commentId,
+    configSource: prepared.trustedRuntime.settings.source,
+  });
+}
+
+async function issueCommentCommandResult(options: {
+  adapter: CodeHostAdapter;
+  completed: TrustedReviewAndPublishResult;
+  event: ChangeRequestEventContext;
+  commandName: string;
+  sourceCommentId: number;
+  configSource: string;
+}): Promise<ActionCommandResult> {
+  if (options.completed.kind === "skipped") {
+    return { kind: "ignored", reason: options.completed.reason };
+  }
+  if (options.completed.kind === "command-response") {
+    return await publishCommandResponseActionResult({
+      adapter: options.adapter,
+      completed: options.completed,
+      event: options.event,
+      sourceCommentId: options.sourceCommentId,
+      configSource: options.configSource,
+    });
   }
   return {
     kind: "review",
-    event: prepared.event,
-    command: parsedResolution.invocation.commandName,
-    configSource: prepared.trustedRuntime.settings.source,
-    review: completed.review,
-    publication: completed.publication,
+    event: options.event,
+    command: options.commandName,
+    configSource: options.configSource,
+    review: options.completed.review,
+    publication: options.completed.publication,
+  };
+}
+
+async function publishCommandResponseActionResult(options: {
+  adapter: CodeHostAdapter;
+  completed: Extract<TrustedReviewAndPublishResult, { kind: "command-response" }>;
+  event: ChangeRequestEventContext;
+  sourceCommentId: number;
+  configSource: string;
+}): Promise<ActionCommandResult> {
+  const publishCommandResponse = options.adapter.publishCommandResponse;
+  if (!publishCommandResponse) {
+    throw new Error("command response publication is not available for this code host");
+  }
+  const publication = await publishCommandResponse({
+    change: options.event,
+    sourceCommentId: options.sourceCommentId,
+    commandName: options.completed.response.commandName,
+    body: options.completed.response.body,
+  });
+  return {
+    kind: "command-response",
+    event: options.event,
+    command: options.completed.response.commandName,
+    configSource: options.configSource,
+    response: { body: options.completed.response.body },
+    publication,
   };
 }
 
@@ -617,10 +709,8 @@ async function runTrustedReviewAndPublish(options: {
   event: ChangeRequestEventContext;
   taskName?: string;
   taskInput?: unknown;
-}): Promise<
-  | { kind: "skipped"; reason: string }
-  | { kind: "completed"; review: ReviewRuntimeResult; publication: PublicationResult }
-> {
+  commandInvocation?: RuntimeCommandInvocation;
+}): Promise<TrustedReviewAndPublishResult> {
   const checks = await startRuntimeChecks({
     adapter: options.adapter,
     event: options.event,
@@ -636,6 +726,7 @@ async function runTrustedReviewAndPublish(options: {
       plan: options.trustedRuntime.plan,
       taskName: options.taskName,
       taskInput: options.taskInput,
+      commandInvocation: options.commandInvocation,
       trustedConfigSha: options.trustedRuntime.trustedConfigSha,
       trustedConfigHash: options.trustedRuntime.trustedConfigHash,
       piExecutable: options.options.piExecutable,
@@ -653,6 +744,19 @@ async function runTrustedReviewAndPublish(options: {
     if (review.kind === "skipped") {
       await finalizeRuntimeChecks(checks, { skipped: true });
       return { kind: "skipped", reason: review.skipReason ?? "review skipped" };
+    }
+    if (review.kind === "command-response") {
+      if (!review.commandResponse) {
+        throw new Error("command response result did not include a response body");
+      }
+      await finalizeRuntimeChecks(checks, {});
+      return {
+        kind: "command-response",
+        response: {
+          commandName: review.commandResponse.commandName,
+          body: review.commandResponse.body,
+        },
+      };
     }
     const publication = await options.adapter.publish({
       change: options.event,

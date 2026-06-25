@@ -47,6 +47,31 @@ describe("command grammar", () => {
     });
   });
 
+  it("captures the final rest argument", () => {
+    expect(parseCommandPattern("@pipr ask <question...>", "@pipr ask what does this do?")).toEqual({
+      ok: true,
+      value: { question: "what does this do?" },
+    });
+    expect(parseCommandPattern("@pipr ask <question...>", "@pipr ask")).toEqual({
+      ok: false,
+      error: "Expected '<question...>'",
+    });
+  });
+
+  it("rejects rest captures outside the final required position", () => {
+    const error = "Rest capture '<question...>' must be the final required command pattern token";
+
+    expect(parseCommandPattern("@pipr ask [<question...>]", "@pipr ask now")).toEqual({
+      ok: false,
+      error,
+    });
+    expect(parseCommandPattern("@pipr ask <question...> --json", "@pipr ask now --json")).toEqual({
+      ok: false,
+      error,
+    });
+    expect(commandPatternPrefixMatches("@pipr ask [<question...>]", "@pipr ask now")).toBe(false);
+  });
+
   it("matches static prefixes before validating full patterns", () => {
     expect(commandPatternPrefixMatches("@pipr explain <finding>", "@pipr explain FND-1")).toBe(
       true,

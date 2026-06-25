@@ -2,12 +2,13 @@
 
 Status: Accepted
 
-Review tasks produce one final typed comment output per selected run. They do not call code host APIs directly.
+Review tasks produce one final typed output per selected run. They do not call code host APIs directly.
 
 Comment Publishing:
 
-- requires exactly one `ctx.comment(...)` call per selected run
-- renders one deterministic Main Review Comment body from that final output
+- requires exactly one final output call per selected run: `ctx.comment(...)` for review publication or `ctx.command.reply(...)` for command response publication
+- renders one deterministic Main Review Comment body from review output
+- renders and publishes command response output as a normal pull request issue comment keyed to the source command comment
 - leaves multi-agent or multi-task summary composition to user configuration
 - verifies the current change request head SHA before any write
 - upserts the Main Review Comment by hidden marker and stores pipr-owned review state on that marker

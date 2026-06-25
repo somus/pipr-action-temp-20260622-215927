@@ -73,6 +73,7 @@ const githubIssueCommentPayloadSchema = z.looseObject({
     .optional(),
   comment: z
     .looseObject({
+      id: z.number().optional(),
       body: z.string().optional(),
       user: z
         .looseObject({
@@ -120,6 +121,10 @@ const githubIssueCommentEventContextSchema = z.strictObject({
   }),
   changeNumber: z
     .number({ error: "GitHub issue comment event is missing issue number" })
+    .int()
+    .positive(),
+  commentId: z
+    .number({ error: "GitHub issue comment event is missing comment id" })
     .int()
     .positive(),
   isChangeRequest: z.boolean(),
@@ -264,6 +269,7 @@ export async function loadGitHubIssueCommentEventContext(options: {
       url: payload.repository?.html_url,
     },
     changeNumber: payload.issue?.number,
+    commentId: payload.comment?.id,
     isChangeRequest: payload.issue?.pull_request !== undefined,
     body: payload.comment?.body ?? "",
     actor: payload.comment?.user?.login,

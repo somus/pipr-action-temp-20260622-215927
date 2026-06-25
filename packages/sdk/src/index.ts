@@ -488,12 +488,20 @@ export type PiRunner = {
   ): Promise<Output>;
 };
 
+export type CommandContext = {
+  readonly name: string;
+  readonly line: string;
+  readonly arguments: Record<string, string>;
+  reply(markdown: Markdown): Promise<void>;
+};
+
 export type TaskContext = {
   readonly run: { id: string };
   readonly repository: RepositoryInfo;
   readonly change: ChangeRequestContext;
   readonly platform: PlatformInfo;
   readonly pi: PiRunner;
+  readonly command?: CommandContext;
   readonly review: {
     prior(): Promise<PriorReview>;
   };
@@ -724,6 +732,7 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
       if (tokens[0] !== "@pipr") {
         throw new Error(`Command pattern '${pattern}' must start with @pipr`);
       }
+      assertSupportedCommandRestCapture(pattern);
       commands.push({
         pattern,
         permission: options.permission ?? "write",
@@ -1278,6 +1287,30 @@ function assertUnique(values: string[], label: string): void {
     }
     seen.add(value);
   }
+}
+
+function assertSupportedCommandRestCapture(pattern: string): void {
+  const parts = pattern.match(/\[[^\]]+\]|[^\s]+/g) ?? [];
+  for (const [index, part] of parts.entries()) {
+    if (part.startsWith("[") && part.endsWith("]")) {
+      const optionalRest = part.slice(1, -1).trim().split(/\s+/).find(isRestCaptureToken);
+      if (optionalRest) {
+        throw new Error(finalRequiredRestCaptureMessage(optionalRest));
+      }
+      continue;
+    }
+    if (isRestCaptureToken(part) && index !== parts.length - 1) {
+      throw new Error(finalRequiredRestCaptureMessage(part));
+    }
+  }
+}
+
+function isRestCaptureToken(value: string): boolean {
+  return /^<[a-z0-9-]+\.\.\.>$/.test(value);
+}
+
+function finalRequiredRestCaptureMessage(token: string): string {
+  return `Rest capture '${token}' must be the final required command pattern token`;
 }
 
 function assertModelIdentity(models: ModelProfile[]): void {

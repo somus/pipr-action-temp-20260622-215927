@@ -119,29 +119,69 @@ function writeActionResult(result: ActionCommandResult): void {
   writeLoadedActionResult(result);
 }
 
-function writeLoadedActionResult(result: Exclude<ActionCommandResult, { kind: "ignored" }>): void {
+type LoadedActionResult = Exclude<ActionCommandResult, { kind: "ignored" }>;
+type LoadedActionResultWriter = (result: LoadedActionResult) => void;
+
+const loadedActionResultWriters = {
+  "command-help": (result) => {
+    assertLoadedActionKind(result, "command-help");
+    writeCommandHelpActionResult(result);
+  },
+  "command-response": (result) => {
+    assertLoadedActionKind(result, "command-response");
+    writeCommandResponseActionResult(result);
+  },
+  "dry-run": (result) => {
+    assertLoadedActionKind(result, "dry-run");
+    writeDryRunActionResult(result);
+  },
+  review: (result) => {
+    assertLoadedActionKind(result, "review");
+    writeReviewActionResult(result);
+  },
+  verifier: (result) => {
+    assertLoadedActionKind(result, "verifier");
+    writeVerifierActionResult(result);
+  },
+} satisfies Record<LoadedActionResult["kind"], LoadedActionResultWriter>;
+
+function writeLoadedActionResult(result: LoadedActionResult): void {
   core.info(
     `pipr loaded change #${result.event.change.number} for ${result.event.repository.slug}`,
   );
   core.info(`pipr config source: ${result.configSource}`);
+  loadedActionResultWriters[result.kind](result);
+}
 
-  if (result.kind === "dry-run") {
-    core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
-    return;
+function assertLoadedActionKind<K extends LoadedActionResult["kind"]>(
+  result: LoadedActionResult,
+  kind: K,
+): asserts result is Extract<LoadedActionResult, { kind: K }> {
+  if (result.kind !== kind) {
+    throw new Error(`Expected '${kind}' action result, got '${result.kind}'`);
   }
+}
 
-  if (result.kind === "command-help") {
-    core.info(`pipr command help: ${result.reason}`);
-    core.setOutput("main-comment", result.body);
-    return;
-  }
+function writeDryRunActionResult(result: Extract<ActionCommandResult, { kind: "dry-run" }>): void {
+  void result;
+  core.info("PIPR_DRY_RUN=1; stopping before review runtime, model, or GitHub publishing calls");
+}
 
-  if (result.kind === "verifier") {
-    writeVerifierActionResult(result);
-    return;
-  }
+function writeCommandHelpActionResult(
+  result: Extract<ActionCommandResult, { kind: "command-help" }>,
+): void {
+  core.info(`pipr command help: ${result.reason}`);
+  core.setOutput("main-comment", result.body);
+}
 
-  writeReviewActionResult(result);
+function writeCommandResponseActionResult(
+  result: Extract<ActionCommandResult, { kind: "command-response" }>,
+): void {
+  core.info(
+    `pipr command '${result.command}' published response comment (${result.publication.action})`,
+  );
+  core.setOutput("main-comment", result.response.body);
+  core.setOutput("publication", JSON.stringify(result.publication));
 }
 
 function writeVerifierActionResult(
@@ -231,6 +271,12 @@ async function runLocalEntrypoint(localName: string, options: CliOptions): Promi
     headSha: options.head,
     piExecutable: options.piExecutable,
   });
+  writeLocalTaskResult(result);
+}
+
+type LocalTaskResult = Awaited<ReturnType<typeof runLocalTaskCommand>>;
+
+function writeLocalTaskResult(result: LocalTaskResult): void {
   if (result.kind === "skipped") {
     console.log(`skipped: ${result.skipReason ?? "no task matched"}`);
     return;

@@ -65,7 +65,7 @@ type ChangeRequestEventContext = {
 | Diff Manifest creation | Native repository permission mapping |
 | Pi run policy | Safe checkout and provider refs |
 | Structured output validation | Native inline location mapping |
-| Main comment and inline reducers | Main and inline comment API calls |
+| Main comment, inline, and command response reducers | Main, inline, and command response API calls |
 | Marker dedupe and stale-head policy | Provider-specific publication payloads |
 
 Core imports no GitHub modules. GitHub is one adapter implementation.
@@ -84,6 +84,7 @@ The GitHub adapter handles:
 - safe workspace setup
 - pull request head checkout
 - Main Review Comment upsert
+- command response issue comment upsert
 - Inline Review Comment publication
 - Inline Review Comment thread context loading
 - verifier reply publication and review thread resolution
@@ -130,6 +131,7 @@ type CodeHostAdapter = {
   getRepositoryPermission(options): Promise<RepositoryPermission>;
   ensureHeadCheckout(options): void;
   publish(options): Promise<PublicationResult>;
+  publishCommandResponse?(options): Promise<CommandResponsePublicationResult>;
   publishThreadActions?(options): Promise<{ errors: string[] }>;
   loadPriorReviewState?(options): Promise<PriorReviewState | undefined>;
   loadPriorMainComment?(options): Promise<string | undefined>;
@@ -159,6 +161,7 @@ A future adapter should land with contract fixtures before becoming public:
 - checkout fixture for fork and same-repository changes
 - inline location mapping fixtures
 - main comment upsert fixture
+- command response upsert fixture
 - stale-head prevention fixture
 - local dry-run parity fixture
 

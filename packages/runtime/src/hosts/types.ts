@@ -20,10 +20,16 @@ export type CommandCommentEvent = {
   rawAction?: string;
   repository: RepositoryRef;
   changeNumber: number;
+  commentId: number;
   isChangeRequest: boolean;
   body: string;
   actor: string;
   workspace: string;
+};
+
+export type CommandResponsePublicationResult = {
+  action: "created" | "updated";
+  id: number;
 };
 
 export type InlineThreadContext = {
@@ -93,6 +99,12 @@ export type CodeHostAdapter = {
     plan: PublicationPlan;
     change: ChangeRequestEventContext;
   }): Promise<PublicationResult>;
+  publishCommandResponse?(options: {
+    change: ChangeRequestEventContext;
+    sourceCommentId: number;
+    commandName: string;
+    body: string;
+  }): Promise<CommandResponsePublicationResult>;
   publishThreadActions?(options: {
     change: ChangeRequestEventContext;
     actions: ThreadAction[];

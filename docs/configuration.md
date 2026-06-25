@@ -188,6 +188,25 @@ Commands run from pull request issue comments:
 pipr.command({ pattern: "@pipr security", permission: "write", task });
 ```
 
+Use a final rest capture for free-form command text:
+
+```ts
+const ask = pipr.task<{ question: string }>({
+  name: "ask",
+  async run(ctx, input) {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const prior = await ctx.review.prior();
+    const answer = await ctx.pi.run(askAgent, { question: input.question, manifest, prior });
+
+    await ctx.command?.reply(answer.body);
+  },
+});
+
+pipr.command({ pattern: "@pipr ask <question...>", permission: "read", task: ask });
+```
+
+Command replies publish a normal pull request issue comment keyed to the source command comment. They do not update the Main Review Comment or publish Inline Review Comments.
+
 Permission levels are provider-neutral:
 
 ```text
