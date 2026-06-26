@@ -1,0 +1,131 @@
+apps/docs/package.json
+  s_3a9769e34fbdcc::t_b2dc592a9c275f 18
+apps/docs/content/docs/reference/code-host-adapters.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 102
+packages/cli/src/tests/main.test.ts
+  s_3a9769e34fbdcc::t_2049a6b40ea7d0 25,45,49,63,67-74,79,81-104,106-108,114-119,320
+  s_3a9769e34fbdcc::t_cb89144e96ec66 175
+  s_3a9769e34fbdcc::t_cd2191f6645a8d 64,80,413-415,435-463
+  s_3a9769e34fbdcc::t_8e685df9b17798 401
+  s_3a9769e34fbdcc::t_ad5960e0b5d452 120
+  s_3a9769e34fbdcc::t_f76091cba9ec5e 464-465
+apps/docs/content/docs/guide/quickstart.mdx
+  s_3a9769e34fbdcc::t_427e05da70f42b 42
+  s_3a9769e34fbdcc::t_e10b230fe2111b 144,169
+packages/runtime/src/config/init.ts
+  s_3a9769e34fbdcc::t_cdbcbdd3ea0efd 72
+apps/docs/content/docs/guide/index.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 26
+packages/runtime/src/config/ts-loader.ts
+  s_3a9769e34fbdcc::t_c11d7e30c6fd93 2,127-133,144-145,151
+  s_3a9769e34fbdcc::t_ecbb6f315dd5a6 146-150
+apps/docs/scripts/sync-recipes.ts
+  s_3a9769e34fbdcc::t_b14428fd85335d 53,110,338
+  s_3a9769e34fbdcc::t_90d21d49edd315 326
+packages/sdk/src/builder.ts
+  s_3a9769e34fbdcc::t_f0c4c344df3dc3 304-305,311-321
+  s_3a9769e34fbdcc::t_69ea74dda6e2e5 140
+  s_3a9769e34fbdcc::t_a44b57704c3224 322
+packages/runtime/src/review/tests/task-runtime.test.ts
+  s_3a9769e34fbdcc::t_ba3f13fcd4b952 116
+  s_3a9769e34fbdcc::t_ec956be0c1ca02 1403,1409,1425,1462,1478
+  s_3a9769e34fbdcc::t_6d248845f4737b 113
+apps/docs/content/docs/reference/architecture.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 60
+docs/adr/0003-typescript-pipr-config.md
+  s_3a9769e34fbdcc::t_23f60a25b08d27 13
+packages/runtime/src/config/tests/init.test.ts
+  s_3a9769e34fbdcc::t_cb89144e96ec66 36
+  s_3a9769e34fbdcc::t_d8e39c0909eb01 17,71,75,87
+  s_3a9769e34fbdcc::t_1a2f6a93226a37 153-155,159
+  s_3a9769e34fbdcc::t_aa237a2294cba5 365
+packages/cli/build-release.ts
+  s_3a9769e34fbdcc::t_89b7db9bf8932b 79
+README.md
+  s_3a9769e34fbdcc::t_9f7e8e44fc43e6 99
+packages/sdk/src/index.ts
+  s_3a9769e34fbdcc::t_ee193b205e6afd 208,212,217
+  s_3a9769e34fbdcc::t_e10b230fe2111b 343
+apps/docs/content/docs/guide/local-runs.mdx
+  s_3a9769e34fbdcc::t_4beb2f98c57652 6,10,19,41-42,44,60,62,70,75,88,91-110,129,138-139
+  s_3a9769e34fbdcc::t_543b54300ea048 112-113
+  s_3a9769e34fbdcc::t_322abb89425a38 111
+apps/docs/content/docs/reference/cli.mdx
+  s_3a9769e34fbdcc::t_9f7e8e44fc43e6 3,111,115,129
+packages/runtime/src/config/type-support.ts
+  s_3a9769e34fbdcc::t_6f744a843cd879 1,22,24
+  s_3a9769e34fbdcc::t_c5794f97e7383f 40
+  s_3a9769e34fbdcc::t_f7ce91a253da19 39,41-42
+packages/runtime/src/action/tests/commands.test.ts
+  s_3a9769e34fbdcc::t_2355777e17aace 335-341
+  s_3a9769e34fbdcc::t_85e20e21d19ef5 17-21,319-334,342-345
+  s_3a9769e34fbdcc::t_77f85a5124bc24 1250-1288
+  s_3a9769e34fbdcc::t_56a4923ed30e1e 346-348
+  s_3a9769e34fbdcc::t_242ee841aa6fce 349-351
+apps/docs/content/docs/index.mdx
+  s_3a9769e34fbdcc::t_aa237a2294cba5 33
+  s_3a9769e34fbdcc::t_aaa1e0c0fede5a 46
+packages/runtime/src/action/tests/entry-dispatch.test.ts
+  s_3a9769e34fbdcc::t_b8fbab591faedd 9,13,37-50
+packages/runtime/src/review/task/task-runtime.ts
+  s_3a9769e34fbdcc::t_44397f38c47181 155-156,510-511,515-520,524,543
+  s_3a9769e34fbdcc::t_eb5b5d07937c65 1,55-56
+  s_3a9769e34fbdcc::t_56fb40460d4066 70,140-147,465
+apps/docs/content/docs/guide/troubleshooting.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 29,49
+  s_3a9769e34fbdcc::t_ae2e05553147ba 34
+packages/runtime/src/action/types.ts
+  s_3a9769e34fbdcc::t_6482bfaf240ede 48,62
+  s_3a9769e34fbdcc::t_fe46541ef9ada3 42-47,52
+packages/runtime/src/action/commands.ts
+  s_3a9769e34fbdcc::t_399cd3669bd035 150
+  s_3a9769e34fbdcc::t_6faeae82b3988c 36,48-49,64-65,124-127,132,147-148,155
+packages/runtime/src/index.ts
+  s_3a9769e34fbdcc::t_5f2865008104af 9-10,18
+apps/docs/content/docs/guide/configuration.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 52,54,83,196,233,237,240,244-248,250-254,256-258,300,309-310
+  s_3a9769e34fbdcc::t_dfeda85f1ca28c 249,255
+packages/runtime/src/action/entry-dispatch.ts
+  s_3a9769e34fbdcc::t_0c6ec40cac0745 100-104
+  s_3a9769e34fbdcc::t_0dfed631489671 105-106
+packages/sdk/src/tests/index.test.ts
+  s_3a9769e34fbdcc::t_3846c3c2eb806e 801,808
+  s_3a9769e34fbdcc::t_323ad100440124 14,41,58,67,81
+  s_3a9769e34fbdcc::t_b3e21eff8f3a91 175-182
+apps/docs/content/docs/recipes/index.mdx
+  s_3a9769e34fbdcc::t_8f58a35387f9f5 31,39
+  s_3a9769e34fbdcc::t_d44254537db9e7 19
+apps/docs/content/docs/recipes/default-review.mdx
+  s_3a9769e34fbdcc::t_8f58a35387f9f5 3,92
+packages/cli/src/main.ts
+  s_3a9769e34fbdcc::t_3cf7c7c1cd4100 381-387
+  s_3a9769e34fbdcc::t_399cd3669bd035 338,344-355
+  s_3a9769e34fbdcc::t_17eed8636818f2 13,34,86,92,97-98,327,329,331,340,343,357-361,366-380,388-394,398-399,401-413
+  s_3a9769e34fbdcc::t_01ea8f18863dc0 395-397,400
+apps/docs/content/docs/reference/sdk-reference.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 25,50,237-250
+apps/docs/content/docs/guide/runtime.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 19,197
+apps/docs/content/docs/guide/entrypoints.mdx
+  s_3a9769e34fbdcc::t_e10b230fe2111b 3,6,17-21,137,139,143-146,149,152,155,157-169,181-182
+.pipr/types/pipr-sdk.d.ts
+  s_3a9769e34fbdcc::t_8081e2f8efc63a 261,264,269,345,352,370,542,558
+apps/docs/content/docs/reference/index.mdx
+  s_3a9769e34fbdcc::t_ac6786b937efe6 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "9373cbdccba4d924b5a35d51e48c05b32cfbe437",
+  "prompts": {},
+  "sessions": {
+    "s_3a9769e34fbdcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0357-2a1e-78b0-8eb1-3c03781a3330",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
