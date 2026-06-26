@@ -195,27 +195,39 @@ export default definePipr((pipr) => {
     });
   });
 
-  it("requires tsconfig.json when type-checking a TypeScript config", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
-    await mkdir(path.join(rootDir, ".pipr"));
-    await writePiprConfig(
-      rootDir,
-      `import { definePipr } from "@pipr/sdk";
+  it("type-checks without committed tsconfig or generated type files", async () => {
+    const rootDir = await newConfigProject(minimalReviewConfig({ bunS3: true }));
 
-export default definePipr((pipr) => {
-  const model = pipr.model({
-    provider: "deepseek",
-    model: "deepseek-v4-pro",
-    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
+    await expect(loadTypescriptConfig({ rootDir, typecheck: true })).resolves.toMatchObject({
+      source: path.join(rootDir, ".pipr", "config.ts"),
+    });
   });
-  pipr.review({ id: "review", model, instructions: "Review this change." });
-});
-`,
+
+  it("type-checks config tsconfig files that extend repo-level config", async () => {
+    const rootDir = await newConfigProject(minimalReviewConfig());
+    await Bun.write(
+      path.join(rootDir, "tsconfig.base.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "Bundler",
+        },
+      }),
+    );
+    await Bun.write(
+      path.join(rootDir, ".pipr", "tsconfig.json"),
+      JSON.stringify({
+        extends: "../tsconfig.base.json",
+        include: ["./**/*.ts"],
+      }),
     );
 
-    await expect(loadTypescriptConfig({ rootDir, typecheck: true })).rejects.toThrow(
-      ".pipr/tsconfig.json is required for pipr check",
-    );
+    await expect(loadTypescriptConfig({ rootDir, typecheck: true })).resolves.toMatchObject({
+      source: path.join(rootDir, ".pipr", "config.ts"),
+    });
   });
 
   it("rejects async TypeScript config callbacks", async () => {
@@ -353,8 +365,31 @@ async function newInitializedProject(): Promise<string> {
   return rootDir;
 }
 
+async function newConfigProject(contents: string): Promise<string> {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
+  await mkdir(path.join(rootDir, ".pipr"));
+  await writePiprConfig(rootDir, contents);
+  return rootDir;
+}
+
 async function writePiprConfig(rootDir: string, contents: string): Promise<void> {
   await Bun.write(path.join(rootDir, ".pipr", "config.ts"), contents);
+}
+
+function minimalReviewConfig(options: { bunS3?: boolean } = {}): string {
+  const bunImport = options.bunS3 ? 'import { S3Client } from "bun";\n' : "";
+  const bunUsage = options.bunS3 ? "  void S3Client;\n" : "";
+  return `${bunImport}import { definePipr } from "@pipr/sdk";
+
+export default definePipr((pipr) => {
+${bunUsage}  const model = pipr.model({
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),
+  });
+  pipr.review({ id: "review", model, instructions: "Review this change." });
+});
+`;
 }
 
 function configWithAutoResolve(autoResolve: string): string {

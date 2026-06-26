@@ -11,7 +11,11 @@ import { prBriefingRecipe } from "./recipes/pr-briefing.js";
 import { prHygieneRecipe } from "./recipes/pr-hygiene.js";
 import { qualityGateRecipe } from "./recipes/quality-gate.js";
 import { securitySastRecipe } from "./recipes/security-sast.js";
-import type { OfficialInitRecipe } from "./recipes/types.js";
+import type {
+  OfficialInitRecipe,
+  OfficialInitRecipeFile,
+  OfficialInitRecipeWorkflowEnvSecret,
+} from "./recipes/types.js";
 
 export const supportedOfficialInitRecipes = [
   "default-review",
@@ -30,7 +34,7 @@ export const supportedOfficialInitRecipes = [
 ] as const;
 
 export type OfficialInitRecipeId = (typeof supportedOfficialInitRecipes)[number];
-export type { OfficialInitRecipe };
+export type { OfficialInitRecipe, OfficialInitRecipeFile, OfficialInitRecipeWorkflowEnvSecret };
 
 const officialInitRecipeRegistry = {
   "default-review": defaultReviewRecipe,
@@ -53,6 +57,22 @@ export function listOfficialInitRecipes(): OfficialInitRecipe[] {
 }
 
 export function officialInitRecipeConfigTs(recipe?: string): string {
+  return resolveOfficialInitRecipe(recipe).configTs;
+}
+
+export function officialInitRecipeFiles(recipe?: string): readonly OfficialInitRecipeFile[] {
+  return resolveOfficialInitRecipe(recipe).files ?? [];
+}
+
+export function officialInitRecipeWorkflowEnvSecrets(
+  recipe?: string,
+): readonly OfficialInitRecipeWorkflowEnvSecret[] {
+  return resolveOfficialInitRecipe(recipe).workflowEnvSecrets ?? [];
+}
+
+function resolveOfficialInitRecipe(
+  recipe?: string,
+): OfficialInitRecipe & { id: OfficialInitRecipeId } {
   const id = recipe ?? "default-review";
   if (!isOfficialInitRecipeId(id)) {
     throw new Error(
@@ -61,7 +81,7 @@ export function officialInitRecipeConfigTs(recipe?: string): string {
       )}.`,
     );
   }
-  return officialInitRecipeRegistry[id].configTs;
+  return officialInitRecipeRegistry[id];
 }
 
 function isOfficialInitRecipeId(recipe: string): recipe is OfficialInitRecipeId {

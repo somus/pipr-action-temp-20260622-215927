@@ -1291,7 +1291,9 @@ describe("runTaskRuntime", () => {
     expect(calls).toEqual(["deepseek-v4-pro"]);
   });
 
-  it("fails closed when an agent declares custom Pi tools", async () => {
+  it("passes registered custom Pi tools to the runner", async () => {
+    let observedToolNames: readonly string[] = [];
+    let observedToolResult: unknown;
     const plan = testPlan((pipr) => {
       const customTool = memoryTool(pipr);
       registerPiReviewTask(
@@ -1300,7 +1302,20 @@ describe("runTaskRuntime", () => {
       );
     });
 
-    await expectCustomToolRejected(plan, "custom_tool");
+    await runRuntime({
+      plan,
+      piRunner: async (options) => {
+        observedToolNames = options.customTools?.tools.map((tool) => tool.name) ?? [];
+        observedToolResult = await options.customTools?.tools[0]?.execute(
+          options.customTools.context,
+          { body: "Remember this." },
+        );
+        return noFindingsPiResult();
+      },
+    });
+
+    expect(observedToolNames).toEqual(["custom_tool"]);
+    expect(observedToolResult).toEqual({ body: "Remember this." });
   });
 
   it("fails closed when a custom tool forges the readOnly name", async () => {
@@ -1337,6 +1352,46 @@ describe("runTaskRuntime", () => {
     });
 
     expect(result.mainComment).toContain('"status":"ok"');
+  });
+
+  it("resolves declared task secrets from runtime env", async () => {
+    let observedSecret: string | undefined;
+    const plan = testPlan((pipr) => {
+      const token = pipr.secret({ name: "CUSTOM_TOOL_TOKEN" });
+      const task = pipr.task({
+        name: "secret-task",
+        async run(ctx) {
+          observedSecret = ctx.secret(token);
+          await ctx.comment("secret resolved");
+        },
+      });
+      pipr.on.changeRequest({ actions: ["opened"], task });
+    });
+
+    await runRuntime({
+      plan,
+      env: { CUSTOM_TOOL_TOKEN: "resolved-token" },
+    });
+
+    expect(observedSecret).toBe("resolved-token");
+  });
+
+  it("fails when a declared task secret is missing", async () => {
+    const plan = testPlan((pipr) => {
+      const token = pipr.secret({ name: "CUSTOM_TOOL_TOKEN" });
+      const task = pipr.task({
+        name: "secret-task",
+        async run(ctx) {
+          ctx.secret(token);
+          await ctx.comment("secret resolved");
+        },
+      });
+      pipr.on.changeRequest({ actions: ["opened"], task });
+    });
+
+    await expect(runRuntime({ plan, env: {} })).rejects.toThrow(
+      "Missing secret env var: CUSTOM_TOOL_TOKEN",
+    );
   });
 
   it("rejects multiple selected review recipes that emit comments", async () => {
@@ -1646,7 +1701,7 @@ async function expectCustomToolRejected(
   toolName: string,
 ): Promise<void> {
   await expect(runRuntime({ plan, piRunner: noFindingsPiRunner() })).rejects.toThrow(
-    `custom Pi tools that are not executable in the MVP: ${toolName}`,
+    `unregistered or invalid custom Pi tools: ${toolName}`,
   );
 }
 

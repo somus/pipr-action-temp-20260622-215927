@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "ignoreDependencies": ["collections"],
   "entry": [
     ".pipr/config.ts",
     "packages/cli/src/main.ts",
@@ -8,11 +9,25 @@
     "packages/runtime/src/pi/runtime-tools-extension.ts",
     "scripts/act-action-fixture.ts"
   ],
-  "ignorePatterns": ["**/dist/**", "**/coverage/**", ".turbo/**", "node_modules/**"],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/coverage/**",
+    ".turbo/**",
+    "node_modules/**",
+    "apps/docs/.source/**",
+    "apps/docs/.output/**",
+    "apps/docs/src/routeTree.gen.ts"
+  ],
   "workspaces": {
-    "patterns": ["packages/*"]
+    "patterns": ["apps/*", "packages/*"]
   },
   "duplicates": {
-    "ignore": ["**/dist/**", "**/coverage/**"]
+    "ignore": [
+      "**/dist/**",
+      "**/coverage/**",
+      "apps/docs/.source/**",
+      "apps/docs/.output/**",
+      "apps/docs/src/routeTree.gen.ts"
+    ]
   }
 }

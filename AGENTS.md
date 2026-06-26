@@ -1,12 +1,12 @@
 # Agent Instructions
 
-This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered GitHub pull request review automation, including the Docker Action, CLI, runtime package, product docs, and local `act` fixtures.
+This repo owns Pipr: a Bun and Turborepo TypeScript monorepo for Pi-powered GitHub pull request review automation, including the Docker Action, CLI, runtime package, product docs, and local `act` fixtures.
 
 ## Workflow
 
 - Start from the linked Linear issue or maintainer direction.
-- Keep changes scoped to pipr's TypeScript package surface, Docker Action, `.pipr/` configuration behavior, docs, and local test fixtures.
-- Use [docs/CONTEXT.md](docs/CONTEXT.md) for product language. Use `pipr`, `.pipr/config.ts`, `PIPR SDK`, `Pi Agent Runner`, `Review Task`, `Diff Manifest`, `Review Finding`, `Main Review Comment`, and `Inline Review Comment`.
+- Keep changes scoped to Pipr's TypeScript package surface, Docker Action, `.pipr/` configuration behavior, docs, and local test fixtures.
+- Use [docs/CONTEXT.md](docs/CONTEXT.md) for product language. Use Pipr, `.pipr/config.ts`, `Pipr SDK`, `Pi Agent Runner`, `Review Task`, `Diff Manifest`, `Review Finding`, `Main Review Comment`, and `Inline Review Comment`.
 - Treat [docs/adr](docs/adr) as the source for architectural decisions.
 - Do not commit real local sessions, secrets, credentials, private logs, unredacted user data, or provider keys.
 
@@ -29,9 +29,9 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 
 ## Architecture
 
-- `pipr` owns the GitHub pull request runtime. Pi owns agent execution.
+- Pipr owns the GitHub pull request runtime. Pi owns agent execution.
 - Pi is the only agent runner in the Core MVP.
-- Keep Fallow as repo quality tooling only. Do not put Fallow into pipr's review runtime.
+- Keep Fallow as repo quality tooling only. Do not put Fallow into Pipr's review runtime.
 - Keep package public surfaces small. Export only deliberate APIs from package roots.
 - Put implementation details behind internal modules. Do not export helpers only for tests or convenience.
 - Keep functions intent-level. Do not extract one-line field readers, throw wrappers, boolean aliases, or tiny pass-through helpers unless they are used in 3+ places or enforce a real domain invariant.
@@ -40,7 +40,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Do not add wrappers for simple standard library calls, Bun APIs, lodash helpers, zod parse calls, JSON parse/stringify, string splitting/trimming, object shape checks, or one-expression boolean checks.
 - Before adding a private helper, ask whether it would still be worth a named function if used once. If not, keep it inline.
 - Keep small helpers only when they define protocol or domain vocabulary, public API boundaries, security-sensitive checks, schema boundary parsers, repeated policy text, or complex logic that would materially hurt readability if inlined.
-- Keep Docker Action, CLI command handling, TypeScript config loading, task execution, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In review tasks, diff parsing, Pi execution, and review validation stay in pipr through `ctx.change.diffManifest()` and `ctx.pi.run()`, not userland blocks.
+- Keep Docker Action, CLI command handling, TypeScript config loading, task execution, diff parsing, Pi subprocess execution, review validation, and comment rendering separated by package/module boundary. In review tasks, diff parsing, Pi execution, and review validation stay in Pipr through `ctx.change.diffManifest()` and `ctx.pi.run()`, not userland blocks.
 - Keep user configuration in `.pipr/config.ts`. `.pi` is only an internal Pi home inside the Docker image.
 - Preserve schema-first reviewer output: validate structured JSON, allow one repair attempt, and drop invalid findings with metadata.
 - Keep inline publishing strict: same-range comments only, capped count, invalid finding drops, and marker dedupe.
@@ -54,7 +54,7 @@ This repo owns `pipr`: a Bun and Turborepo TypeScript monorepo for Pi-powered Gi
 - Do not import sibling packages through `../package/dist/*`; add a deliberate package export, bin, or e2e entrypoint instead.
 - Organize package internals into domain folders such as `src/action`, `src/config`, `src/diff`, `src/pi`, `src/review`, and `src/shared`.
 - Name modules by current responsibility. Avoid `legacy`, `compat`, or old-system names for unreleased code.
-- Keep docs in `docs/`; keep ADRs in `docs/adr/`.
+- Keep Fumadocs content in `apps/docs/content/docs/`; keep source-level product language and ADRs in `docs/CONTEXT.md` and `docs/adr/`.
 - Keep local Action e2e harness under `packages/e2e`.
 - Test-only helpers should live in the nearest `tests/helpers.ts` or `tests/helpers/*`.
 

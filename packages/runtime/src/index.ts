@@ -18,9 +18,13 @@ export {
   runLocalTaskCommand,
   runValidateCommand,
 } from "./action/commands.js";
-export type { OfficialInitAdapter } from "./config/init.js";
+export type { InitTypeSupportMode, OfficialInitAdapter } from "./config/init.js";
 export { supportedOfficialInitAdapters } from "./config/init.js";
-export type { OfficialInitRecipe, OfficialInitRecipeId } from "./config/recipes.js";
+export type {
+  OfficialInitRecipe,
+  OfficialInitRecipeFile,
+  OfficialInitRecipeId,
+} from "./config/recipes.js";
 export { listOfficialInitRecipes, supportedOfficialInitRecipes } from "./config/recipes.js";
 export type { SdkDeclarationModule } from "./config/sdk-declaration.js";
 export {

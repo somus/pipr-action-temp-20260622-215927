@@ -4,6 +4,7 @@ import * as core from "@actions/core";
 import {
   type ActionCommandResult,
   type ActionLogSink,
+  type InitTypeSupportMode,
   PublicationError,
   runActionCommand,
   runDryRunCommand,
@@ -24,6 +25,8 @@ type CliOptions = {
   force?: boolean;
   adapters?: string;
   recipe?: string;
+  types?: boolean;
+  typesOnly?: boolean;
   requireEnv?: boolean;
   base?: string;
   head?: string;
@@ -50,9 +53,10 @@ function createProgram(): Command {
     .option(
       "--adapters <adapters>",
       `Adapters to initialize (${supportedOfficialInitAdapters.join(", ")}; use 'none' to skip adapter files)`,
-      "github",
     )
     .option("--recipe <recipe>", `Starter recipe (${supportedOfficialInitRecipes.join(", ")})`)
+    .option("--no-types", "Skip local TypeScript support files")
+    .option("--types-only", "Add or refresh local TypeScript support files only")
     .option("--force", "Overwrite existing pipr files")
     .action(runInit);
 
@@ -254,17 +258,52 @@ function warnInlineResolutionErrors(errors: string[]): void {
 }
 
 async function runInit(options: CliOptions): Promise<void> {
+  const typeSupport = initTypeSupportMode(options);
   const result = await runInitCommand({
     rootDir: process.cwd(),
     configDir: options.configDir,
     force: options.force === true,
     adapters: parseInitAdapters(options.adapters),
     recipe: options.recipe,
+    typeSupport,
   });
   console.log(
     `created ${result.created.length} file(s)` +
       (result.overwritten.length > 0 ? `; overwrote ${result.overwritten.length}` : ""),
   );
+}
+
+function initTypeSupportMode(options: CliOptions): InitTypeSupportMode {
+  const invalidMessage = invalidTypeSupportMessage(options);
+  if (invalidMessage) {
+    throw new Error(invalidMessage);
+  }
+  if (options.typesOnly === true) {
+    return "only";
+  }
+  return options.types === false ? "skip" : "include";
+}
+
+const invalidTypeSupportRules: Array<{
+  matches(options: CliOptions): boolean;
+  message: string;
+}> = [
+  {
+    matches: (options) => options.typesOnly === true && options.types === false,
+    message: "--types-only cannot be combined with --no-types",
+  },
+  {
+    matches: (options) => options.typesOnly === true && options.recipe !== undefined,
+    message: "--types-only cannot be combined with --recipe",
+  },
+  {
+    matches: (options) => options.typesOnly === true && options.adapters !== undefined,
+    message: "--types-only cannot be combined with --adapters",
+  },
+];
+
+function invalidTypeSupportMessage(options: CliOptions): string | undefined {
+  return invalidTypeSupportRules.find((rule) => rule.matches(options))?.message;
 }
 
 function parseInitAdapters(adapters: string | undefined): string[] | undefined {

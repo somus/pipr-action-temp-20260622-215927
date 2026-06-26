@@ -1,8 +1,8 @@
-# pipr
+# Pipr
 
 [![CI](https://github.com/somus/pipr/actions/workflows/ci.yml/badge.svg)](https://github.com/somus/pipr/actions/workflows/ci.yml)
 
-pipr is a Pi-powered code review runtime. It loads a repository-local TypeScript config, builds a deterministic Diff Manifest, runs Pi for structured review output, validates findings against commentable ranges, and publishes one Main Review Comment plus capped Inline Review Comments.
+Pipr is a Pi-powered code review runtime. It loads a repository-local TypeScript config, builds a deterministic Diff Manifest, runs Pi for structured review output, validates findings against commentable ranges, and publishes one Main Review Comment plus capped Inline Review Comments.
 
 GitHub is the first delivery target. Internally, GitHub is a code host adapter, so `.pipr/config.ts` stays provider-neutral. GitLab, Bitbucket, and Azure DevOps support is coming soon.
 
@@ -56,7 +56,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 ```
 
-See [Docs](docs/index.md) or [Quickstart](docs/quickstart.md) for the full first-run path.
+See [Docs](apps/docs/content/docs/index.mdx) or [Quickstart](apps/docs/content/docs/guide/quickstart.mdx) for the full first-run path.
 
 ## Configuration
 
@@ -97,31 +97,36 @@ export default definePipr((pipr) => {
 });
 ```
 
-The SDK also supports custom agents, tasks, `@pipr` commands, local entrypoints, model fallback, and retry settings. See [Configuration](docs/configuration.md).
+The SDK also supports custom agents, tasks, `@pipr` commands, local entrypoints, model fallback, and retry settings. See [Configuration](apps/docs/content/docs/guide/configuration.mdx).
 
-## Guides
+## Docs
 
-- [Docs home](docs/index.md)
-- [Quickstart](docs/quickstart.md)
-- [Configuration](docs/configuration.md)
-- [PIPR SDK Reference](docs/sdk-reference.md)
-- [Runtime Guide](docs/runtime.md)
-- [GitHub Action](docs/github-action.md)
-- [Code Host Adapters](docs/code-host-adapters.md)
-- [Architecture](docs/architecture.md)
-- [Development](docs/development.md)
+- [Docs home](apps/docs/content/docs/index.mdx)
+- [Guide](apps/docs/content/docs/guide/index.mdx)
+- [Recipes](apps/docs/content/docs/recipes/index.mdx)
+- [Quickstart](apps/docs/content/docs/guide/quickstart.mdx)
+- [Configuration](apps/docs/content/docs/guide/configuration.mdx)
+- [Entrypoints](apps/docs/content/docs/guide/entrypoints.mdx)
+- [Custom Tasks](apps/docs/content/docs/guide/custom-tasks.mdx)
+- [Pipr SDK Reference](apps/docs/content/docs/reference/sdk-reference.mdx)
+- [Runtime Guide](apps/docs/content/docs/guide/runtime.mdx)
+- [Comments and Findings](apps/docs/content/docs/guide/comments.mdx)
+- [GitHub Action](apps/docs/content/docs/guide/github-action.mdx)
+- [Code Host Adapters](apps/docs/content/docs/reference/code-host-adapters.mdx)
+- [Architecture](apps/docs/content/docs/reference/architecture.mdx)
+- [Development](apps/docs/content/docs/reference/development.mdx)
 - [Product language](docs/CONTEXT.md)
 - [Architecture decisions](docs/adr)
 
 ## Status
 
-pipr is early. CLI binaries ship through GitHub Releases, the config SDK ships as `@pipr/sdk` on npm, and the Docker Action image ships through GHCR.
+Pipr is early. CLI binaries ship through GitHub Releases, the config SDK ships as `@pipr/sdk` on npm, and the Docker Action image ships through GHCR.
 
 ## Privacy
 
-pipr runs in your local environment or CI runner. This repo does not use a hosted pipr control plane.
+Pipr runs in your local environment or CI runner. This repo does not use a hosted Pipr control plane.
 
-When a review runs, pipr may send the configured model provider:
+When a review runs, Pipr may send the configured model provider:
 
 - repository and change request metadata needed for the review
 - task instructions from the trusted `.pipr/config.ts`
@@ -130,9 +135,9 @@ When a review runs, pipr may send the configured model provider:
 
 Provider API keys are read from environment variables such as `DEEPSEEK_API_KEY`. `pipr.secret({ name })` stores the variable name in the runtime plan, not the secret value.
 
-On GitHub, pipr uses `GITHUB_TOKEN` to read pull request metadata, publish the Main Review Comment and Inline Review Comments, and resolve review threads for fixed findings. Published comments become part of the repository's normal GitHub pull request record. Local runs do not publish comments.
+On GitHub, Pipr uses `GITHUB_TOKEN` to read pull request metadata, publish the Main Review Comment and Inline Review Comments, and resolve review threads for fixed findings. Published comments become part of the repository's normal GitHub pull request record. Local runs do not publish comments.
 
-Do not run pipr on code you are not permitted to send to the configured model provider.
+Do not run Pipr on code you are not permitted to send to the configured model provider.
 
 ## License
 

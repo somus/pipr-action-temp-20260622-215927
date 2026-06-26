@@ -79,20 +79,6 @@ export default definePipr((pipr) => {
         main: review.summary.body,
         inlineFindings: review.inlineFindings,
       });
-      if (memory.store.run) {
-        try {
-          await memory.store.run({
-            input: {
-              subject: "Review summary for " + (ctx.change.title || "change request"),
-              body: review.summary.body,
-              tags: ["pipr-review", ctx.repository.name],
-            },
-            ctx,
-          });
-        } catch (error) {
-          ctx.log.warn("R2 memory store skipped: " + String(error));
-        }
-      }
     },
   });
 
@@ -202,7 +188,7 @@ async function searchMemory(
 ): Promise<{ memories: MemoryItem[] }> {
   signal?.throwIfAborted();
   const bucket = r2Bucket(ctx, options);
-  const listed = await bucket.list({ prefix: memoryPrefix(options) + "/", maxKeys: 200 });
+  const listed = await bucket.list({ prefix: memoryPrefix(ctx, options) + "/", maxKeys: 200 });
   const memories: MemoryItem[] = [];
 
   for (const object of listed.contents ?? []) {
@@ -234,7 +220,7 @@ async function storeMemory(
   signal?.throwIfAborted();
   const bucket = r2Bucket(ctx, options);
   const entry: MemoryItem = { ...input, updatedAt: new Date().toISOString() };
-  const key = memoryKey(input.subject, options);
+  const key = memoryKey(input.subject, ctx, options);
   await bucket.write(key, JSON.stringify(entry, null, 2), { type: "application/json" });
   return { stored: true, key };
 }
@@ -250,19 +236,31 @@ function r2Bucket(ctx: TaskContext, options: R2MemoryOptions): S3Client {
   });
 }
 
-function memoryPrefix(options: R2MemoryOptions): string {
-  const prefix = options.prefix ?? "pipr-memory";
-  return prefix.replace(/^\/+|\/+$/g, "") || "pipr-memory";
+function memoryPrefix(ctx: TaskContext, options: R2MemoryOptions): string {
+  return cleanPathSegment(options.prefix ?? "pipr-memory") + "/" + repositoryScope(ctx);
 }
 
-function memoryKey(subject: string, options: R2MemoryOptions): string {
+function repositoryScope(ctx: TaskContext): string {
+  return cleanPathSegment([ctx.repository.owner, ctx.repository.name].filter(Boolean).join("/"));
+}
+
+function cleanPathSegment(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9/_-]+/g, "-")
+      .replace(/^\/+|\/+$/g, "") || "pipr-memory"
+  );
+}
+
+function memoryKey(subject: string, ctx: TaskContext, options: R2MemoryOptions): string {
   const slug = subject
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 60);
   return (
-    memoryPrefix(options) + "/" + new Date().toISOString() + "-" + (slug || "memory") + ".json"
+    memoryPrefix(ctx, options) + "/" + new Date().toISOString() + "-" + (slug || "memory") + ".json"
   );
 }
 
@@ -328,7 +326,7 @@ Pipr config and plugin files execute in Bun, so `.pipr/*.ts` files can use the B
 
 This recipe uses Bun's S3-compatible client against Cloudflare R2. R2 credentials are declared with `pipr.secret(...)`, then resolved inside tool execution with `ctx.secret(...)`. The generated GitHub workflow maps `PIPR_R2_MEMORY_BUCKET`, `PIPR_R2_MEMORY_ENDPOINT`, `PIPR_R2_MEMORY_ACCESS_KEY_ID`, and `PIPR_R2_MEMORY_SECRET_ACCESS_KEY` repository secrets into matching runtime environment variables.
 
-R2 is object storage, not a search index. The sample lists recent JSON memory objects under the configured prefix and filters them locally, which is enough for small reviewer-memory sets. Change `prefix` in `.pipr/config.ts` when multiple repositories share one bucket.
+R2 is object storage, not a search index. The sample lists recent JSON memory objects under `prefix/repository-owner/repository-name` and filters them locally, which is enough for small reviewer-memory sets. Change `prefix` in `.pipr/config.ts` when multiple repositories share one bucket; Pipr still adds the repository scope below it. The generated reviewer only searches memory by default. The store tool is available for explicit customization, but full review summaries are not persisted automatically.
 
 
 ## Tuning

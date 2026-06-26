@@ -1,4 +1,4 @@
-import type { CommandContext, DiffManifestOptions, TaskContext } from "@pipr/sdk";
+import type { CommandContext, DiffManifestOptions, SecretRef, TaskContext } from "@pipr/sdk";
 import type { RuntimePlan } from "@pipr/sdk/internal";
 import { uniq } from "lodash-es";
 import { selectRuntimeTasks } from "../../action/entry-dispatch.js";
@@ -379,11 +379,14 @@ function createTaskContext(
     taskOrder: number;
   },
 ): TaskContext {
-  return {
+  const repositorySlugParts = options.event.repository.slug.split("/");
+  let taskContext: TaskContext;
+  taskContext = {
     run: { id: crypto.randomUUID() },
     repository: {
       root: options.workspace,
-      name: options.event.repository.slug.split("/").at(-1) ?? "repo",
+      owner: repositorySlugParts.length > 1 ? repositorySlugParts[0] : undefined,
+      name: repositorySlugParts.at(-1) ?? "repo",
     },
     change: {
       number: options.event.change.number,
@@ -426,13 +429,16 @@ function createTaskContext(
           },
         }
       : undefined,
+    secret(secret) {
+      return resolveTaskSecret(secret, options);
+    },
     pi: {
       async run(agent, input, runOptions) {
         const result = await runReviewAgent({
           agent,
           input,
           runOptions,
-          runtime: options,
+          runtime: { ...options, taskContext },
         });
         options.output.providerModels.push(...result.providerModels);
         if (result.repairAttempted) {
@@ -453,6 +459,19 @@ function createTaskContext(
     },
     log: console,
   };
+  return taskContext;
+}
+
+function resolveTaskSecret(secret: SecretRef, options: RunTaskRuntimeOptions): string {
+  if (secret.kind !== "pipr.secret" || typeof secret.name !== "string") {
+    throw new Error("ctx.secret(...) requires a pipr.secret reference");
+  }
+  const value = (options.env ?? process.env)[secret.name];
+  if (!value) {
+    throw new Error(`Missing secret env var: ${secret.name}`);
+  }
+  options.log?.addSecret(value);
+  return value;
 }
 
 function commandResponseRuntimeResult(options: {

@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { generatedTypeSupportFiles } from "../runtime/src/config/type-support.js";
 import {
   embeddedSdkDeclaration,
   readSdkDeclarationModules,
@@ -27,6 +29,24 @@ const hostTargets = new Map<string, ReleaseTarget>([
   ["darwin/arm64", targets[3] as ReleaseTarget],
 ]);
 
+const sdkRuntimeExports = [
+  "definePipr",
+  "definePlugin",
+  "jsonSchema",
+  "md",
+  "parseReviewFinding",
+  "parseReviewResult",
+  "parseReviewSummary",
+  "reviewFindingSchema",
+  "reviewResultSchema",
+  "reviewSchemaExample",
+  "reviewSummarySchema",
+  "schema",
+  "schemas",
+  "z",
+];
+
+await run("bun", ["run", "--cwd", "packages/sdk", "build"]);
 await run("bun", ["run", "--cwd", "packages/runtime", "build"]);
 await mkdir(releaseDir, { recursive: true });
 
@@ -57,37 +77,72 @@ function releaseOutfile(item: ReleaseTarget): string {
 }
 
 async function embeddedSdkDefines(): Promise<Record<string, string>> {
-  const [moduleSource, declarationSource] = await Promise.all([
+  const [moduleSource, declarationSource, typeSupport] = await Promise.all([
     bundledSdkModule(),
     bundledSdkDeclaration(),
+    bundledConfigTypeSupport(),
   ]);
   return {
     PIPR_EMBEDDED_SDK_MODULE: JSON.stringify(moduleSource),
     PIPR_EMBEDDED_SDK_DECLARATION: JSON.stringify(declarationSource),
+    PIPR_EMBEDDED_CONFIG_TYPE_SUPPORT: JSON.stringify(JSON.stringify(typeSupport)),
   };
 }
 
 async function bundledSdkModule(): Promise<string> {
-  const result = await Bun.build({
-    entrypoints: [path.join(sourceRoot, "packages", "sdk", "src", "index.ts")],
-    format: "esm",
-    target: "bun",
-    write: false,
-  });
-  if (!result.success) {
-    throw new Error(
-      result.logs.map((log) => log.message).join("\n") || "embedded SDK build failed",
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-sdk-bundle-"));
+  try {
+    const entrypoint = path.join(tempRoot, "entry.ts");
+    const sdkSource = path.join(sourceRoot, "packages", "sdk", "src", "index.ts");
+    await Bun.write(
+      entrypoint,
+      [
+        `import * as sdk from ${JSON.stringify(sdkSource)};`,
+        ...sdkRuntimeExports.map((name) => `export const ${name} = sdk.${name};`),
+        "",
+      ].join("\n"),
     );
+    const result = await Bun.build({
+      entrypoints: [entrypoint],
+      format: "esm",
+      target: "bun",
+      packages: "bundle",
+      write: false,
+    });
+    if (!result.success) {
+      throw new Error(
+        result.logs.map((log) => log.message).join("\n") || "embedded SDK build failed",
+      );
+    }
+    const output = result.outputs[0];
+    if (!output) {
+      throw new Error("embedded SDK build produced no output");
+    }
+    return await output.text();
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
-  const output = result.outputs[0];
-  if (!output) {
-    throw new Error("embedded SDK build produced no output");
-  }
-  return await output.text();
 }
 
 async function bundledSdkDeclaration(): Promise<string> {
   return embeddedSdkDeclaration(await readSdkDeclarationModules(sourceRoot));
+}
+
+async function bundledConfigTypeSupport(): Promise<Record<string, string>> {
+  const entries = (await generatedTypeSupportFiles("", { tsconfig: false }))
+    .filter((file) => file.relativePath.startsWith(`types${path.sep}`))
+    .map(
+      (file) =>
+        [file.relativePath.split(path.sep).slice(1).join("/"), file.contents] satisfies [
+          string,
+          string,
+        ],
+    )
+    .filter(
+      ([relativePath]) =>
+        !relativePath.startsWith("pipr-sdk/") && relativePath !== "bun/index.d.ts",
+    );
+  return Object.fromEntries(entries);
 }
 
 async function buildTarget(item: ReleaseTarget, define: Record<string, string>): Promise<void> {

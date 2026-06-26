@@ -1,15 +1,15 @@
 import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { isPathContained, resolveContainedConfigDir } from "./paths.js";
 import { loadRuntimeProject } from "./project.js";
-import { officialInitRecipeConfigTs } from "./recipes.js";
-import { embeddedSdkAssets } from "./sdk-assets.js";
 import {
-  embeddedSdkDeclaration,
-  readSdkDeclarationSourceWithChunk,
-  type SdkDeclarationModule,
-} from "./sdk-declaration.js";
+  officialInitRecipeConfigTs,
+  officialInitRecipeFiles,
+  officialInitRecipeWorkflowEnvSecrets,
+} from "./recipes.js";
+import { generatedTypeSupportFiles } from "./type-support.js";
+
+export type InitTypeSupportMode = "include" | "skip" | "only";
 
 export type InitOfficialMinimalProjectOptions = {
   rootDir: string;
@@ -17,6 +17,7 @@ export type InitOfficialMinimalProjectOptions = {
   force?: boolean;
   adapters?: readonly string[];
   recipe?: string;
+  typeSupport?: InitTypeSupportMode;
 };
 
 export type InitOfficialMinimalProjectResult = {
@@ -68,7 +69,8 @@ function officialMinimalFilePaths(adapters: readonly OfficialInitAdapter[]): str
   const files = [
     path.join(".pipr", "config.ts"),
     path.join(".pipr", "tsconfig.json"),
-    path.join(".pipr", "types", "pipr-sdk.d.ts"),
+    path.join(".pipr", "types", "pipr-sdk", "index.d.ts"),
+    path.join(".pipr", "types", "bun", "index.d.ts"),
   ];
   if (adapters.includes("github")) {
     files.push(path.join(".github", "workflows", "pipr.yml"));
@@ -89,24 +91,77 @@ export async function initOfficialMinimalProject(
   const { configDir, relativeConfigDir } = resolveContainedConfigDir(options);
   const adapters = resolveOfficialInitAdapters(options.adapters);
   const rootDir = path.resolve(options.rootDir);
-  const targets = (await starterFiles(relativeConfigDir, adapters, options.recipe)).map((file) => ({
+  const typeSupport = options.typeSupport ?? "include";
+  const files =
+    typeSupport === "only"
+      ? await generatedTypeSupportFiles(relativeConfigDir)
+      : await starterFiles(relativeConfigDir, adapters, options.recipe, typeSupport !== "skip");
+  const targets = files.map((file) => ({
     ...file,
     absolutePath: path.join(rootDir, file.relativePath),
   }));
   await assertSafeTargetAncestors(targets, rootDir);
   const existing = await findExistingTargets(targets);
   if (existing.length > 0 && !options.force) {
+    if (typeSupport === "only") {
+      const result = await writeTargets(targets, existing, { skipExisting: true });
+      return { configDir, ...result };
+    }
     throw new Error(
       `Project already contains pipr files: ${existing.join(", ")}. ` +
         "Use --force to replace existing .pipr files.",
     );
   }
 
+  const result = await writeTargets(targets, existing, { skipExisting: false });
+
+  if (typeSupport !== "only") {
+    await loadRuntimeProject({ rootDir: options.rootDir, configDir });
+  }
+  return { configDir, ...result };
+}
+
+async function starterFiles(
+  relativeConfigDir: string,
+  adapters: readonly OfficialInitAdapter[],
+  recipe?: string,
+  includeTypeSupport = true,
+): Promise<StarterFile[]> {
+  const files: StarterFile[] = [
+    {
+      relativePath: path.join(relativeConfigDir, "config.ts"),
+      contents: officialInitRecipeConfigTs(recipe),
+    },
+    ...officialInitRecipeFiles(recipe).map((file) => ({
+      relativePath: path.join(relativeConfigDir, file.relativePath),
+      contents: file.contents,
+    })),
+  ];
+  if (includeTypeSupport) {
+    files.push(...(await generatedTypeSupportFiles(relativeConfigDir)));
+  }
+  if (adapters.includes("github")) {
+    files.push({
+      relativePath: path.join(".github", "workflows", "pipr.yml"),
+      contents: starterWorkflow(relativeConfigDir.split(path.sep).join("/"), recipe),
+    });
+  }
+  return files;
+}
+
+async function writeTargets(
+  targets: Array<StarterFile & { absolutePath: string }>,
+  existing: readonly string[],
+  options: { skipExisting: boolean },
+): Promise<{ created: string[]; overwritten: string[] }> {
   const created: string[] = [];
   const overwritten: string[] = [];
   for (const target of targets) {
-    await mkdir(path.dirname(target.absolutePath), { recursive: true });
     const existed = existing.includes(target.relativePath);
+    if (existed && options.skipExisting) {
+      continue;
+    }
+    await mkdir(path.dirname(target.absolutePath), { recursive: true });
     await Bun.write(target.absolutePath, target.contents);
     if (existed) {
       overwritten.push(target.relativePath);
@@ -114,34 +169,7 @@ export async function initOfficialMinimalProject(
       created.push(target.relativePath);
     }
   }
-
-  await loadRuntimeProject({ rootDir: options.rootDir, configDir });
-  return { configDir, created, overwritten };
-}
-
-async function starterFiles(
-  relativeConfigDir: string,
-  adapters: readonly OfficialInitAdapter[],
-  recipe?: string,
-): Promise<StarterFile[]> {
-  const files = [
-    {
-      relativePath: path.join(relativeConfigDir, "config.ts"),
-      contents: officialInitRecipeConfigTs(recipe),
-    },
-    { relativePath: path.join(relativeConfigDir, "tsconfig.json"), contents: starterTsconfig },
-    {
-      relativePath: path.join(relativeConfigDir, "types", "pipr-sdk.d.ts"),
-      contents: await sdkDeclaration(),
-    },
-  ];
-  if (adapters.includes("github")) {
-    files.push({
-      relativePath: path.join(".github", "workflows", "pipr.yml"),
-      contents: starterWorkflow(relativeConfigDir.split(path.sep).join("/")),
-    });
-  }
-  return files;
+  return { created, overwritten };
 }
 
 async function assertSafeTargetAncestors(
@@ -210,81 +238,7 @@ async function maybeLstat(
   }
 }
 
-async function sdkDeclaration(): Promise<string> {
-  const embedded = embeddedSdkAssets().declaration;
-  if (embedded?.includes('declare module "@pipr/sdk"')) {
-    assertStandaloneSdkDeclaration(embedded);
-    return embedded;
-  }
-  const declaration = embeddedSdkDeclaration(await rawSdkDeclarations());
-  assertStandaloneSdkDeclaration(declaration);
-  return declaration;
-}
-
-function assertStandaloneSdkDeclaration(declaration: string): void {
-  if (declaration.includes('from "zod"') || declaration.includes("z.ZodType")) {
-    throw new Error("generated SDK declaration must be standalone and must not import zod");
-  }
-}
-
-type SdkDeclarationAsset = {
-  moduleName: string;
-  fileName: string;
-};
-
-const sdkDeclarationModules: SdkDeclarationAsset[] = [
-  { moduleName: "@pipr/sdk", fileName: "index.d.mts" },
-  { moduleName: "@pipr/sdk/review", fileName: "review.d.mts" },
-  { moduleName: "@pipr/sdk/tools", fileName: "tools.d.mts" },
-];
-
-async function rawSdkDeclarations(): Promise<SdkDeclarationModule[]> {
-  const declarations = await Promise.all(
-    sdkDeclarationModules.map(async (module) => {
-      const declarationPath = await sdkDeclarationPath(module.fileName);
-      return declarationPath
-        ? { ...module, source: await readSdkDeclarationSourceWithChunk(module, declarationPath) }
-        : undefined;
-    }),
-  );
-  if (declarations.every((declaration) => declaration !== undefined)) {
-    return declarations;
-  }
-  const embedded = embeddedSdkAssets().declaration;
-  if (embedded) {
-    return [{ moduleName: sdkDeclarationModules[0].moduleName, source: embedded }];
-  }
-  throw new Error("Unable to locate @pipr/sdk declaration file. Build @pipr/sdk before pipr init.");
-}
-
-async function sdkDeclarationPath(fileName: string): Promise<string | undefined> {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.resolve(moduleDir, "../../sdk/dist", fileName),
-    path.resolve(moduleDir, "../../../sdk/dist", fileName),
-  ];
-  for (const candidate of candidates) {
-    const stats = await maybeLstat(candidate);
-    if (stats?.isFile()) {
-      return candidate;
-    }
-  }
-  return undefined;
-}
-
-const starterTsconfig = `{
-  "compilerOptions": {
-    "strict": true,
-    "noEmit": true,
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler"
-  },
-  "include": ["./**/*.ts"]
-}
-`;
-
-function starterWorkflow(relativeConfigDir: string): string {
+function starterWorkflow(relativeConfigDir: string, recipe?: string): string {
   const lines = [
     "name: pipr",
     "",
@@ -313,6 +267,9 @@ function starterWorkflow(relativeConfigDir: string): string {
     `          DEEPSEEK_API_KEY: $${["{{ ", "secrets.DEEPSEEK_API_KEY", " }}"].join("")}`,
     `          GITHUB_TOKEN: $${["{{ ", "github.token", " }}"].join("")}`,
   ];
+  for (const secret of officialInitRecipeWorkflowEnvSecrets(recipe)) {
+    lines.push(`          ${secret.env}: $${["{{ ", `secrets.${secret.secret}`, " }}"].join("")}`);
+  }
   if (relativeConfigDir !== ".pipr") {
     lines.push("        with:");
     lines.push(`          config-dir: ${relativeConfigDir}`);

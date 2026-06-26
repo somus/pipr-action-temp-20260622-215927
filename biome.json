@@ -1,7 +1,18 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/.turbo", "!**/.fallow", "!**/coverage"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.turbo",
+      "!**/.fallow",
+      "!**/coverage",
+      "!apps/docs/.source",
+      "!apps/docs/.output",
+      "!apps/docs/.tanstack",
+      "!apps/docs/src/routeTree.gen.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -19,6 +30,11 @@
     "formatter": {
       "quoteStyle": "double",
       "semicolons": "always"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   }
 }

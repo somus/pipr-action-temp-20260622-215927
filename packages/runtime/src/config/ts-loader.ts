@@ -6,6 +6,7 @@ import type { RuntimePlan } from "@pipr/sdk/internal";
 import { buildPiprPlan, isPiprConfigFactory } from "@pipr/sdk/internal";
 import { resolveContainedConfigDir } from "./paths.js";
 import { embeddedSdkAssets } from "./sdk-assets.js";
+import { writeGeneratedTypeSupport } from "./type-support.js";
 
 export type LoadTypescriptConfigOptions = {
   rootDir: string;
@@ -28,7 +29,7 @@ export async function loadTypescriptConfig(
     throw new Error(`${configDir}/config.ts is required. Run pipr init to create it.`);
   }
   if (options.typecheck) {
-    await typecheckTypescriptConfig(projectDir);
+    await typecheckTypescriptConfig(path.resolve(options.rootDir), relativeConfigDir);
   }
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-config-"));
@@ -77,33 +78,37 @@ async function installSdkStub(configDir: string): Promise<void> {
   await Bun.write(path.join(sdkRoot, "tools.mjs"), 'export * from "./index.mjs";\n');
 }
 
-async function typecheckTypescriptConfig(configDir: string): Promise<void> {
-  const tsconfigPath = path.join(configDir, "tsconfig.json");
-  if (!(await fileExists(tsconfigPath))) {
-    throw new Error(`${configDir}/tsconfig.json is required for pipr check. Run pipr init.`);
-  }
-  const tscPath = await typescriptCliPath();
-  if (!tscPath) {
-    await typecheckTypescriptConfigWithApi(configDir, tsconfigPath);
-    return;
-  }
-  const result = Bun.spawnSync(
-    [process.execPath, tscPath, "--noEmit", "--pretty", "false", "-p", tsconfigPath],
-    {
-      cwd: configDir,
-      maxBuffer: 1024 * 1024 * 4,
-      stderr: "pipe",
-      stdout: "pipe",
-    },
-  );
-  if (result.exitCode !== 0) {
-    const output = [result.stdout?.toString().trim(), result.stderr?.toString().trim()]
-      .filter(Boolean)
-      .join("\n");
-    throw new Error(
-      `TypeScript config check failed for ${path.join(configDir, "config.ts")}` +
-        (output ? `:\n${output}` : ""),
-    );
+async function typecheckTypescriptConfig(
+  rootDir: string,
+  relativeConfigDir: string,
+): Promise<void> {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "pipr-config-check-"));
+  try {
+    const tempProjectDir = path.join(tempRoot, "project");
+    const tempConfigDir = path.join(tempProjectDir, relativeConfigDir);
+    const configTypesPath = path.join(relativeConfigDir, "types");
+    await cp(rootDir, tempProjectDir, {
+      recursive: true,
+      errorOnExist: false,
+      force: true,
+      filter: (source) => {
+        const relative = path.relative(rootDir, source);
+        const first = relative.split(path.sep)[0] ?? "";
+        return (
+          !ignoredTypecheckRootEntries.has(first) &&
+          relative !== "bun.lock" &&
+          relative !== configTypesPath &&
+          !relative.startsWith(`${configTypesPath}${path.sep}`)
+        );
+      },
+    });
+    const tsconfigPath = path.join(tempConfigDir, "tsconfig.json");
+    await writeGeneratedTypeSupport(tempConfigDir, {
+      tsconfig: !(await fileExists(tsconfigPath)),
+    });
+    await typecheckTypescriptConfigWithApi(tempConfigDir, tsconfigPath);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
 }
 
@@ -117,7 +122,20 @@ async function typecheckTypescriptConfigWithApi(
     throw new Error(formatTypeScriptDiagnostics(ts, [config.error], configDir));
   }
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, configDir);
-  const program = ts.createProgram(parsed.fileNames, parsed.options);
+  const typeRoot = path.join(configDir, "types");
+  const configPath = path.join(configDir, "config.ts");
+  const fileNames = [
+    configPath,
+    ...parsed.fileNames.filter((fileName) => {
+      const relative = path.relative(typeRoot, fileName);
+      return relative.startsWith("..") || path.isAbsolute(relative);
+    }),
+  ];
+  const program = ts.createProgram(fileNames, {
+    ...parsed.options,
+    typeRoots: [...new Set([typeRoot, ...(parsed.options.typeRoots ?? [])])],
+    types: [...new Set([...(parsed.options.types ?? []), "pipr-sdk", "bun"])],
+  });
   const diagnostics = [...parsed.errors, ...ts.getPreEmitDiagnostics(program)];
   if (diagnostics.length > 0) {
     throw new Error(
@@ -137,20 +155,6 @@ function formatTypeScriptDiagnostics(
     getCurrentDirectory: () => configDir,
     getNewLine: () => "\n",
   });
-}
-
-async function typescriptCliPath(): Promise<string | undefined> {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.resolve(moduleDir, "../../../../node_modules/typescript/bin/tsc"),
-    path.resolve(moduleDir, "../../../node_modules/typescript/bin/tsc"),
-  ];
-  for (const candidate of candidates) {
-    if (await fileExists(candidate)) {
-      return candidate;
-    }
-  }
-  return undefined;
 }
 
 async function sdkStubSource(): Promise<string> {
@@ -189,6 +193,15 @@ function isIgnoredConfigCopyPath(source: string, configDir: string): boolean {
     relative === "bun.lock"
   );
 }
+
+const ignoredTypecheckRootEntries = new Set([
+  ".fallow",
+  ".git",
+  ".turbo",
+  "coverage",
+  "dist",
+  "node_modules",
+]);
 
 async function fileExists(filePath: string): Promise<boolean> {
   return await Bun.file(filePath).exists();

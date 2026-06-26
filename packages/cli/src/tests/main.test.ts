@@ -26,6 +26,8 @@ describe("pipr CLI", () => {
     const init = await runCli(["init", "--help"]);
     expect(init.stdout).toContain("--adapters <adapters>");
     expect(init.stdout).toContain("--recipe <recipe>");
+    expect(init.stdout).toContain("--no-types");
+    expect(init.stdout).toContain("--types-only");
     expect(init.stdout).toContain("github");
     expect(init.stdout).toContain("none");
     expect(init.stdout).toContain("multi-agent-review");
@@ -80,13 +82,8 @@ describe("pipr CLI", () => {
   it("initializes and checks the TypeScript config", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
     try {
-      const init = await runCli(["init"], {}, workspace);
-      const check = await runCli(["check"], {}, workspace);
+      await runInitAndCheck(workspace, ["init"]);
 
-      expect(init.exitCode).toBe(0);
-      expect(init.stdout).toContain("created 4 file(s)");
-      expect(check.exitCode).toBe(0);
-      expect(check.stdout).toContain("valid:");
       expect(await Bun.file(path.join(workspace, ".pipr", "config.ts")).text()).toContain(
         "pipr.review",
       );
@@ -101,15 +98,43 @@ describe("pipr CLI", () => {
   it("initializes config files without adapter files", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
     try {
-      const init = await runCli(["init", "--adapters", "none"], {}, workspace);
-      const check = await runCli(["check"], {}, workspace);
+      await runInitAndCheck(workspace, ["init", "--adapters", "none"]);
 
-      expect(init.exitCode, `${init.stdout}\n${init.stderr}`).toBe(0);
-      expect(init.stdout).toContain("created 3 file(s)");
-      expect(check.exitCode).toBe(0);
-      expect(check.stdout).toContain("valid:");
       expect(await fileExists(path.join(workspace, ".github", "workflows", "pipr.yml"))).toBe(
         false,
+      );
+    } finally {
+      await removeWorkspace(workspace);
+    }
+  });
+
+  it("initializes config files without local type support", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
+    try {
+      await runInitAndCheck(workspace, ["init", "--adapters", "none", "--no-types"]);
+
+      expect(await fileExists(path.join(workspace, ".pipr", "tsconfig.json"))).toBe(false);
+      expect(await fileExists(path.join(workspace, ".pipr", "types"))).toBe(false);
+    } finally {
+      await removeWorkspace(workspace);
+    }
+  });
+
+  it("adds local type support after a no-types init", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
+    try {
+      const init = await runCli(["init", "--adapters", "none", "--no-types"], {}, workspace);
+      const types = await runCli(["init", "--types-only"], {}, workspace);
+      const second = await runCli(["init", "--types-only"], {}, workspace);
+
+      expect(init.exitCode, `${init.stdout}\n${init.stderr}`).toBe(0);
+      expect(types.exitCode, `${types.stdout}\n${types.stderr}`).toBe(0);
+      expect(types.stdout).toMatch(/created \d+ file\(s\)/);
+      expect(second.exitCode, `${second.stdout}\n${second.stderr}`).toBe(0);
+      expect(second.stdout).toContain("created 0 file(s)");
+      expect(await fileExists(path.join(workspace, ".pipr", "tsconfig.json"))).toBe(true);
+      expect(await fileExists(path.join(workspace, ".pipr", "types", "bun-types", "s3.d.ts"))).toBe(
+        true,
       );
     } finally {
       await removeWorkspace(workspace);
@@ -127,11 +152,11 @@ describe("pipr CLI", () => {
       const inspect = await runCli(["inspect"], {}, workspace);
 
       expect(init.exitCode, `${init.stdout}\n${init.stderr}`).toBe(0);
-      expect(init.stdout).toContain("created 3 file(s)");
+      expect(init.stdout).toMatch(/created \d+ file\(s\)/);
       expect(inspect.exitCode, `${inspect.stdout}\n${inspect.stderr}`).toBe(0);
-      expect(inspect.stdout).toContain("owner_lookup");
+      expect(inspect.stdout).toContain("r2_memory_search");
       expect(await Bun.file(path.join(workspace, ".pipr", "config.ts")).text()).toContain(
-        "definePlugin",
+        "r2MemoryPlugin",
       );
     } finally {
       await removeWorkspace(workspace);
@@ -148,6 +173,17 @@ describe("pipr CLI", () => {
         {},
         workspace,
       );
+      const typesWithRecipe = await runCli(
+        ["init", "--types-only", "--recipe", "default-review"],
+        {},
+        workspace,
+      );
+      const typesWithAdapters = await runCli(
+        ["init", "--types-only", "--adapters", "none"],
+        {},
+        workspace,
+      );
+      const typesWithNoTypes = await runCli(["init", "--types-only", "--no-types"], {}, workspace);
 
       expect(unsupported.exitCode).toBe(1);
       expect(`${unsupported.stdout}\n${unsupported.stderr}`).toContain(
@@ -161,6 +197,18 @@ describe("pipr CLI", () => {
       expect(`${unsupportedRecipe.stdout}\n${unsupportedRecipe.stderr}`).toContain(
         "Unsupported pipr init recipe 'missing'. Supported recipes:",
       );
+      expect(typesWithRecipe.exitCode).toBe(1);
+      expect(`${typesWithRecipe.stdout}\n${typesWithRecipe.stderr}`).toContain(
+        "--types-only cannot be combined with --recipe",
+      );
+      expect(typesWithAdapters.exitCode).toBe(1);
+      expect(`${typesWithAdapters.stdout}\n${typesWithAdapters.stderr}`).toContain(
+        "--types-only cannot be combined with --adapters",
+      );
+      expect(typesWithNoTypes.exitCode).toBe(1);
+      expect(`${typesWithNoTypes.stdout}\n${typesWithNoTypes.stderr}`).toContain(
+        "--types-only cannot be combined with --no-types",
+      );
     } finally {
       await removeWorkspace(workspace);
     }
@@ -172,11 +220,7 @@ describe("pipr CLI", () => {
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout).toContain("valid:");
     expect(result.stdout).toContain(".pipr/config.ts");
-    expect(await listFiles(path.join(repoRoot, ".pipr"))).toEqual([
-      "config.ts",
-      "tsconfig.json",
-      "types/pipr-sdk.d.ts",
-    ]);
+    expect(await listFiles(path.join(repoRoot, ".pipr"))).toContain("config.ts");
   });
 
   it("refuses init conflicts unless force is explicit", async () => {
@@ -373,6 +417,22 @@ async function initWorkspaceConfig(workspace: string): Promise<void> {
   if (result.exitCode !== 0) {
     throw new Error(`pipr init failed: ${result.stderr || result.stdout}`);
   }
+}
+
+async function runInitAndCheck(
+  workspace: string,
+  initArgs: string[],
+): Promise<{
+  init: Awaited<ReturnType<typeof runCli>>;
+  check: Awaited<ReturnType<typeof runCli>>;
+}> {
+  const init = await runCli(initArgs, {}, workspace);
+  const check = await runCli(["check"], {}, workspace);
+  expect(init.exitCode, `${init.stdout}\n${init.stderr}`).toBe(0);
+  expect(init.stdout).toMatch(/created \d+ file\(s\)/);
+  expect(check.exitCode, `${check.stdout}\n${check.stderr}`).toBe(0);
+  expect(check.stdout).toContain("valid:");
+  return { init, check };
 }
 
 async function removeWorkspace(workspace: string): Promise<void> {

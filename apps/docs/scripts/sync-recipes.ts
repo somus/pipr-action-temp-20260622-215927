@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const docsDir = path.resolve(here, "../content/docs/recipes");
 const mode = process.argv.includes("--check") ? "check" : "sync";
 
-function starterWorkflow(recipeId: string): string {
+function starterWorkflow(recipe: (typeof recipes)[number]): string {
   const lines = [
     "name: pipr",
     "",
@@ -37,13 +37,8 @@ function starterWorkflow(recipeId: string): string {
     `          GITHUB_TOKEN: ${githubExpression("github.token")}`,
   ];
 
-  if (recipeId === "plugin-tool-review") {
-    lines.push(
-      `          PIPR_R2_MEMORY_BUCKET: ${githubExpression("secrets.PIPR_R2_MEMORY_BUCKET")}`,
-      `          PIPR_R2_MEMORY_ENDPOINT: ${githubExpression("secrets.PIPR_R2_MEMORY_ENDPOINT")}`,
-      `          PIPR_R2_MEMORY_ACCESS_KEY_ID: ${githubExpression("secrets.PIPR_R2_MEMORY_ACCESS_KEY_ID")}`,
-      `          PIPR_R2_MEMORY_SECRET_ACCESS_KEY: ${githubExpression("secrets.PIPR_R2_MEMORY_SECRET_ACCESS_KEY")}`,
-    );
+  for (const secret of recipe.workflowEnvSecrets ?? []) {
+    lines.push(`          ${secret.env}: ${githubExpression(`secrets.${secret.secret}`)}`);
   }
 
   lines.push("");
@@ -192,7 +187,7 @@ function renderRecipe(recipe: (typeof recipes)[number]): string {
   const fileTree = files.map((file) => ({ path: file.path }));
   const filePanes = files.map(renderRecipeFilePane).join("\n");
   const description = recipeDescription(recipe);
-  const details = recipeDetails(recipe);
+  const details = recipe.docsDetailsMdx ?? "";
 
   return `---
 title: "${escapeFrontmatter(recipe.title)}"
@@ -237,20 +232,6 @@ function recipeDescription(recipe: (typeof recipes)[number]): string {
   return recipeDescriptions.get(recipe.id) ?? recipe.description;
 }
 
-function recipeDetails(recipe: (typeof recipes)[number]): string {
-  if (recipe.id !== "plugin-tool-review") {
-    return "";
-  }
-
-  return `## Memory service
-
-This recipe uses Bun's S3-compatible client against Cloudflare R2. R2 credentials are declared with \`pipr.secret(...)\`, then resolved inside tool execution with \`ctx.secret(...)\`. The generated GitHub workflow maps \`PIPR_R2_MEMORY_BUCKET\`, \`PIPR_R2_MEMORY_ENDPOINT\`, \`PIPR_R2_MEMORY_ACCESS_KEY_ID\`, and \`PIPR_R2_MEMORY_SECRET_ACCESS_KEY\` repository secrets into matching runtime environment variables.
-
-R2 is object storage, not a search index. The sample lists recent JSON memory objects under the configured prefix and filters them locally, which is enough for small reviewer-memory sets. Change \`prefix\` in \`.pipr/config.ts\` when multiple repositories share one bucket.
-
-`;
-}
-
 function renderRecipeFilePane(file: { code: string; lang: string; path: string }): string {
   const fence = fenceFor(file.code);
 
@@ -278,7 +259,7 @@ function recipeFiles(
       lang: recipeFileLanguage(file.relativePath),
       path: path.posix.join(".pipr", file.relativePath),
     })),
-    { code: starterWorkflow(recipe.id), lang: "yaml", path: ".github/workflows/pipr.yml" },
+    { code: starterWorkflow(recipe), lang: "yaml", path: ".github/workflows/pipr.yml" },
   ];
 }
 

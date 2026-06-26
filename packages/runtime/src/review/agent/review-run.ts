@@ -9,6 +9,7 @@ import {
   prepareDiffManifestPrompt,
 } from "../../diff/manifest-projection.js";
 import { type PiReadOnlyToolName, piReadOnlyToolNames } from "../../pi/contract.js";
+import type { PiCustomToolDefinition } from "../../pi/custom-tools.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../../pi/runner.js";
 import { boundedLogSnippet, type RuntimeActionLog } from "../../shared/logging.js";
 import type {
@@ -44,6 +45,7 @@ export type RunReviewAgentOptions = {
     env?: NodeJS.ProcessEnv;
     piExecutable?: string;
     piRunner?: PiRunner;
+    taskContext?: TaskContext;
     priorReviewState?: PriorReviewState;
     log?: RuntimeActionLog;
   };
@@ -118,9 +120,11 @@ export function resolveProvider(config: PiprConfig, providerId: string): Provide
 
 function createAgentRunContext(runtime: RunReviewAgentOptions["runtime"]): AgentRunContext {
   const runId = crypto.randomUUID();
+  const repositorySlugParts = runtime.event.repository.slug.split("/");
   const repository = {
     root: runtime.workspace,
-    name: runtime.event.repository.slug.split("/").at(-1) ?? "repo",
+    owner: repositorySlugParts.length > 1 ? repositorySlugParts[0] : undefined,
+    name: repositorySlugParts.at(-1) ?? "repo",
   };
   const change = {
     number: runtime.event.change.number,
@@ -221,22 +225,37 @@ function retrySettings(agent: Agent): RetrySettings {
   });
 }
 
-function resolveAgentTools(agent: Agent, _plan: RuntimePlan): AgentToolResolution {
+function resolveAgentTools(agent: Agent, plan: RuntimePlan): AgentToolResolution {
+  const customTools: AgentTool[] = [];
   const unsupported: AgentTool[] = [];
+  const registeredTools = new Set(plan.tools);
   for (const tool of agent.definition.tools ?? []) {
     if (isBuiltinReadOnlyTool(tool)) {
       continue;
     }
-    unsupported.push(tool);
+    if (!isRunnableCustomTool(tool, registeredTools)) {
+      unsupported.push(tool);
+      continue;
+    }
+    customTools.push(tool);
   }
   if (unsupported.length > 0) {
     throw new Error(
-      `Agent '${agent.name ?? "anonymous-agent"}' declares custom Pi tools that are not executable in the MVP: ${unsupported
+      `Agent '${agent.name ?? "anonymous-agent"}' declares unregistered or invalid custom Pi tools: ${unsupported
         .map((tool) => tool.name)
         .join(", ")}`,
     );
   }
-  return { customTools: [] };
+  return { customTools };
+}
+
+function isRunnableCustomTool(tool: AgentTool, registeredTools: Set<AgentTool>): boolean {
+  return (
+    registeredTools.has(tool) &&
+    Boolean(tool.input) &&
+    Boolean(tool.output) &&
+    typeof tool.run === "function"
+  );
 }
 
 function selectProviders(
@@ -267,8 +286,9 @@ async function runPiForPrompt(
 ): Promise<PiRunResult> {
   const builtinTools = builtinToolsForPrompt(options.toolMode ?? "read-only");
   const runtimeTools = runtimeToolsForRun(options);
+  const customTools = customToolsForRun(options);
   const timeoutSeconds = promptTimeoutSeconds(options);
-  logPiStart(options, provider, prompt, builtinTools, runtimeTools);
+  logPiStart(options, provider, prompt, builtinTools, runtimeTools, customTools);
   const result = await (options.runtime.piRunner ?? runPi)({
     workspace: options.runtime.workspace,
     provider,
@@ -277,6 +297,7 @@ async function runPiForPrompt(
     piExecutable: options.runtime.piExecutable,
     builtinTools,
     runtimeTools,
+    customTools,
     timeoutSeconds,
   });
   logPiResult(options, provider, result, timeoutSeconds);
@@ -290,6 +311,38 @@ function runtimeToolsForRun(
   return options.toolMode === "none"
     ? undefined
     : runtimeToolsForPrompt(options.manifest, options.manifestPrompt);
+}
+
+function customToolsForRun(
+  options: RunReviewAgentOptions & PreparedAgentContext,
+): Parameters<typeof runPi>[0]["customTools"] {
+  if (options.toolMode === "none" || options.agentTools.customTools.length === 0) {
+    return undefined;
+  }
+  const context = options.runtime.taskContext;
+  if (!context) {
+    throw new Error("Custom Pi tools require a task context");
+  }
+  return {
+    context,
+    tools: options.agentTools.customTools.map(customToolDefinition),
+  };
+}
+
+function customToolDefinition(tool: AgentTool): PiCustomToolDefinition {
+  const { input, output, run } = tool;
+  if (!input || !output || !run) {
+    throw new Error(`Custom Pi tool '${tool.name}' is missing input, output, or run`);
+  }
+  return {
+    name: tool.name,
+    description: tool.description,
+    input,
+    output,
+    async execute(context, input) {
+      return await run({ input, ctx: context as TaskContext });
+    },
+  };
 }
 
 function promptTimeoutSeconds(
@@ -307,13 +360,18 @@ function logPiStart(
   prompt: string,
   builtinTools: readonly PiReadOnlyToolName[],
   runtimeTools: Parameters<typeof runPi>[0]["runtimeTools"],
+  customTools: Parameters<typeof runPi>[0]["customTools"],
 ): void {
   options.runtime.log?.info("pi start", {
     agent: options.agent.name ?? "anonymous-agent",
     provider: provider.id,
     model: provider.model,
     promptBytes: Buffer.byteLength(prompt, "utf8"),
-    tools: [...builtinTools, ...(runtimeTools ? ["pipr-runtime-tools"] : [])],
+    tools: [
+      ...builtinTools,
+      ...(runtimeTools ? ["pipr-runtime-tools"] : []),
+      ...(customTools?.tools.map((tool) => tool.name) ?? []),
+    ],
   });
 }
 

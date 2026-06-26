@@ -315,7 +315,7 @@ export type PluginToolDefinition<Input, Output> = {
   description: string;
   input: Schema<Input>;
   output: Schema<Output>;
-  execute?(context: unknown, input: Input): Promise<Output>;
+  execute?(context: TaskContext, input: Input): Promise<Output>;
   run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
   toModelOutput?(output: Output): PromptValue;
 };
@@ -323,7 +323,7 @@ export type PluginToolDefinition<Input, Output> = {
 /** Runtime input passed to a tool implementation. */
 export type ToolRunOptions<Input> = {
   input: Input;
-  ctx: unknown;
+  ctx: TaskContext;
   signal?: AbortSignal;
 };
 
@@ -531,6 +531,7 @@ export type TaskContext = {
   readonly platform: PlatformInfo;
   readonly pi: PiRunner;
   readonly command?: CommandContext;
+  secret(secret: SecretRef): string;
   readonly review: {
     prior(): Promise<PriorReview>;
   };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ModelProfile, PiprBuilder, Reviewer } from "../index.js";
+import type { ModelProfile, PiprBuilder, Reviewer, TaskContext } from "../index.js";
 import { definePipr, definePlugin, jsonSchema, schema, schemas, z } from "../index.js";
 import { buildPiprPlan } from "../internal.js";
 import {
@@ -329,6 +329,9 @@ describe("definePipr", () => {
             return { inlineFindings: [] };
           },
         },
+        secret() {
+          return "secret";
+        },
         check: fakeCheck(),
         async comment() {},
         log: {
@@ -363,7 +366,7 @@ describe("definePipr", () => {
     const tool = plan.tools[0];
 
     await expect(
-      tool?.run?.({ input: { body: "Looks good." }, ctx: {}, signal: undefined }),
+      tool?.run?.({ input: { body: "Looks good." }, ctx: fakeTaskContext(), signal: undefined }),
     ).resolves.toEqual({ body: "Looks good." });
     expect(tool?.toModelOutput?.({ body: "Looks good." })).toBe("Looks good.");
   });
@@ -570,6 +573,9 @@ describe("definePipr", () => {
           async prior() {
             return { inlineFindings: [] };
           },
+        },
+        secret() {
+          return "secret";
         },
         check: fakeCheck(),
         async comment(value) {
@@ -849,5 +855,30 @@ function fakeCheck() {
     pass() {},
     fail() {},
     neutral() {},
+  };
+}
+
+function fakeTaskContext(): TaskContext {
+  return {
+    run: { id: "test-run" },
+    repository: { root: "/tmp/repo", name: "repo" },
+    platform: { id: "local" },
+    change: fakeChange(),
+    pi: {
+      async run(agent) {
+        return agent.definition.output.parse({ summary: { body: "Done." }, inlineFindings: [] });
+      },
+    },
+    review: {
+      async prior() {
+        return { inlineFindings: [] };
+      },
+    },
+    secret() {
+      return "secret";
+    },
+    check: fakeCheck(),
+    async comment() {},
+    log: fakeLog(),
   };
 }

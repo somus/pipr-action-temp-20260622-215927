@@ -18,7 +18,7 @@ Run the Action gate after editing GitHub Action behavior, Docker packaging, work
 mise run check-actions
 ```
 
-See [Development](docs/development.md) for local e2e and release workflow details.
+See [Development](apps/docs/content/docs/reference/development.mdx) for local e2e and release workflow details.
 
 ## Pull requests
 
@@ -32,4 +32,4 @@ Use the project language in [docs/CONTEXT.md](docs/CONTEXT.md). Architectural ch
 
 ## Documentation
 
-Keep `README.md` user-facing. Put maintainer workflows in `docs/development.md`, configuration details in `docs/configuration.md`, Action usage in `docs/github-action.md`, and durable decisions in ADRs.
+Keep `README.md` user-facing. Put maintainer workflows in `apps/docs/content/docs/reference/development.mdx`, configuration details in `apps/docs/content/docs/guide/configuration.mdx`, Action usage in `apps/docs/content/docs/guide/github-action.mdx`, and durable decisions in ADRs.

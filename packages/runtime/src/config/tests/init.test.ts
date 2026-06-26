@@ -4,12 +4,21 @@ import os from "node:os";
 import path from "node:path";
 import { initOfficialMinimalProject, listOfficialMinimalFiles } from "../init.js";
 import { inspectRuntimePlan, validateProject } from "../project.js";
-import { listOfficialInitRecipes, supportedOfficialInitRecipes } from "../recipes.js";
+import {
+  listOfficialInitRecipes,
+  officialInitRecipeFiles,
+  supportedOfficialInitRecipes,
+} from "../recipes.js";
 
-const configOnlyInitFiles = [
-  path.join(".pipr", "config.ts"),
+const configCoreInitFiles = [path.join(".pipr", "config.ts")];
+
+const typeSupportKeyFiles = [
   path.join(".pipr", "tsconfig.json"),
-  path.join(".pipr", "types", "pipr-sdk.d.ts"),
+  path.join(".pipr", "types", "pipr-sdk", "index.d.ts"),
+  path.join(".pipr", "types", "bun", "index.d.ts"),
+  path.join(".pipr", "types", "bun-types", "s3.d.ts"),
+  path.join(".pipr", "types", "node", "index.d.ts"),
+  path.join(".pipr", "types", "undici-types", "index.d.ts"),
 ];
 
 describe("initOfficialMinimalProject", () => {
@@ -19,7 +28,8 @@ describe("initOfficialMinimalProject", () => {
     const result = await initOfficialMinimalProject({ rootDir });
     const validation = await validateProject({ rootDir });
 
-    expect(result.created.sort()).toEqual(listOfficialMinimalFiles().sort());
+    expect(result.created).toEqual(expect.arrayContaining(listOfficialMinimalFiles()));
+    expect(result.created).toEqual(expect.arrayContaining(typeSupportKeyFiles));
     expect(result.overwritten).toEqual([]);
     expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toContain(
       "pipr.review",
@@ -27,10 +37,13 @@ describe("initOfficialMinimalProject", () => {
     expect(await Bun.file(path.join(rootDir, ".pipr", "tsconfig.json")).text()).toContain(
       "moduleResolution",
     );
-    const sdkTypes = await Bun.file(path.join(rootDir, ".pipr", "types", "pipr-sdk.d.ts")).text();
+    const sdkTypes = await Bun.file(
+      path.join(rootDir, ".pipr", "types", "pipr-sdk", "index.d.ts"),
+    ).text();
     expect(sdkTypes).toContain('declare module "@pipr/sdk"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/review"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/tools"');
+    expect(sdkTypes).not.toContain('declare module "bun"');
     expect(sdkTypes).toContain("reviewResultSchema");
     expect(sdkTypes).toContain("reviewFindingSchema");
     expect(sdkTypes).toContain("reviewSummarySchema");
@@ -43,6 +56,10 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).toContain("jsonSchema<T>");
     expect(sdkTypes).not.toContain('from "zod"');
     expect(sdkTypes).not.toContain("z.ZodType");
+    const bunTypes = await Bun.file(
+      path.join(rootDir, ".pipr", "types", "bun-types", "s3.d.ts"),
+    ).text();
+    expect(bunTypes).toContain("class S3Client");
     const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
     expect(workflow).toContain("uses: somus/pipr@main");
     expect(workflow).toContain("checks: write");
@@ -56,17 +73,23 @@ describe("initOfficialMinimalProject", () => {
     expect(workflow).not.toContain("api-key-env: DEEPSEEK_API_KEY");
     expect(workflow).toContain("DEEPSEEK_API_KEY:");
     expect(workflow).toContain("secrets.DEEPSEEK_API_KEY");
-    expect(await listFiles(rootDir)).toEqual([
-      ".github/workflows/pipr.yml",
-      ".pipr/config.ts",
-      ".pipr/tsconfig.json",
-      ".pipr/types/pipr-sdk.d.ts",
-    ]);
-    expect(await listFiles(path.join(rootDir, ".pipr"))).toEqual([
-      "config.ts",
-      "tsconfig.json",
-      "types/pipr-sdk.d.ts",
-    ]);
+    expect(await listFiles(rootDir)).toEqual(
+      expect.arrayContaining([
+        ".github/workflows/pipr.yml",
+        ".pipr/config.ts",
+        ".pipr/tsconfig.json",
+        ".pipr/types/pipr-sdk/index.d.ts",
+        ".pipr/types/bun-types/s3.d.ts",
+      ]),
+    );
+    expect(await listFiles(path.join(rootDir, ".pipr"))).toEqual(
+      expect.arrayContaining([
+        "config.ts",
+        "tsconfig.json",
+        "types/pipr-sdk/index.d.ts",
+        "types/bun-types/s3.d.ts",
+      ]),
+    );
     expect(validation.kind).toBe("typescript");
     expect(validation.settings.config.defaultProvider).toBe("deepseek/deepseek-v4-pro");
     expect(validation.settings.config.publication.maxInlineComments).toBe(5);
@@ -75,14 +98,57 @@ describe("initOfficialMinimalProject", () => {
   it("can initialize only the pipr config files without adapter files", async () => {
     const { rootDir, result, validation } = await initializedConfigOnlyProject();
 
-    expect(result.created.sort()).toEqual(configOnlyInitFiles);
-    expect(result.overwritten).toEqual([]);
-    expect(await listFiles(rootDir)).toEqual([
-      ".pipr/config.ts",
-      ".pipr/tsconfig.json",
-      ".pipr/types/pipr-sdk.d.ts",
-    ]);
+    expectConfigOnlyInitResult(result);
+    expect(await listFiles(rootDir)).toEqual(
+      expect.arrayContaining([".pipr/config.ts", ".pipr/types/pipr-sdk/index.d.ts"]),
+    );
+    expect(await fileExists(path.join(rootDir, ".github", "workflows", "pipr.yml"))).toBe(false);
     expect(validation.kind).toBe("typescript");
+  });
+
+  it("can initialize config files without local type support", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+
+    const result = await initOfficialMinimalProject({
+      rootDir,
+      adapters: [],
+      recipe: "plugin-tool-review",
+      typeSupport: "skip",
+    });
+    const validation = await validateProject({ rootDir });
+
+    expect(result.created.sort()).toEqual([
+      path.join(".pipr", "config.ts"),
+      path.join(".pipr", "r2-memory.ts"),
+    ]);
+    expect(result.overwritten).toEqual([]);
+    expect(await fileExists(path.join(rootDir, ".pipr", "tsconfig.json"))).toBe(false);
+    expect(await fileExists(path.join(rootDir, ".pipr", "types"))).toBe(false);
+    expect(inspectRuntimePlan(validation.plan, ".pipr/config.ts").tools).toEqual([
+      "r2_memory_search",
+      "r2_memory_store",
+    ]);
+  });
+
+  it("adds local type support only and skips existing files by default", async () => {
+    const rootDir = await projectWithCustomConfig();
+
+    const first = await initOfficialMinimalProject({ rootDir, adapters: [], typeSupport: "only" });
+    const second = await initOfficialMinimalProject({ rootDir, adapters: [], typeSupport: "only" });
+    const forced = await initOfficialMinimalProject({
+      rootDir,
+      adapters: [],
+      typeSupport: "only",
+      force: true,
+    });
+
+    expect(first.created).toEqual(expect.arrayContaining(typeSupportKeyFiles));
+    expect(first.overwritten).toEqual([]);
+    expect(second.created).toEqual([]);
+    expect(second.overwritten).toEqual([]);
+    expect(forced.created).toEqual([]);
+    expect(forced.overwritten).toEqual(expect.arrayContaining(typeSupportKeyFiles));
+    expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toBe("custom: true\n");
   });
 
   it("initializes every official recipe and validates the generated config", async () => {
@@ -93,7 +159,11 @@ describe("initOfficialMinimalProject", () => {
     for (const recipe of supportedOfficialInitRecipes) {
       const { rootDir, result, validation } = await initializedConfigOnlyProject(recipe);
 
-      expect(result.created.sort()).toEqual(configOnlyInitFiles);
+      expect(result.created).toEqual(expect.arrayContaining(configCoreInitFiles));
+      expect(result.created).toEqual(expect.arrayContaining(typeSupportKeyFiles));
+      for (const file of recipeConfigFiles(recipe)) {
+        expect(result.created).toContain(file);
+      }
       expect(result.overwritten).toEqual([]);
       expect(validation.kind).toBe("typescript");
       expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toContain(
@@ -126,6 +196,8 @@ describe("initOfficialMinimalProject", () => {
     const multiAgent = await validateProject({ rootDir: multiAgentRootDir });
     const pluginTool = await validateProject({ rootDir: pluginRootDir });
     const command = await validateProject({ rootDir: commandRootDir });
+    const pluginConfig = await Bun.file(path.join(pluginRootDir, ".pipr", "config.ts")).text();
+    const pluginMemory = await Bun.file(path.join(pluginRootDir, ".pipr", "r2-memory.ts")).text();
 
     expect(inspectRuntimePlan(multiAgent.plan, ".pipr/config.ts").agents).toEqual(
       expect.arrayContaining([
@@ -135,7 +207,18 @@ describe("initOfficialMinimalProject", () => {
         "review-aggregator",
       ]),
     );
-    expect(inspectRuntimePlan(pluginTool.plan, ".pipr/config.ts").tools).toEqual(["owner_lookup"]);
+    expect(inspectRuntimePlan(pluginTool.plan, ".pipr/config.ts").tools).toEqual([
+      "r2_memory_search",
+      "r2_memory_store",
+    ]);
+    expect(pluginConfig).toContain('import { r2MemoryPlugin } from "./r2-memory";');
+    expect(pluginConfig).not.toContain("new S3Client");
+    expect(pluginConfig).not.toContain("memory.store.run");
+    expect(pluginMemory).toContain('import { S3Client } from "bun";');
+    expect(pluginMemory).toContain("export function r2MemoryPlugin");
+    expect(pluginMemory).toContain("bucket.list({ prefix: memoryPrefix(ctx, options)");
+    expect(pluginMemory).toContain("[ctx.repository.owner, ctx.repository.name]");
+    expect(pluginMemory).toContain("memoryKey(input.subject, ctx, options)");
     expect(inspectRuntimePlan(command.plan, ".pipr/config.ts").commands).toEqual([
       {
         pattern: "@pipr ask <question...>",
@@ -143,6 +226,26 @@ describe("initOfficialMinimalProject", () => {
         permission: "read",
       },
     ]);
+  });
+
+  it("adds R2 memory secrets to the plugin recipe workflow", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-plugin-tool-"));
+
+    await initOfficialMinimalProject({ rootDir, recipe: "plugin-tool-review" });
+
+    const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
+    expect(workflow).toContain(
+      `PIPR_R2_MEMORY_BUCKET: ${githubExpression("secrets.PIPR_R2_MEMORY_BUCKET")}`,
+    );
+    expect(workflow).toContain(
+      `PIPR_R2_MEMORY_ENDPOINT: ${githubExpression("secrets.PIPR_R2_MEMORY_ENDPOINT")}`,
+    );
+    expect(workflow).toContain(
+      `PIPR_R2_MEMORY_ACCESS_KEY_ID: ${githubExpression("secrets.PIPR_R2_MEMORY_ACCESS_KEY_ID")}`,
+    );
+    expect(workflow).toContain(
+      `PIPR_R2_MEMORY_SECRET_ACCESS_KEY: ${githubExpression("secrets.PIPR_R2_MEMORY_SECRET_ACCESS_KEY")}`,
+    );
   });
 
   it("generates SDK types that preserve optional Zod object fields", async () => {
@@ -178,9 +281,7 @@ export default definePipr((pipr) => {
   });
 
   it("refuses to overwrite existing pipr files without force", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
-    await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
-    await Bun.write(path.join(rootDir, ".pipr", "config.ts"), "custom: true\n");
+    const rootDir = await projectWithCustomConfig();
 
     await expect(initOfficialMinimalProject({ rootDir })).rejects.toThrow(
       "Use --force to replace existing .pipr files",
@@ -191,9 +292,7 @@ export default definePipr((pipr) => {
   });
 
   it("overwrites official target files when force is explicit", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
-    await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
-    await Bun.write(path.join(rootDir, ".pipr", "config.ts"), "custom: true\n");
+    const rootDir = await projectWithCustomConfig();
 
     const result = await initOfficialMinimalProject({ rootDir, force: true });
 
@@ -242,8 +341,7 @@ export default definePipr((pipr) => {
 
     const result = await initOfficialMinimalProject({ rootDir, adapters: [] });
 
-    expect(result.created.sort()).toEqual(configOnlyInitFiles);
-    expect(result.overwritten).toEqual([]);
+    expectConfigOnlyInitResult(result);
     expect(await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text()).toBe(
       "custom: true\n",
     );
@@ -280,7 +378,9 @@ export default definePipr((pipr) => {
     await expect(initOfficialMinimalProject({ rootDir, force: true })).rejects.toThrow(
       "symbolic links are not supported",
     );
-    await expect(Bun.file(path.join(outsideDir, "pipr-sdk.d.ts")).text()).rejects.toThrow();
+    await expect(
+      Bun.file(path.join(outsideDir, "pipr-sdk", "index.d.ts")).text(),
+    ).rejects.toThrow();
   });
 
   it("rejects configDir paths outside the repo root", async () => {
@@ -320,4 +420,31 @@ async function initializedConfigOnlyProject(recipe?: string): Promise<{
   const result = await initOfficialMinimalProject({ rootDir, adapters: [], recipe });
   const validation = await validateProject({ rootDir });
   return { rootDir, result, validation };
+}
+
+function expectConfigOnlyInitResult(
+  result: Awaited<ReturnType<typeof initOfficialMinimalProject>>,
+): void {
+  expect(result.created).toEqual(expect.arrayContaining(configCoreInitFiles));
+  expect(result.created).toEqual(expect.arrayContaining(typeSupportKeyFiles));
+  expect(result.overwritten).toEqual([]);
+}
+
+async function projectWithCustomConfig(): Promise<string> {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-"));
+  await mkdir(path.join(rootDir, ".pipr"), { recursive: true });
+  await Bun.write(path.join(rootDir, ".pipr", "config.ts"), "custom: true\n");
+  return rootDir;
+}
+
+function recipeConfigFiles(recipe?: string): string[] {
+  return officialInitRecipeFiles(recipe).map((file) => path.join(".pipr", file.relativePath));
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  return await Bun.file(filePath).exists();
+}
+
+function githubExpression(expression: string): string {
+  return `$${["{{ ", expression, " }}"].join("")}`;
 }
