@@ -1,0 +1,32 @@
+---
+title: "Guide"
+description: "Install Pipr, configure review tasks, and understand how runs publish comments."
+---
+
+Use this section when you are adding Pipr to a repository or changing how it reviews pull requests.
+
+## First run
+
+1. Install the CLI from the GitHub Release installer.
+2. Run `pipr init` in the repository root.
+3. Add the provider secret used by `.pipr/config.ts`.
+4. Review the generated GitHub workflow.
+5. Open or update a pull request.
+6. Use `pipr check`, `pipr inspect`, and local review commands while tuning config.
+
+## Pages
+
+| Page | Use it for |
+| --- | --- |
+| [Quickstart](/docs/guide/quickstart) | The shortest path from install to the first review. |
+| [GitHub Action](/docs/guide/github-action) | Workflow YAML, permissions, outputs, dry runs, and command events. |
+| [Local Runs](/docs/guide/local-runs) | Running review tasks locally without publishing comments. |
+| [Troubleshooting](/docs/guide/troubleshooting) | Common setup, config, Action, model, and publication failures. |
+| [Configuration](/docs/guide/configuration) | Common config examples, models, limits, schemas, retry, and inspect patterns. |
+| [Entrypoints](/docs/guide/entrypoints) | Change request triggers, `@pipr` commands, local tasks, and permissions. |
+| [Custom Tasks](/docs/guide/custom-tasks) | Building task handlers with `ctx.change`, `ctx.pi`, `ctx.review`, `ctx.comment`, and `ctx.check`. |
+| [Runtime Guide](/docs/guide/runtime) | Run modes, Diff Manifest, Pi execution, validation, publication, and failure behavior. |
+| [Comments and Findings](/docs/guide/comments) | Main comments, inline comments, dropped findings, prior state, and verifier replies. |
+| [Trust and Security](/docs/guide/trust-security) | Base-commit config, read-only Pi workspace, secret handling, and fork behavior. |
+
+For starter configs, use [Recipes](/docs/recipes). For exact API names and flags, use [Reference](/docs/reference).

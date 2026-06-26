@@ -1,4 +1,4 @@
-# pipr-owned Comment Publishing
+# Pipr-owned Comment Publishing
 
 Status: Accepted
 
@@ -11,9 +11,9 @@ Comment Publishing:
 - renders and publishes command response output as a normal pull request issue comment keyed to the source command comment
 - leaves multi-agent or multi-task summary composition to user configuration
 - verifies the current change request head SHA before any write
-- upserts the Main Review Comment by hidden marker and stores pipr-owned review state on that marker
+- upserts the Main Review Comment by hidden marker and stores Pipr-owned review state on that marker
 - caps Inline Review Comments only when `publication.maxInlineComments` is configured
-- dedupes Inline Review Comments by stable finding id, reviewed head SHA, and pipr-owned same-head location overlap
+- dedupes Inline Review Comments by stable finding id, reviewed head SHA, and Pipr-owned same-head location overlap
 - passes open prior finding locations into rerun prompts so reviewers can keep prior finding ids without resolving by omission
 - resolves fixed prior findings only through explicit verifier output and thread actions
 - replies to stale GitHub Inline Review Comments with the resolving commit link and resolves their review threads when the verifier marks prior findings fixed

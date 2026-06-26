@@ -1,6 +1,9 @@
-# PIPR SDK Reference
+---
+title: "Pipr SDK Reference"
+description: "Public SDK imports, builder methods, task context, schemas, tools, and entrypoints."
+---
 
-The PIPR SDK is the public TypeScript authoring API for `.pipr/config.ts`.
+The Pipr SDK is the public TypeScript authoring API for `.pipr/config.ts`.
 
 ```ts
 import { definePipr } from "@pipr/sdk";
@@ -37,6 +40,8 @@ const model = pipr.model({
   options: { thinking: "high" },
 });
 ```
+
+<auto-type-table path="packages/sdk/src/index.ts" name="ModelOptions" />
 
 Use `id` only when you configure the same provider and model with different API keys or options. `pipr.secret({ name })` stores only the environment variable name. It does not read or serialize the secret during plan creation.
 
@@ -75,8 +80,12 @@ pipr.review({
 
 `entrypoints.changeRequest` accepts these actions:
 
-```text
-opened | updated | reopened | ready | closed
+```ts twoslash
+type ReviewEntrypoint = "opened" | "updated" | "reopened" | "ready" | "closed";
+
+const actions: ReviewEntrypoint[] = ["opened", "updated"];
+actions;
+// ^?
 ```
 
 `entrypoints.command.permission` is provider-neutral:
@@ -100,11 +109,13 @@ pipr.review({
 });
 ```
 
-`paths` scopes the Diff Manifest and publishable Inline Review Comments for that review recipe. It is not a filesystem sandbox: Pi read-only tools can still inspect the repository, and pipr prompts the agent to read nonmatching files only when needed to review matching files.
+`paths` scopes the Diff Manifest and publishable Inline Review Comments for that review recipe. It is not a filesystem sandbox: Pi read-only tools can still inspect the repository, and Pipr prompts the agent to read nonmatching files only when needed to review matching files.
+
+<auto-type-table path="packages/sdk/src/index.ts" name="ReviewRecipeOptions" />
 
 ## Custom reviewer prompt
 
-pipr injects the Diff Manifest and tool contract into the Pi prompt. Override the reviewer prompt when the model needs a stricter review rubric:
+Pipr injects the Diff Manifest and tool contract into the Pi prompt. Override the reviewer prompt when the model needs a stricter review rubric:
 
 ```ts
 const reviewer = pipr.reviewer({
@@ -123,6 +134,8 @@ const reviewer = pipr.reviewer({
 
 Use `pipr.agent(...)` for non-default structured agent calls:
 
+Agents have two prompt layers. Use `instructions` for stable behavior that applies to every run of the agent, such as role, review focus, and output constraints. Use `prompt` for the concrete task for one invocation. The `prompt` function receives the typed input passed to `ctx.pi.run(...)` and the agent prompt context, then Pipr renders it after the agent instructions in the Pi prompt.
+
 ```ts
 const security = pipr.agent({
   name: "security-reviewer",
@@ -140,13 +153,15 @@ const security = pipr.agent({
 });
 ```
 
-`agent.extend(...)` creates a derived agent and appends replacement instructions to the base instructions:
+`agent.extend(...)` creates a derived agent and appends additional instructions to the base instructions:
 
 ```ts
 const strictSecurity = security.extend({
   instructions: "Ignore style-only findings.",
 });
 ```
+
+<auto-type-table path="packages/sdk/src/index.ts" name="AgentDefinition" />
 
 ## Multi-agent orchestration
 
@@ -224,6 +239,8 @@ pipr.command({ pattern: "@pipr security", permission: "write", task });
 pipr.local({ name: "security", task });
 ```
 
+<auto-type-table path="packages/sdk/src/index.ts" name="TaskDefinition" />
+
 ## Task context
 
 | Property | Purpose |
@@ -243,7 +260,9 @@ pipr.local({ name: "security", task });
 
 `ctx.command.reply(...)` emits a normal pull request issue comment response for command tasks. A task must emit exactly one final output: either `ctx.comment(...)` for review publication or `ctx.command.reply(...)` for command response publication.
 
-When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)` and `ctx.pi.run(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and pipr drops findings from that scoped Pi result when they are outside the scope. That scope is preserved when passing returned findings or cloning them with object spread.
+When a custom task uses path scoping, pass the same `paths` to `ctx.change.diffManifest(...)` and `ctx.pi.run(...)`. The manifest is filtered to matching files, the prompt carries the path scope, and Pipr drops findings from that scoped Pi result when they are outside the scope. That scope is preserved when passing returned findings or cloning them with object spread.
+
+<auto-type-table path="packages/sdk/src/index.ts" name="TaskContext" />
 
 ## Check Runs
 
@@ -262,7 +281,7 @@ const task = pipr.task({
 
 When `check` is an object, the individual task Check Run is enabled by default. `required` defaults to `true`. Use `check: false` to opt a task out of both its individual Check Run and the aggregate Check Run. A task without `check` does not get an individual Check Run, but still participates in the aggregate when aggregate checks are enabled.
 
-The workflow job check is usually the branch protection gate. Enable the aggregate Check Run only when you explicitly want one pipr-owned Check Run across multiple tasks:
+The workflow job check is usually the branch protection gate. Enable the aggregate Check Run only when you explicitly want one Pipr-owned Check Run across multiple tasks:
 
 ```ts
 pipr.checks({
@@ -300,7 +319,7 @@ pipr.config({
 });
 ```
 
-`publication.autoResolve` defaults to enabled. Use `autoResolve: false` to disable verifier-driven thread cleanup and user-reply handling. If `model` is omitted, pipr uses the default provider. Use `instructions` to add project-specific guidance for the internal verifier.
+`publication.autoResolve` defaults to enabled. Use `autoResolve: false` to disable verifier-driven thread cleanup and user-reply handling. If `model` is omitted, Pipr uses the default provider. Use `instructions` to add project-specific guidance for the internal verifier.
 
 `userReplies.allowedActors` controls who can trigger verifier replies:
 
@@ -313,6 +332,8 @@ pipr.config({
 `"author-or-write"` lets the PR author trigger verifier model calls from review-comment replies, including external contributors on public forks. Use `"write"` when only trusted repository collaborators should spend provider quota or send bounded diff, finding, and thread context to the configured model provider.
 
 Set `respondWhenStillValid: false` to keep user-reply verifier runs silent unless the finding is resolved.
+
+<auto-type-table path="packages/sdk/src/index.ts" name="PiprConfigOptions" />
 
 ## Comment output
 
@@ -340,7 +361,7 @@ await ctx.comment({
 });
 ```
 
-pipr validates findings against the Diff Manifest, drops invalid findings, dedupes finding markers, and caps inline publication.
+Pipr validates findings against the Diff Manifest, drops invalid findings, dedupes finding markers, and caps inline publication.
 Subjective labels such as severity, confidence, or category are not part of the built-in finding contract. Define them in a custom schema or render them into your own `ctx.comment(...)` markdown when your workflow needs them.
 
 ## Tools
@@ -375,6 +396,8 @@ Tool `run(...)` receives:
 
 `toModelOutput(...)` can project a rich internal result into a smaller model-facing value.
 
+<auto-type-table path="packages/sdk/src/index.ts" name="PluginToolDefinition" />
+
 ## Schemas
 
 Built-in schemas:
@@ -384,7 +407,7 @@ Built-in schemas:
 | `pipr.schemas.review` | Main review result with summary and inline findings. |
 | `pipr.schemas.summary` | Main-comment summary block. |
 
-Custom schemas are useful for intermediate agents and workflows that map their final output into pipr publication calls:
+Custom schemas are useful for intermediate agents and workflows that map their final output into Pipr publication calls:
 
 ```ts
 import { definePipr, z } from "@pipr/sdk";

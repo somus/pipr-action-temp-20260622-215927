@@ -1,4 +1,7 @@
-# Code Host Adapters
+---
+title: "Code Host Adapters"
+description: "Provider-neutral adapter boundary for code host integrations."
+---
 
 Code host adapters are an internal runtime seam. They are not part of `.pipr/config.ts`.
 
@@ -18,7 +21,7 @@ pipr.review({
 });
 ```
 
-The adapter decides how a native provider event, permission model, checkout operation, and inline comment API map to pipr's neutral runtime objects.
+The adapter decides how a native provider event, permission model, checkout operation, and inline comment API map to Pipr's neutral runtime objects.
 
 ## Why this seam exists
 
@@ -90,7 +93,7 @@ The GitHub adapter handles:
 - verifier reply publication and review thread resolution
 - GitHub inline payload mapping
 
-GitHub-specific setup stays in [GitHub Action](github-action.md).
+GitHub-specific setup stays in [GitHub Action](/docs/guide/github-action).
 
 ### Local
 

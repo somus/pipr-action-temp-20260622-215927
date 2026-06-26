@@ -1,0 +1,124 @@
+---
+title: "Local Runs"
+description: "Run Pipr review tasks locally without publishing GitHub comments."
+---
+
+Local runs execute the same Review Tasks without using GitHub publication APIs. They are useful before committing config changes, when debugging reviewer prompts, and when validating a recipe in a branch.
+
+## Commands
+
+Run the default local review entrypoint:
+
+```bash
+pipr review --base origin/main
+```
+
+Run a named local entrypoint:
+
+```bash
+pipr run security --base origin/main
+```
+
+Set an explicit head when reviewing something other than `HEAD`:
+
+```bash
+pipr run security --base origin/main --head HEAD~1
+```
+
+Use a custom config directory when the repository does not use `.pipr`:
+
+```bash
+pipr review --config-dir .config/pipr --base origin/main
+```
+
+Use a custom Pi executable during local development:
+
+```bash
+pipr review --base origin/main --pi-executable /path/to/pi
+```
+
+## What local runs do
+
+Local runs:
+
+- load the local `.pipr/config.ts`
+- validate the runtime plan
+- build a Diff Manifest from local git state
+- execute the selected Review Task
+- run Pi through `ctx.pi.run(...)`
+- print the rendered final output
+
+Local runs do not publish Main Review Comments, Inline Review Comments, command response comments, or Check Runs.
+
+## Base and head
+
+`--base` is required because Pipr needs a comparison point. Use a branch name, remote ref, or commit SHA:
+
+```bash
+pipr review --base origin/main
+pipr review --base main
+pipr review --base 2a4f6c9
+```
+
+`--head` defaults to `HEAD`. Set it explicitly when testing generated commits, release branches, or worktrees.
+
+## Local entrypoints
+
+`pipr.review(...)` can register the default local entrypoint:
+
+```ts twoslash
+// @include: pipr-reviewer
+pipr.review({
+  id: "review",
+  reviewer,
+  entrypoints: {
+    local: "review",
+  },
+});
+```
+
+Custom tasks register local entrypoints with `pipr.local(...)`:
+
+```ts twoslash
+// @include: pipr-security-agent
+const task = pipr.task({
+  name: "security",
+  async run(ctx) {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const result = await ctx.pi.run(securityAgent, { manifest });
+    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  },
+});
+
+pipr.local({ name: "security", task });
+```
+
+## Config validation
+
+Use these before running a model:
+
+```bash
+pipr check
+pipr inspect
+```
+
+`pipr check` type-loads config and validates the runtime plan. Add `--require-env` when you want local checks to fail if configured provider env vars are missing:
+
+```bash
+pipr check --require-env
+```
+
+`pipr inspect` prints the registered models, agents, tasks, commands, locals, tools, publication settings, and limits.
+
+## Local versus Action runs
+
+| Behavior | Local run | GitHub Action run |
+| --- | --- | --- |
+| Config source | Local workspace | Base commit for pull request events |
+| Diff source | Local git refs | Checked-out pull request head and base |
+| Comments | Disabled | Enabled when publication succeeds |
+| Commands | Run through named local entrypoints | Run from `issue_comment.created` |
+| Provider secrets | Local environment | GitHub Actions secrets |
+| Best use | Config iteration and prompt debugging | Production pull request review |
+
+Use [GitHub Action](/docs/guide/github-action) for production event behavior.

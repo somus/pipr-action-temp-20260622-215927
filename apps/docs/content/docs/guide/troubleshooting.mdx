@@ -1,0 +1,121 @@
+---
+title: "Troubleshooting"
+description: "Common Pipr setup, config, Action, model, and publication failures."
+---
+
+Start with the narrowest command that can reproduce the failure.
+
+```bash
+pipr check
+pipr inspect
+pipr review --base origin/main
+```
+
+For GitHub Action behavior, set `PIPR_DRY_RUN=1` or use `pipr dry-run --event <path>`.
+
+## Config does not load
+
+Run:
+
+```bash
+pipr check
+```
+
+Common causes:
+
+- `.pipr/config.ts` does not export `definePipr(...)`.
+- The config callback is async. `definePipr(...)` must be synchronous.
+- A local import from `.pipr/config.ts` cannot be resolved.
+- A task, command, local entrypoint, or model id is duplicated.
+- A command pattern does not start with `@pipr`.
+- A secret name is not an environment variable name such as `DEEPSEEK_API_KEY`.
+
+Use `pipr inspect` after `pipr check` passes to confirm the runtime plan matches the config you expected.
+Run `pipr init --types-only` if your editor is missing local Pipr or Bun types.
+
+## Provider env var is missing
+
+GitHub Action runs require configured provider env vars before Pi execution. Add the secret to GitHub Actions and pass it through the workflow `env` block:
+
+```yaml
+env:
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+Locally, export the same env var or run `pipr check` without `--require-env` when you only need config validation.
+
+## Local review cannot find a base
+
+`pipr review` and `pipr run` require an explicit base:
+
+```bash
+pipr review --base origin/main
+```
+
+Fetch the remote branch when the ref is missing:
+
+```bash
+git fetch origin main
+```
+
+Use `--head` only when reviewing something other than `HEAD`.
+
+## GitHub Action does not publish
+
+Check the workflow:
+
+- `actions/checkout` uses `fetch-depth: 0`.
+- `GITHUB_TOKEN` is present in the Action environment.
+- Workflow permissions include `pull-requests: write`, `issues: write`, and `checks: write` when checks are enabled.
+- `contents: write` is available when verifier thread resolution is enabled.
+- The pull request event action matches a configured change request entrypoint.
+- A command comment is on a pull request, not a plain issue.
+
+If `PIPR_DRY_RUN=1` is set, Pipr stops before model execution and publication by design.
+
+## Command comment is ignored
+
+Command comments are parsed only from `issue_comment.created` events on pull requests.
+
+Common causes:
+
+- The comment did not start with the configured pattern, such as `@pipr review`.
+- The commenter does not meet the configured permission.
+- The command has required arguments that were not supplied.
+- The config does not register the command.
+- The comment was edited instead of created.
+
+Use [Entrypoints](/docs/guide/entrypoints) for command grammar and permission details.
+
+## Findings are dropped
+
+Pipr drops invalid findings and continues the review. Common reasons:
+
+- `path` does not match a changed file in the Diff Manifest.
+- `rangeId` does not exist for that path.
+- `side`, `startLine`, or `endLine` does not match the selected range.
+- The finding is outside the task path scope.
+- The file was excluded as generated, binary, removed, lockfile, or too large for inline review.
+- The finding duplicates another current finding.
+
+Dropped findings are exposed in the Action `dropped-findings` output and in publication metadata.
+
+## Pi output is invalid
+
+Review agents must return structured JSON matching their declared output schema. For review comments, use `pipr.schemas.review`. Invalid output can receive one repair attempt when retry settings allow it.
+
+If invalid output persists:
+
+- Make instructions shorter and more explicit.
+- Include the exact output schema in the prompt only through SDK schema helpers.
+- Avoid asking for prose before or after JSON.
+- Reduce custom schema complexity.
+- Run locally with the smallest changed diff that reproduces the issue.
+
+## Stale head before publication
+
+Pipr checks the current pull request head before writing comments. If the head changed after review execution, publication stops before writes. Rerun the workflow on the latest commit.
+
+## Verifier cannot resolve a thread
+
+The verifier can reply to Pipr-owned Inline Review Comments and resolve GitHub review threads when permissions allow. If the API call fails, Pipr records the error in `publication.metadata.inlineResolutionErrors` and keeps the review run successful.

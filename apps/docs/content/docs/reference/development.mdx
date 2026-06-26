@@ -1,4 +1,7 @@
-# Development
+---
+title: "Development"
+description: "Repo setup, local e2e checks, Docker image release, and npm release workflow."
+---
 
 ## Setup
 
@@ -13,6 +16,34 @@ mise run check
 ```
 
 This runs lint, typecheck, tests, build, format check, and Fallow.
+
+## Docs app
+
+The docs app lives in `apps/docs` and is part of the Bun workspace and Turbo graph.
+
+Run it locally:
+
+```bash
+bun run --cwd apps/docs dev
+```
+
+Run docs-only checks:
+
+```bash
+bun run --cwd apps/docs typegen
+bun run --cwd apps/docs typecheck
+bun run --cwd apps/docs build
+```
+
+Public docs content lives under `apps/docs/content/docs`. Generated files such as `.source`, `.output`, `.tanstack`, and `src/routeTree.gen.ts` are ignored.
+
+When moving or adding pages:
+
+- update the nearest `meta.json`
+- keep frontmatter titles and descriptions useful
+- use `/docs/...` links for internal docs routes
+- keep source-only repo notes out of Fumadocs content
+- run `bun run --cwd apps/docs typegen` before typecheck or build
 
 ## Local Action e2e
 

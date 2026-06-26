@@ -1,14 +1,14 @@
-# pipr Product Language
+# Pipr Product Language
 
 Use these terms consistently in product docs, code comments, issues, and pull requests.
 
 ## Terms
 
-**pipr**:
+**Pipr**:
 The code review automation product that reviews code host change requests through Pi-powered agents.
 _Avoid_: legacy product names
 
-**pipr Configuration**:
+**Pipr Configuration**:
 The repository-local TypeScript config under `.pipr/config.ts`.
 _Avoid_: legacy configuration roots, `.pi/`
 
@@ -26,10 +26,10 @@ The provider-neutral review target. GitHub maps this to a pull request; future p
 _Avoid_: GitHub-only pull request when describing core runtime
 
 **TypeScript Config**:
-The single supported user authoring surface. `pipr init` creates `.pipr/config.ts`, `.pipr/tsconfig.json`, and `.pipr/types/pipr-sdk.d.ts`.
+The single supported runtime authoring surface. `pipr init` creates `.pipr/config.ts`; `.pipr/tsconfig.json` and `.pipr/types/**` are optional local editor type support.
 _Avoid_: hidden runtime defaults
 
-**PIPR SDK**:
+**Pipr SDK**:
 The public builder API imported from `@pipr/sdk`.
 _Avoid_: YAML component registry
 
@@ -38,7 +38,7 @@ The code host command mention for task-owned commands such as `@pipr review`.
 _Avoid_: bot aliases
 
 **Pi Agent Runner**:
-The agent execution boundary where Pi runs reviewer prompts and returns structured output to pipr.
+The agent execution boundary where Pi runs reviewer prompts and returns structured output to Pipr.
 _Avoid_: publisher
 
 **Task Input**:
@@ -50,7 +50,7 @@ A `pipr.task()` callback that gathers context, runs agents, and contributes revi
 _Avoid_: YAML workflow, block graph
 
 **Review Run**:
-The pipr-owned path used by `ctx.change.diffManifest()` and `ctx.pi.run()`.
+The Pipr-owned path used by `ctx.change.diffManifest()` and `ctx.pi.run()`.
 _Avoid_: user-authored diff or validation block
 
 **Diff Manifest**:
@@ -61,8 +61,8 @@ _Avoid_: raw diff
 A size-reduced prompt form that preserves mapping fields while allowing bounded follow-up reads.
 _Avoid_: lossy location model, model-owned diff parsing
 
-**pipr Diff Read Tool**:
-A pipr-attached Pi tool for bounded reads over trusted Diff Manifest data and base/head snapshots.
+**Pipr Diff Read Tool**:
+A Pipr-attached Pi tool for bounded reads over trusted Diff Manifest data and base/head snapshots.
 _Avoid_: plugin tool, GitHub API tool, shell access
 
 **Review Finding**:
@@ -70,7 +70,7 @@ An actionable issue found in a pull request and anchored to a validated diff ran
 _Avoid_: nit, alert
 
 **Main Review Comment**:
-The single change request comment that summarizes pipr's review and metadata.
+The single change request comment that summarizes Pipr's review and metadata.
 _Avoid_: summary post
 
 **Inline Review Comment**:
@@ -78,5 +78,5 @@ A change request review comment anchored to one validated diff range.
 _Avoid_: annotation
 
 **Comment Publishing**:
-The pipr-owned reducer and code host adapter writer for Main Review Comments and Inline Review Comments.
+The Pipr-owned reducer and code host adapter writer for Main Review Comments and Inline Review Comments.
 _Avoid_: task-authored code host comment writes
