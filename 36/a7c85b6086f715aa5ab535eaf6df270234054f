@@ -1,0 +1,49 @@
+apps/docs/content/docs/recipes/security-sast.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 173,175,177-179,181
+apps/docs/content/docs/recipes/multi-agent-review.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 164,166,168-170,172
+apps/docs/content/docs/recipes/ci-triage-command.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 115,117,119-121,123
+apps/docs/content/docs/recipes/quality-gate.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 119,121,123-125,127
+apps/docs/content/docs/recipes/dependency-risk.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 145,147,149-151,153
+apps/docs/content/docs/recipes/index.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 17-37
+apps/docs/content/docs/recipes/changelog-draft.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 124,126,128-130,132
+apps/docs/content/docs/recipes/bug-hunter.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 118,120,122-124,126
+apps/docs/content/docs/recipes/diff-diagnostics.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 133,135,137-139,141
+apps/docs/content/docs/recipes/plugin-tool-review.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 325-327,329-331,333
+apps/docs/content/docs/recipes/pr-briefing.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 107,109,111-113,115
+apps/docs/content/docs/recipes/pr-hygiene.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 113,115,117-119,121
+apps/docs/content/docs/recipes/default-review.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 90,92,94-96,98
+apps/docs/content/docs/recipes/interactive-ask.mdx
+  s_bc13b749b5a910::t_3e2708dcb0830a 114,116,118-120,122
+apps/docs/scripts/sync-recipes.ts
+  s_bc13b749b5a910::t_5b1b34c04df6e2 359-362
+  s_bc13b749b5a910::t_12db3148b2d36b 105-250,324-344,358,389
+  s_bc13b749b5a910::t_33584be236bd0f 387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "36a7c85b6086f715aa5ab535eaf6df270234054f",
+  "prompts": {},
+  "sessions": {
+    "s_bc13b749b5a910": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0025-3407-7cf0-8cc9-20372167dae5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
