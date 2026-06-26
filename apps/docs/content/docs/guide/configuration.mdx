@@ -42,7 +42,6 @@ export default definePipr((pipr) => {
     entrypoints: {
       changeRequest: ["opened", "updated", "reopened", "ready"],
       command: { pattern: "@pipr review", permission: "write" },
-      local: "review",
     },
     inlineComments: { max: 5 },
     timeout: "5m",
@@ -50,9 +49,9 @@ export default definePipr((pipr) => {
 });
 ```
 
-`pipr.review` registers a change request review task, the `@pipr review` command, and the local `review` entrypoint unless `entrypoints` disables or renames them.
+`pipr.review` registers a change request review task and the `@pipr review` command unless `entrypoints` disables them.
 
-Use `pipr.review(...)` for the default path: one reviewer, one Review Task, optional path scope, optional command, optional local entrypoint, capped inline comments, and optional task check.
+Use `pipr.review(...)` for the default path: one reviewer, one Review Task, optional path scope, optional command, capped inline comments, and optional task check.
 
 Use `paths` to scope a review recipe to matching repository paths:
 
@@ -78,11 +77,10 @@ import type { ReviewEntrypoints } from "@pipr/sdk";
 const entrypoints = {
   changeRequest: ["opened", "updated", "reopened", "ready"],
   command: { pattern: "@pipr review", permission: "write" },
-  local: "review",
 } satisfies ReviewEntrypoints;
 ```
 
-Use [Entrypoints](/docs/guide/entrypoints) for command arguments, permissions, and local names.
+Use [Entrypoints](/docs/guide/entrypoints) for command arguments, permissions, and local review task selection.
 
 ## Models
 
@@ -195,7 +193,7 @@ To publish inline comments from a custom schema, map the custom output into `Rev
 
 Schema metadata is model-visible prompt content. Do not put secrets, private data, or sensitive internal notes in JSON Schema fields such as `description`, `examples`, `default`, or `$comment`.
 
-## Commands and local entrypoints
+## Commands and local review
 
 Commands run from pull request issue comments:
 
@@ -232,18 +230,32 @@ read < triage < write < maintain < admin
 
 The active code host adapter maps native roles into these levels.
 
-Local entrypoints run the same task logic without GitHub publishing:
+Local review runs the same change-request task logic without GitHub publishing:
 
 ```ts twoslash
 // @include: pipr-task
-pipr.local({ name: "security", task });
+pipr.on.changeRequest({ actions: ["opened", "updated"], task });
 ```
 
-Run local entrypoints with an explicit base commit:
+Run local review with an explicit base commit:
 
 ```bash
 pipr review --base origin/main
-pipr run security --base origin/main --head HEAD
+```
+
+`pipr review` runs every unique task registered through `pipr.on.changeRequest(...)`, ignoring the configured action filters. Use `local: false` on tasks that should run only in CI:
+
+```ts twoslash
+// @include: pipr-security-agent
+const task = pipr.task({
+  name: "expensive-ci-review",
+  local: false,
+  async run(ctx) {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const result = await ctx.pi.run(securityAgent, { manifest });
+    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  },
+});
 ```
 
 See [Local Runs](/docs/guide/local-runs) for local execution behavior.
@@ -285,7 +297,7 @@ Use `pipr inspect` to see the loaded runtime plan:
 pipr inspect
 ```
 
-It prints registered models, agents, tasks, events, commands, locals, and tools.
+It prints registered models, agents, tasks, events, commands, and tools.
 
 ## Decision guide
 
@@ -294,7 +306,8 @@ It prints registered models, agents, tasks, events, commands, locals, and tools.
 | One normal pull request review | `pipr.review(...)` |
 | Different review scope by path | `pipr.review({ paths })` |
 | Manual rerun from a comment | `entrypoints.command` or `pipr.command(...)` |
-| Local-only development task | `entrypoints.local` or `pipr.local(...)` |
+| Local preflight before pushing | `pipr review --base <ref>` |
+| CI-only task | `local: false` on `pipr.task(...)` |
 | Multiple Pi calls or custom inputs | `pipr.task(...)` |
 | Custom structured output | `pipr.schema(...)` or `pipr.jsonSchema(...)` |
 | Reusable config extension | `definePlugin(...)` and `pipr.use(...)` |

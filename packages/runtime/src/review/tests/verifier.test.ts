@@ -42,7 +42,6 @@ const plan = {
   tasks: [],
   events: [],
   commands: [],
-  locals: [],
   tools: [],
   schemas: [],
   publication: {},

@@ -110,17 +110,16 @@ describe("runTaskRuntime", () => {
     expect(seen).toEqual(["updated", "ready"]);
   });
 
-  it("passes local or command task input to the selected task", async () => {
+  it("passes command task input to the selected task", async () => {
     let observedInput: unknown;
     const plan = testPlan((pipr) => {
-      const task = pipr.task({
+      pipr.task({
         name: "explain",
         async run(ctx, input) {
           observedInput = input;
           await ctx.comment("explained");
         },
       });
-      pipr.local({ name: "explain", task });
     });
 
     await runRuntime({
@@ -1401,13 +1400,13 @@ describe("runTaskRuntime", () => {
         id: "correctness",
         model,
         instructions: "Review correctness.",
-        entrypoints: { command: false, local: false },
+        entrypoints: { command: false },
       });
       pipr.review({
         id: "security",
         model,
         instructions: "Review security.",
-        entrypoints: { command: false, local: false },
+        entrypoints: { command: false },
       });
     });
 
@@ -1423,7 +1422,7 @@ describe("runTaskRuntime", () => {
         model: deepseekModel(pipr),
         instructions: "Review docs.",
         paths: { include: ["docs/**"] },
-        entrypoints: { command: false, local: false },
+        entrypoints: { command: false },
       });
     });
 
@@ -1460,7 +1459,7 @@ describe("runTaskRuntime", () => {
         model: deepseekModel(pipr),
         instructions: "Review source.",
         paths: { include: ["src/**"] },
-        entrypoints: { command: false, local: false },
+        entrypoints: { command: false },
       });
     });
 
@@ -1476,7 +1475,7 @@ describe("runTaskRuntime", () => {
         model: deepseekModel(pipr),
         instructions: "Review source.",
         inlineComments: false,
-        entrypoints: { command: false, local: false },
+        entrypoints: { command: false },
       });
     });
 

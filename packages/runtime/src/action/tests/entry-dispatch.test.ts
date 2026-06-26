@@ -6,10 +6,11 @@ import {
   parsePlanCommandInputs,
   permissionDeniedHelp,
   resolvePlanCommand,
+  selectLocalReviewTasks,
 } from "../entry-dispatch.js";
 
 describe("entry dispatch command routing", () => {
-  it("selects change-request and local task entrypoints", () => {
+  it("selects change-request tasks", () => {
     const plan = buildPiprPlan(
       definePipr((pipr) => {
         const review = pipr.task({ name: "review", run() {} });
@@ -18,7 +19,6 @@ describe("entry dispatch command routing", () => {
         pipr.on.changeRequest({ actions: ["updated"], task: review });
         pipr.on.changeRequest({ actions: ["updated"], task: audit });
         pipr.on.changeRequest({ actions: ["ready"], task: ready });
-        pipr.local({ name: "review", task: review });
       }),
     );
 
@@ -34,10 +34,20 @@ describe("entry dispatch command routing", () => {
       kind: "change-request",
       tasks: [{ name: "audit" }],
     });
-    expect(dispatchRuntimeEntry({ kind: "local", plan, localName: "review" })).toMatchObject({
-      kind: "local",
-      local: { name: "review" },
-    });
+  });
+
+  it("selects unique local review tasks and skips local-disabled tasks", () => {
+    const plan = buildPiprPlan(
+      definePipr((pipr) => {
+        const review = pipr.task({ name: "review", run() {} });
+        const audit = pipr.task({ name: "audit", local: false, run() {} });
+        pipr.on.changeRequest({ actions: ["opened"], task: review });
+        pipr.on.changeRequest({ actions: ["updated"], task: review });
+        pipr.on.changeRequest({ actions: ["ready"], task: audit });
+      }),
+    );
+
+    expect(selectLocalReviewTasks(plan).map((task) => task.name)).toEqual(["review"]);
   });
 
   it("matches required positional and optional named arguments into task inputs", () => {

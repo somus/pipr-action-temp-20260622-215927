@@ -108,7 +108,6 @@ export default definePipr((pipr) => {
 
   pipr.on.changeRequest({ actions: ["opened", "updated", "reopened", "ready"], task });
   pipr.command({ pattern: "@pipr security", permission: "write", task });
-  pipr.local({ name: "security", task });
 });
 `,
 } as const satisfies OfficialInitRecipe;

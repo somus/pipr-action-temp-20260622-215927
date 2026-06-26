@@ -61,7 +61,6 @@ export default definePipr((pipr) => {
     entrypoints: {
       changeRequest: ["opened", "updated", "reopened", "ready"],
       command: { pattern: "@pipr review", permission: "write" },
-      local: "review",
     },
     inlineComments: { max: 5 },
     timeout: "5m",

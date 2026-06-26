@@ -50,7 +50,7 @@ const expected = new Map<string, string>();
 const recipeDescriptions = new Map([
   [
     "default-review",
-    "Start with one general pull request reviewer that runs from change request events, `@pipr review`, and local review commands while keeping inline comments bounded.",
+    "Start with one general pull request reviewer that runs from change request events, `@pipr review`, and local `pipr review` while keeping inline comments bounded.",
   ],
   [
     "bug-hunter",
@@ -107,7 +107,7 @@ const recipeNotes = new Map([
     "default-review",
     `## Recipe notes
 
-This is the baseline setup for repositories that want one trusted review path before adding specialist tasks. It uses \`pipr.review\`, so Pipr wires the change request, command, and local entrypoints for you.
+This is the baseline setup for repositories that want one trusted review path before adding specialist tasks. It uses \`pipr.review\`, so Pipr wires the change request and command entrypoints for you; local \`pipr review\` runs the same change-request task.
 
 - Keep \`inlineComments.max\` low until the repository has enough review history to judge signal quality.
 - Put repository-specific review policy in \`instructions\`, not in ad hoc task code.
@@ -323,7 +323,7 @@ Use \`pipr init\` without \`--recipe\` for the default review setup.
 
 ## Common setup
 
-\`pipr init\` also writes \`.pipr/tsconfig.json\` and \`.pipr/types/**\` for editor IntelliSense. These files are optional for CI and the GitHub Action; \`pipr check\` can synthesize the same type support when they are missing.
+\`pipr init\` also writes \`.pipr/tsconfig.json\` and \`.pipr/types/**\` with generated Pipr SDK declarations for editor IntelliSense. These files are optional for CI and the GitHub Action; \`pipr check\` can synthesize the same SDK type support when they are missing.
 
 \`\`\`bash
 pipr init --recipe security-sast --no-types
@@ -335,7 +335,7 @@ Pipr config and plugin files execute in Bun, so \`.pipr/*.ts\` files can use the
 ## Common tuning
 
 - Change the model provider and \`apiKey\` secret name before committing the config.
-- Run \`pipr inspect\` after edits to confirm models, tasks, commands, locals, and tools.
+- Run \`pipr inspect\` after edits to confirm models, tasks, commands, and tools.
 - Use \`--adapters none\` when you want only the \`.pipr\` config files.
 - Use a local run before opening a pull request when the recipe adds custom commands or tasks.
 - Tune instructions first, then limits. Runtime limits are guardrails; prompts decide what the reviewer considers actionable.

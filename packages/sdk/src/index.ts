@@ -205,14 +205,16 @@ export type TaskCheckOptions =
 export type TaskDefinition<Input> = {
   name: string;
   check?: TaskCheckOptions;
+  local?: false;
   run: TaskHandler<Input>;
 };
 
-/** Registered task that can be selected by change-request, command, or local entrypoints. */
+/** Registered task that can be selected by change-request and command entrypoints. */
 export type Task<Input = void> = {
   readonly kind: "pipr.task";
   readonly name: string;
   readonly check?: TaskCheckOptions;
+  readonly local?: false;
   readonly handler: TaskHandler<Input>;
 };
 
@@ -226,12 +228,6 @@ export type CommandOptions<Input> = {
 /** Definition used to register an `@pipr` command. */
 export type CommandRegistrationOptions<Input> = CommandOptions<Input> & {
   pattern: string;
-  task: Task<Input>;
-};
-
-/** Definition used to register a local task entrypoint. */
-export type LocalRegistrationOptions<Input> = {
-  name: string;
   task: Task<Input>;
 };
 
@@ -263,7 +259,6 @@ export type ReviewEntrypoints = {
         permission?: RepositoryPermission;
         description?: string;
       };
-  local?: string | false;
 };
 
 type ReviewRecipeEntrypointOptions = {
@@ -345,7 +340,7 @@ export type JsonSchemaDefinition = {
   schema: JsonSchema;
 };
 
-/** Aggregate check-run options for a pipr run. */
+/** Aggregate check-run options for a Pipr review run. */
 export type AggregateCheckOptions =
   | false
   | {
@@ -414,7 +409,6 @@ export type PiprBuilder = {
   review(options: ReviewRecipeOptions): void;
   config(options: PiprConfigOptions): void;
   command<Input = void>(options: CommandRegistrationOptions<Input>): void;
-  local<Input = void>(options: LocalRegistrationOptions<Input>): void;
   checks(options: ChecksOptions): void;
   limits(options: RuntimeLimits): void;
   use<Handle>(plugin: PiprPlugin<Handle>): Handle;

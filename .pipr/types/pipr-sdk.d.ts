@@ -258,13 +258,15 @@ type TaskCheckOptions = false | {
 type TaskDefinition<Input> = {
   name: string;
   check?: TaskCheckOptions;
+  local?: false;
   run: TaskHandler<Input>;
 };
-/** Registered task that can be selected by change-request, command, or local entrypoints. */
+/** Registered task that can be selected by change-request and command entrypoints. */
 type Task<Input = void> = {
   readonly kind: "pipr.task";
   readonly name: string;
   readonly check?: TaskCheckOptions;
+  readonly local?: false;
   readonly handler: TaskHandler<Input>;
 };
 /** Options shared by command registrations. */
@@ -276,11 +278,6 @@ type CommandOptions<Input> = {
 /** Definition used to register an `@pipr` command. */
 type CommandRegistrationOptions<Input> = CommandOptions<Input> & {
   pattern: string;
-  task: Task<Input>;
-};
-/** Definition used to register a local task entrypoint. */
-type LocalRegistrationOptions<Input> = {
-  name: string;
   task: Task<Input>;
 };
 /** Options for creating a reusable reviewer agent. */
@@ -303,7 +300,6 @@ type ReviewEntrypoints = {
     permission?: RepositoryPermission;
     description?: string;
   };
-  local?: string | false;
 };
 type ReviewRecipeEntrypointOptions = {
   id: string;
@@ -346,14 +342,14 @@ type PluginToolDefinition<Input, Output> = {
   description: string;
   input: Schema<Input>;
   output: Schema<Output>;
-  execute?(context: unknown, input: Input): Promise<Output>;
+  execute?(context: TaskContext, input: Input): Promise<Output>;
   run?(options: ToolRunOptions<Input>): Output | Promise<Output>;
   toModelOutput?(output: Output): PromptValue;
 };
 /** Runtime input passed to a tool implementation. */
 type ToolRunOptions<Input> = {
   input: Input;
-  ctx: unknown;
+  ctx: TaskContext;
   signal?: AbortSignal;
 };
 /** Definition used to register a task for pull request actions. */
@@ -371,7 +367,7 @@ type JsonSchemaDefinition = {
   id: string;
   schema: JsonSchema;
 };
-/** Aggregate check-run options for a pipr run. */
+/** Aggregate check-run options for a Pipr review run. */
 type AggregateCheckOptions = false | {
   enabled?: boolean;
   name?: string;
@@ -428,7 +424,6 @@ type PiprBuilder = {
   review(options: ReviewRecipeOptions): void;
   config(options: PiprConfigOptions): void;
   command<Input = void>(options: CommandRegistrationOptions<Input>): void;
-  local<Input = void>(options: LocalRegistrationOptions<Input>): void;
   checks(options: ChecksOptions): void;
   limits(options: RuntimeLimits): void;
   use<Handle>(plugin: PiprPlugin<Handle>): Handle;
@@ -544,6 +539,7 @@ type TaskContext = {
   readonly platform: PlatformInfo;
   readonly pi: PiRunner;
   readonly command?: CommandContext;
+  secret(secret: SecretRef): string;
   readonly review: {
     prior(): Promise<PriorReview>;
   };
@@ -559,7 +555,7 @@ type TaskContext = {
 
 
 
-export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, AggregateCheckOptions, AutoResolveAllowedActors, AutoResolveOptions, AutoResolveUserRepliesOptions, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, ChangeRequestRegistrationOptions, CheckHandle, ChecksOptions, CommandContext, CommandOptions, CommandRegistrationOptions, CommentValue, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonSchemaDefinition, JsonValue, LocalRegistrationOptions, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigOptions, PiprPlugin, PlatformInfo, PluginToolDefinition, PriorInlineFinding, PriorReview, PromptSource, PromptText, PromptValue, PublicationOptions, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, type ReviewFinding, ReviewRecipeOptions, type ReviewResult, type ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, Schema, SchemaDefinition, SchemaParseResult, SecretOptions, SecretRef, Task, TaskCheckOptions, TaskContext, TaskDefinition, TaskHandler, ToolRunOptions, ZodSchema, definePipr, definePlugin, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewFindingSchema, reviewResultSchema, reviewSchemaExample, reviewSummarySchema, schema, schemas, z };
+export { Agent, AgentDefinition, AgentExtension, AgentPromptContext, AgentTool, AggregateCheckOptions, AutoResolveAllowedActors, AutoResolveOptions, AutoResolveUserRepliesOptions, BuiltinSchemaCatalog, BuiltinToolCatalog, ChangeRequestAction, ChangeRequestContext, ChangeRequestInfo, ChangeRequestRegistrationOptions, CheckHandle, ChecksOptions, CommandContext, CommandOptions, CommandRegistrationOptions, CommentValue, DefaultReviewInput, DiffManifest, DiffManifestLimits, DiffManifestOptions, DurationInput, JsonObject, JsonPrimitive, JsonPromptOptions, JsonSchema, JsonSchemaDefinition, JsonValue, Markdown, ModelOptions, ModelProfile, PathFilter, PiRunner, PiprBuilder, PiprConfigOptions, PiprPlugin, PlatformInfo, PluginToolDefinition, PriorInlineFinding, PriorReview, PromptSource, PromptText, PromptValue, PublicationOptions, RepositoryInfo, RepositoryPermission, ReviewCommentContext, ReviewEntrypoints, type ReviewFinding, ReviewRecipeOptions, type ReviewResult, type ReviewSummary, Reviewer, ReviewerOptions, RuntimeLimits, Schema, SchemaDefinition, SchemaParseResult, SecretOptions, SecretRef, Task, TaskCheckOptions, TaskContext, TaskDefinition, TaskHandler, ToolRunOptions, ZodSchema, definePipr, definePlugin, jsonSchema, md, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewFindingSchema, reviewResultSchema, reviewSchemaExample, reviewSummarySchema, schema, schemas, z };
 }
 declare module "@pipr/sdk/review" {
 export { type AgentPromptContext, type ChangeRequestAction, type CommentValue, type DefaultReviewInput, type Markdown, type PathFilter, type PriorInlineFinding, type PriorReview, type ReviewCommentContext, type ReviewEntrypoints, type ReviewFinding, type ReviewRecipeOptions, type ReviewResult, type ReviewSummary, type Reviewer, type ReviewerOptions, parseReviewFinding, parseReviewResult, parseReviewSummary, reviewFindingSchema, reviewResultSchema, reviewSchemaExample, reviewSummarySchema } from "@pipr/sdk";

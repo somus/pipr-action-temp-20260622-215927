@@ -26,12 +26,12 @@ Common causes:
 - `.pipr/config.ts` does not export `definePipr(...)`.
 - The config callback is async. `definePipr(...)` must be synchronous.
 - A local import from `.pipr/config.ts` cannot be resolved.
-- A task, command, local entrypoint, or model id is duplicated.
+- A task, command, or model id is duplicated.
 - A command pattern does not start with `@pipr`.
 - A secret name is not an environment variable name such as `DEEPSEEK_API_KEY`.
 
 Use `pipr inspect` after `pipr check` passes to confirm the runtime plan matches the config you expected.
-Run `pipr init --types-only` if your editor is missing local Pipr or Bun types.
+Run `pipr init --types-only` if your editor is missing local Pipr SDK types.
 
 ## Provider env var is missing
 
@@ -46,7 +46,7 @@ Locally, export the same env var or run `pipr check` without `--require-env` whe
 
 ## Local review cannot find a base
 
-`pipr review` and `pipr run` require an explicit base:
+`pipr review` requires an explicit base:
 
 ```bash
 pipr review --base origin/main

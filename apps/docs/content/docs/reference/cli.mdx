@@ -1,6 +1,6 @@
 ---
 title: "CLI Reference"
-description: "Pipr CLI commands for init, Action runs, config validation, dry runs, inspect, review, and local tasks."
+description: "Pipr CLI commands for init, Action runs, config validation, dry runs, inspect, and local review."
 ---
 
 The CLI is the local and Action entrypoint for Pipr.
@@ -108,11 +108,11 @@ Options:
 | --- | --- | --- |
 | `--config-dir <dir>` | `.pipr` | Config directory to load. |
 
-The output includes models, agents, tasks, commands, locals, tools, publication settings, checks, and limits.
+The output includes models, agents, tasks, commands, tools, publication settings, checks, and limits.
 
 ## `pipr review`
 
-Run the local entrypoint named `review` without publishing:
+Run configured change-request review tasks locally without publishing:
 
 ```bash
 pipr review --base origin/main
@@ -126,23 +126,6 @@ Options:
 | `--head <sha>` | `HEAD` | Head commit, branch, or ref. |
 | `--config-dir <dir>` | `.pipr` | Config directory to load. |
 | `--pi-executable <path>` | `pi` on PATH | Pi executable for local runs. |
-
-## `pipr run`
-
-Run a named local entrypoint without publishing:
-
-```bash
-pipr run security --base origin/main
-```
-
-Options:
-
-| Option | Default | Purpose |
-| --- | --- | --- |
-| `<name>` | required | Local entrypoint name registered with `pipr.local(...)`. |
-| `--base <sha>` | required | Base commit, branch, or ref. |
-| `--head <sha>` | `HEAD` | Head commit, branch, or ref. |
-| `--config-dir <dir>` | `.pipr` | Config directory to load. |
-| `--pi-executable <path>` | `pi` on PATH | Pi executable for local runs. |
+| `--json` | false | Print structured local review output. |
 
 See [Local Runs](/docs/guide/local-runs) for behavior differences between local and GitHub Action runs.

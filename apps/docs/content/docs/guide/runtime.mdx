@@ -14,10 +14,9 @@ Use this page for the end-to-end flow. Use [Comments and Findings](/docs/guide/c
 | Change request event | GitHub `pull_request` event through `pipr action` | Yes |
 | Command comment | GitHub `issue_comment` event such as `@pipr review` | Yes |
 | Local review | `pipr review --base <sha> [--head <sha>]` | No |
-| Local named task | `pipr run <name> --base <sha> [--head <sha>]` | No |
 | Dry run | `pipr dry-run --event <path>` or `PIPR_DRY_RUN=1` in Action | No |
 
-Local runs use the local code host adapter. They build the same Diff Manifest and execute the same task logic, but publication is disabled.
+Local review uses the local code host adapter. It builds the same Diff Manifest and executes every unique change-request task that is not marked `local: false`, but publication is disabled.
 
 See [Local Runs](/docs/guide/local-runs) for local command examples.
 
@@ -193,7 +192,6 @@ See [Comments and Findings](/docs/guide/comments) for the publication model.
 pipr check
 pipr inspect
 pipr review --base origin/main
-pipr run security --base origin/main --head HEAD
 ```
 
-`pipr inspect` prints models, agents, tasks, change request triggers, commands, locals, tools, publication settings, and limits.
+`pipr inspect` prints models, agents, tasks, change request triggers, commands, tools, publication settings, and limits.

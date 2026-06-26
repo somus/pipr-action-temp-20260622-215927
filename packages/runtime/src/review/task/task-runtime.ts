@@ -1,4 +1,4 @@
-import type { CommandContext, DiffManifestOptions, SecretRef, TaskContext } from "@pipr/sdk";
+import type { CommandContext, DiffManifestOptions, SecretRef, Task, TaskContext } from "@pipr/sdk";
 import type { RuntimePlan } from "@pipr/sdk/internal";
 import { uniq } from "lodash-es";
 import { selectRuntimeTasks } from "../../action/entry-dispatch.js";
@@ -52,6 +52,8 @@ export type RunTaskRuntimeOptions = {
   providerOverride?: ProviderConfig;
   taskName?: string;
   taskInput?: unknown;
+  selectedTasks?: readonly Task<unknown>[];
+  emptyTasksReason?: string;
   trustedConfigSha?: string;
   trustedConfigHash?: string;
   piExecutable?: string;
@@ -65,6 +67,7 @@ export type RunTaskRuntimeOptions = {
   checkSink?: RuntimeCheckSink;
   commandInvocation?: RuntimeCommandInvocation;
   log?: RuntimeActionLog;
+  taskLog?: TaskContext["log"];
 };
 
 export type RuntimeCommandInvocation = Pick<CommandContext, "name" | "line" | "arguments">;
@@ -134,11 +137,14 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
     deletions: diffManifest.files.reduce((sum, file) => sum + file.deletions, 0),
     excluded: diffManifest.files.filter((file) => file.excludedReason !== undefined).length,
   });
-  const tasks = selectRuntimeTasks({
-    plan: options.plan,
-    event: options.event,
-    taskName: options.taskName,
-  });
+  const tasks = [
+    ...(options.selectedTasks ??
+      selectRuntimeTasks({
+        plan: options.plan,
+        event: options.event,
+        taskName: options.taskName,
+      })),
+  ];
   if (tasks.length === 0) {
     options.log?.info("task runtime skipped", { reason: "no-matched-tasks" });
     return skippedTaskRuntimeResult({
@@ -146,9 +152,8 @@ export async function runTaskRuntime(options: RunTaskRuntimeOptions): Promise<Re
       diffManifest,
       event: options.event,
       provider,
-      reason: options.taskName
-        ? `Task '${options.taskName}' was not registered`
-        : "No tasks matched the change request event",
+      reason: options.emptyTasksReason,
+      taskName: options.taskName,
       trustedConfigSha: options.trustedConfigSha,
       trustedConfigHash: options.trustedConfigHash,
     });
@@ -457,7 +462,7 @@ function createTaskContext(
     async comment(value) {
       collectComment(options.output, value, options.taskName);
     },
-    log: console,
+    log: options.taskLog ?? console,
   };
   return taskContext;
 }
@@ -502,15 +507,21 @@ function skippedTaskRuntimeResult(options: {
   diffManifest: DiffManifest;
   event: ChangeRequestEventContext;
   provider: ProviderConfig;
-  reason: string;
+  reason?: string;
+  taskName?: string;
   trustedConfigSha?: string;
   trustedConfigHash?: string;
 }): ReviewRuntimeResult {
-  const review: PrReview = { summary: { body: options.reason }, inlineFindings: [] };
+  const reason =
+    options.reason ??
+    (options.taskName
+      ? `Task '${options.taskName}' was not registered`
+      : "No tasks matched the change request event");
+  const review: PrReview = { summary: { body: reason }, inlineFindings: [] };
   const validated: ValidatedReview = { review, validFindings: [], droppedFindings: [] };
   const publishing = buildCommentPublishingPlan({
     event: options.event,
-    main: options.reason,
+    main: reason,
     validated,
     manifest: options.diffManifest,
     maxInlineComments: options.config.publication.maxInlineComments,
@@ -529,7 +540,7 @@ function skippedTaskRuntimeResult(options: {
   const publicationPlan = publishing.publicationPlan;
   return {
     kind: "skipped",
-    skipReason: options.reason,
+    skipReason: reason,
     provider: options.provider,
     diffManifest: options.diffManifest,
     review,

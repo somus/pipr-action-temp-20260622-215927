@@ -69,7 +69,6 @@ export default definePipr((pipr) => {
 
   pipr.on.changeRequest({ actions: ["opened", "updated", "reopened", "ready"], task });
   pipr.command({ pattern: "@pipr hygiene", permission: "write", task });
-  pipr.local({ name: "hygiene", task });
 });
 ```
 

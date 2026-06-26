@@ -14,7 +14,11 @@ import {
   renderVerifierResponseMarker,
 } from "../../review/prior-state.js";
 import { memoryActionLogSink } from "../../tests/helpers/action-log-sink.js";
-import { type ActionLogSink, runActionCommandWithDependencies } from "../commands.js";
+import {
+  type ActionLogSink,
+  runActionCommandWithDependencies,
+  runLocalReviewCommand,
+} from "../commands.js";
 
 describe("runActionCommand issue_comment dispatch", () => {
   it("ignores issue comments that are not pull request comments", async () => {
@@ -306,6 +310,39 @@ describe("runActionCommand issue_comment dispatch", () => {
       expect(result).toMatchObject({ kind: "review", command: "review" });
       expect(checks.created).toEqual([]);
       expect(checks.updated).toEqual([]);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+});
+
+describe("runLocalReviewCommand", () => {
+  it("runs unique change-request tasks and skips local-disabled tasks", async () => {
+    const workspace = await createCommandWorkspace({
+      baseConfigTs: localReviewSelectionConfigTs(),
+      headConfigTs: localReviewSelectionConfigTs(),
+    });
+    try {
+      const result = await runLocalReviewCommand({
+        rootDir: workspace.rootDir,
+        configDir: ".pipr",
+        env: { DEEPSEEK_API_KEY: "provider-key" },
+        baseSha: workspace.baseSha,
+        headSha: workspace.headSha,
+        piExecutable: workspace.piExecutable,
+      });
+
+      expect(result.kind).toBe("review");
+      if (result.kind !== "review") {
+        throw new Error(`Expected local review result, received ${result.kind}`);
+      }
+
+      expect(result.mainComment).toContain("Alpha completed.");
+      expect(result.publicationPlan.metadata.selectedTasks).toEqual(["alpha", "beta"]);
+      expect(result.taskChecks.map((check) => check.taskName)).toEqual(["alpha", "beta"]);
+      expect(await Bun.file(path.join(workspace.rootDir, "alpha-ran")).text()).toBe("1\n");
+      expect(await Bun.file(path.join(workspace.rootDir, "beta-ran")).text()).toBe("1\n");
+      expect(await Bun.file(path.join(workspace.rootDir, "disabled-ran")).exists()).toBe(false);
     } finally {
       await removeWorkspace(workspace.rootDir);
     }
@@ -1205,6 +1242,45 @@ function headOnlyConfigTs(): string {
     "  });",
     "  const task = pipr.task({ name: 'head-only', async run() {} });",
     '  pipr.command({ pattern: "@pipr head-only", permission: "write", task });',
+    "  void model;",
+    "});",
+  ].join("\n");
+}
+
+function localReviewSelectionConfigTs(): string {
+  return [
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "export default definePipr((pipr) => {",
+    "  const model = pipr.model({",
+    '    provider: "deepseek",',
+    '    model: "deepseek-reasoner",',
+    '    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),',
+    "  });",
+    "  const alpha = pipr.task({",
+    '    name: "alpha",',
+    "    async run(ctx) {",
+    '      await Bun.write(ctx.repository.root + "/alpha-ran", "1\\n");',
+    '      await ctx.comment("Alpha completed.");',
+    "    },",
+    "  });",
+    "  const beta = pipr.task({",
+    '    name: "beta",',
+    "    async run(ctx) {",
+    '      await Bun.write(ctx.repository.root + "/beta-ran", "1\\n");',
+    "    },",
+    "  });",
+    "  const disabled = pipr.task({",
+    '    name: "disabled",',
+    "    local: false,",
+    "    async run(ctx) {",
+    '      await Bun.write(ctx.repository.root + "/disabled-ran", "1\\n");',
+    "    },",
+    "  });",
+    '  pipr.on.changeRequest({ actions: ["opened"], task: alpha });',
+    '  pipr.on.changeRequest({ actions: ["updated"], task: alpha });',
+    '  pipr.on.changeRequest({ actions: ["ready"], task: beta });',
+    '  pipr.on.changeRequest({ actions: ["opened"], task: disabled });',
     "  void model;",
     "});",
   ].join("\n");

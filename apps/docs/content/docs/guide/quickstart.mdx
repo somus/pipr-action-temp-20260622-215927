@@ -39,7 +39,7 @@ pipr check
 
 - `.pipr/config.ts`
 - `.pipr/tsconfig.json` for local editor type support
-- `.pipr/types/**` with generated Pipr SDK and Bun declarations
+- `.pipr/types/**` with generated Pipr SDK declarations
 - `.github/workflows/pipr.yml`
 
 Use `pipr init --adapters none` to create only the `.pipr` config files. Run
@@ -141,9 +141,7 @@ pipr inspect
 pipr review --base origin/main
 ```
 
-`pipr review` runs the local `review` entrypoint and prints the rendered main comment instead of publishing to GitHub.
-
-Use `pipr run <name> --base origin/main` for named local entrypoints created with `pipr.local(...)`. See [Local Runs](/docs/guide/local-runs).
+`pipr review` runs every unique change-request task from the local workspace config. See [Local Runs](/docs/guide/local-runs).
 
 ## Expected output
 
@@ -168,7 +166,7 @@ After the default review works:
 ## Next steps
 
 - Read [Configuration](/docs/guide/configuration) for common config patterns.
-- Read [Entrypoints](/docs/guide/entrypoints) to tune GitHub, command, and local triggers.
+- Read [Entrypoints](/docs/guide/entrypoints) to tune GitHub, command, and local review behavior.
 - Read [Pipr SDK Reference](/docs/reference/sdk-reference) for the public builder API.
 - Read [Runtime Guide](/docs/guide/runtime) for Diff Manifest, Pi execution, validation, and publication behavior.
 - Read [Troubleshooting](/docs/guide/troubleshooting) when a first run fails.

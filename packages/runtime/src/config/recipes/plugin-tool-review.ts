@@ -244,7 +244,6 @@ export default definePipr((pipr) => {
 
   pipr.on.changeRequest({ actions: ["opened", "updated"], task });
   pipr.command({ pattern: "@pipr memory-review", permission: "write", task });
-  pipr.local({ name: "memory-review", task });
 });
 `,
   files: [{ relativePath: "r2-memory.ts", contents: r2MemoryTs }],

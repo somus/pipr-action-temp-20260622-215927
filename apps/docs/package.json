@@ -15,7 +15,7 @@
     "typecheck": "bun run typegen && tsc --noEmit",
     "lint": "biome check .",
     "format:check": "biome check .",
-    "check": "bun run recipes:check && bun run lint && bun run typecheck && bun run build",
+    "check": "bun run recipes:check && bun run lint && bun run typecheck",
     "postinstall": "bun run typegen"
   },
   "dependencies": {

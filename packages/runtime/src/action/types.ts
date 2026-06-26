@@ -39,11 +39,17 @@ export type ActionCommandDependencyOptions = ActionCommandOptions & {
   githubPublicationClient?: GitHubPublicationClient;
 };
 
-export type LocalTaskCommandOptions = RuntimeCommandOptions & {
-  localName: string;
+export type LocalReviewTaskLog = {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+};
+
+export type LocalReviewCommandOptions = RuntimeCommandOptions & {
   baseSha: string;
   headSha?: string;
   piExecutable?: string;
+  taskLog?: LocalReviewTaskLog;
 };
 
 export type DryRunCommandResult = {
@@ -53,7 +59,7 @@ export type DryRunCommandResult = {
 
 export type InspectCommandResult = import("../config/project.js").InspectRuntimePlan;
 
-export type LocalTaskCommandResult = ReviewRuntimeResult & {
+export type LocalReviewCommandResult = ReviewRuntimeResult & {
   kind: "review" | "skipped";
   commandResponse?: never;
 };

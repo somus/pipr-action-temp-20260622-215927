@@ -23,7 +23,6 @@ export type RuntimePlan = {
     parse?: (arguments_: Record<string, string>) => unknown;
     task: Task<unknown>;
   }>;
-  locals: Array<{ name: string; task: Task<unknown> }>;
   tools: AgentTool[];
   publication: PublicationOptions;
   checks?: ChecksOptions;

@@ -11,7 +11,7 @@ import {
 } from "../review.js";
 
 describe("definePipr", () => {
-  it("registers models, agents, tasks, events, commands, locals, and tools", () => {
+  it("registers models, agents, tasks, events, commands, and tools", () => {
     const factory = definePipr((pipr) => {
       const model = pipr.model({
         provider: "deepseek",
@@ -38,6 +38,7 @@ describe("definePipr", () => {
       const paths = { include: ["src/**"], exclude: ["**/*.test.ts"] };
       const task = pipr.task({
         name: "review",
+        local: false,
         async run(context) {
           const manifest = await context.change.diffManifest({ paths });
           const result = await context.pi.run(agent, { manifest }, { paths });
@@ -49,13 +50,12 @@ describe("definePipr", () => {
       });
       expect(pipr.on.changeRequest({ actions: ["opened"], task })).toBeUndefined();
       expect(pipr.command({ pattern: "@pipr review", permission: "write", task })).toBeUndefined();
-      expect(pipr.local({ name: "review", task })).toBeUndefined();
       pipr.review({
         id: "scoped",
         model,
         instructions: "Review scoped files.",
         paths: { include: ["docs/**"] },
-        entrypoints: { changeRequest: false, command: false, local: false },
+        entrypoints: { changeRequest: false, command: false },
       });
     });
 
@@ -64,9 +64,9 @@ describe("definePipr", () => {
     expect(plan.models.map((model) => model.id)).toEqual(["deepseek/deepseek-v4-pro"]);
     expect(plan.agents.map((agent) => agent.name)).toEqual(["reviewer", "scoped"]);
     expect(plan.tasks.map((task) => task.name)).toEqual(["review", "scoped"]);
+    expect(plan.tasks[0]?.local).toBe(false);
     expect(plan.changeRequestTriggers[0]).toMatchObject({ actions: ["opened"] });
     expect(plan.commands[0]).toMatchObject({ pattern: "@pipr review", permission: "write" });
-    expect(plan.locals[0]).toMatchObject({ name: "review" });
     expect(plan.tools[0]?.name).toBe("custom_tool");
   });
 
@@ -78,14 +78,12 @@ describe("definePipr", () => {
     );
   });
 
-  it("rejects duplicate task, command, and local names", () => {
+  it("rejects duplicate task and command names", () => {
     const factory = definePipr((pipr) => {
       const first = pipr.task({ name: "review", run() {} });
       const second = pipr.task({ name: "review", run() {} });
       pipr.command({ pattern: "@pipr review", task: first });
       pipr.command({ pattern: "@pipr review", task: second });
-      pipr.local({ name: "review", task: first });
-      pipr.local({ name: "review", task: second });
     });
 
     expect(() => buildPiprPlan(factory)).toThrow("Duplicate task 'review'");
@@ -147,10 +145,6 @@ describe("definePipr", () => {
         pipr.command("@pipr review", {}, task),
       ).toThrow("pipr.command requires { pattern, task }");
       expect(() =>
-        // @ts-expect-error positional local API is not supported.
-        pipr.local("review", task),
-      ).toThrow("pipr.local requires { name, task }");
-      expect(() =>
         // @ts-expect-error positional schema API is not supported.
         pipr.schema("custom/output", z.string()),
       ).toThrow("pipr.schema requires { id, schema }");
@@ -178,6 +172,14 @@ describe("definePipr", () => {
           command: false,
         } as never),
       ).toThrow("pipr.review received unsupported option fields: command");
+      expect(() =>
+        pipr.review({
+          id: "review",
+          model,
+          instructions: "Review.",
+          entrypoints: { local: false },
+        } as never),
+      ).toThrow("pipr.review entrypoints received unsupported fields: local");
     });
 
     buildPiprPlan(factory);
@@ -223,7 +225,6 @@ describe("definePipr", () => {
       "ready",
     ]);
     expect(plan.commands[0]).toMatchObject({ pattern: "@pipr review", permission: "write" });
-    expect(plan.locals[0]).toMatchObject({ name: "review" });
     expect(plan.publication.maxInlineComments).toBe(3);
   });
 
@@ -249,7 +250,6 @@ describe("definePipr", () => {
             permission: "triage",
             description: "Run correctness review.",
           },
-          local: "correctness",
         },
         comment: "Correctness review disabled.",
       });
@@ -265,7 +265,6 @@ describe("definePipr", () => {
       permission: "triage",
       description: "Run correctness review.",
     });
-    expect(plan.locals[0]).toMatchObject({ name: "correctness" });
     expect(plan.publication.maxInlineComments).toBe(5);
   });
 
@@ -288,7 +287,6 @@ describe("definePipr", () => {
         entrypoints: {
           changeRequest: false,
           command: false,
-          local: false,
         },
       });
     });
@@ -800,14 +798,14 @@ function reviewRecipeFactory(firstInline: InlineComments, secondInline: InlineCo
       model,
       instructions: "Review correctness.",
       inlineComments: firstInline,
-      entrypoints: { command: false, local: false },
+      entrypoints: { command: false },
     });
     pipr.review({
       id: "security",
       model,
       instructions: "Review security.",
       inlineComments: secondInline,
-      entrypoints: { command: false, local: false },
+      entrypoints: { command: false },
     });
   });
 }

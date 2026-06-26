@@ -22,7 +22,7 @@ describe("pipr CLI", () => {
     expect(result.stdout).toContain("check [options]");
     expect(result.stdout).toContain("inspect [options]");
     expect(result.stdout).toContain("review [options]");
-    expect(result.stdout).toContain("run [options] <name>");
+    expect(result.stdout).not.toContain("run [options] <name>");
     const init = await runCli(["init", "--help"]);
     expect(init.stdout).toContain("--adapters <adapters>");
     expect(init.stdout).toContain("--recipe <recipe>");
@@ -42,11 +42,11 @@ describe("pipr CLI", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain("pipr review requires --base <sha>");
   });
 
-  it("runs a named local entrypoint without GitHub publishing", async () => {
+  it("runs local review without GitHub publishing", async () => {
     const workspace = await createLocalReviewWorkspace();
     try {
       const result = await runCli(
-        ["run", "review", "--base", workspace.baseSha, "--pi-executable", workspace.piExecutable],
+        ["review", "--base", workspace.baseSha, "--pi-executable", workspace.piExecutable],
         { DEEPSEEK_API_KEY: "provider-key" },
         workspace.rootDir,
       );
@@ -60,23 +60,62 @@ describe("pipr CLI", () => {
     }
   });
 
-  it("fails unknown local entrypoints before running Pi", async () => {
-    const workspace = await createLocalReviewWorkspace();
+  it("prints local review JSON when requested", async () => {
+    const workspace = await createLocalReviewWorkspace({ taskLog: true });
     try {
       const result = await runCli(
-        ["run", "missing", "--base", workspace.baseSha, "--pi-executable", workspace.piExecutable],
+        [
+          "review",
+          "--base",
+          workspace.baseSha,
+          "--pi-executable",
+          workspace.piExecutable,
+          "--json",
+        ],
         { DEEPSEEK_API_KEY: "provider-key" },
         workspace.rootDir,
       );
 
-      expect(result.exitCode).toBe(1);
-      expect(`${result.stdout}\n${result.stderr}`).toContain(
-        "Local entry 'missing' was not registered",
-      );
-      expect(await countLines(path.join(workspace.rootDir, "pi-called"))).toBe(0);
+      expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(result.stderr).toContain("running local review");
+      const json = JSON.parse(result.stdout) as {
+        kind: string;
+        mainComment: string;
+        inlineFindings: unknown[];
+        taskChecks: unknown[];
+      };
+      expect(json.kind).toBe("review");
+      expect(json.mainComment).toContain("No findings.");
+      expect(json.inlineFindings).toEqual([]);
+      expect(json.taskChecks).toEqual([{ taskName: "review", conclusion: "success" }]);
     } finally {
       await removeWorkspace(workspace.rootDir);
     }
+  });
+
+  it("loads provider env from .env for local review", async () => {
+    const workspace = await createLocalReviewWorkspace();
+    try {
+      await Bun.write(path.join(workspace.rootDir, ".env"), "DEEPSEEK_API_KEY=provider-key\n");
+
+      const result = await runCli(
+        ["review", "--base", workspace.baseSha, "--pi-executable", workspace.piExecutable],
+        {},
+        workspace.rootDir,
+      );
+
+      expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(await countLines(path.join(workspace.rootDir, "pi-called"))).toBe(1);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("does not expose removed run command", async () => {
+    const result = await runCli(["run"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("unknown command 'run'");
   });
 
   it("initializes and checks the TypeScript config", async () => {
@@ -133,9 +172,7 @@ describe("pipr CLI", () => {
       expect(second.exitCode, `${second.stdout}\n${second.stderr}`).toBe(0);
       expect(second.stdout).toContain("created 0 file(s)");
       expect(await fileExists(path.join(workspace, ".pipr", "tsconfig.json"))).toBe(true);
-      expect(await fileExists(path.join(workspace, ".pipr", "types", "bun-types", "s3.d.ts"))).toBe(
-        true,
-      );
+      expect(await fileExists(path.join(workspace, ".pipr", "types", "pipr-sdk.d.ts"))).toBe(true);
     } finally {
       await removeWorkspace(workspace);
     }
@@ -280,7 +317,7 @@ describe("pipr CLI", () => {
       expect(inspect.stdout).toContain("tasks");
       expect(inspect.stdout).toContain("events");
       expect(inspect.stdout).toContain("commands");
-      expect(inspect.stdout).toContain("locals");
+      expect(inspect.stdout).not.toContain("locals");
       expect(inspect.stdout).toContain("tools");
       expect(inspect.stdout).toContain("schemas");
       expect(inspect.stdout).toContain("core/pr-review");
@@ -361,7 +398,7 @@ async function runActionWithGitWorkspace(options: {
   }
 }
 
-async function createLocalReviewWorkspace(): Promise<{
+async function createLocalReviewWorkspace(options: { taskLog?: boolean } = {}): Promise<{
   rootDir: string;
   baseSha: string;
   piExecutable: string;
@@ -373,6 +410,9 @@ async function createLocalReviewWorkspace(): Promise<{
   await runCommand("git", ["config", "core.hooksPath", "/dev/null"], rootDir);
   await runCommand("git", ["config", "commit.gpgsign", "false"], rootDir);
   await initWorkspaceConfig(rootDir);
+  if (options.taskLog) {
+    await Bun.write(path.join(rootDir, ".pipr", "config.ts"), localReviewConfigWithTaskLog());
+  }
   await mkdir(path.join(rootDir, "src"));
   await Bun.write(path.join(rootDir, "src/a.ts"), "export const value = 1;\n");
   await runCommand("git", ["add", "."], rootDir);
@@ -390,6 +430,37 @@ async function createLocalReviewWorkspace(): Promise<{
   );
   await chmod(piExecutable, 0o755);
   return { rootDir, baseSha, piExecutable };
+}
+
+function localReviewConfigWithTaskLog(): string {
+  return [
+    'import { definePipr } from "@pipr/sdk";',
+    "",
+    "export default definePipr((pipr) => {",
+    "  const model = pipr.model({",
+    '    provider: "deepseek",',
+    '    model: "deepseek-v4-pro",',
+    '    apiKey: pipr.secret({ name: "DEEPSEEK_API_KEY" }),',
+    "  });",
+    "  const reviewer = pipr.agent({",
+    '    name: "reviewer",',
+    "    model,",
+    '    instructions: "Review this change.",',
+    "    output: pipr.schemas.review,",
+    '    prompt: () => "Review.",',
+    "  });",
+    "  const task = pipr.task({",
+    '    name: "review",',
+    "    async run(ctx) {",
+    '      ctx.log.info("running local review");',
+    "      const manifest = await ctx.change.diffManifest({ compressed: true });",
+    "      const result = await ctx.pi.run(reviewer, { manifest });",
+    "      await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });",
+    "    },",
+    "  });",
+    '  pipr.on.changeRequest({ actions: ["opened", "updated"], task });',
+    "});",
+  ].join("\n");
 }
 
 function noFindingsJsonCommand(): string {

@@ -1,4 +1,5 @@
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -123,6 +124,13 @@ async function typecheckTypescriptConfigWithApi(
   }
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, configDir);
   const typeRoot = path.join(configDir, "types");
+  const bundledTypeRoots: string[] = [];
+  try {
+    const require = createRequire(import.meta.url);
+    bundledTypeRoots.push(path.dirname(path.dirname(require.resolve("@types/bun/package.json"))));
+  } catch {
+    // Released binaries may not have package-managed Bun types available.
+  }
   const configPath = path.join(configDir, "config.ts");
   const fileNames = [
     configPath,
@@ -133,8 +141,14 @@ async function typecheckTypescriptConfigWithApi(
   ];
   const program = ts.createProgram(fileNames, {
     ...parsed.options,
-    typeRoots: [...new Set([typeRoot, ...(parsed.options.typeRoots ?? [])])],
-    types: [...new Set([...(parsed.options.types ?? []), "pipr-sdk", "bun"])],
+    typeRoots: [...new Set([typeRoot, ...bundledTypeRoots, ...(parsed.options.typeRoots ?? [])])],
+    types: [
+      ...new Set([
+        ...(parsed.options.types ?? []),
+        "pipr-sdk",
+        ...(bundledTypeRoots.length ? ["bun"] : []),
+      ]),
+    ],
   });
   const diagnostics = [...parsed.errors, ...ts.getPreEmitDiagnostics(program)];
   if (diagnostics.length > 0) {

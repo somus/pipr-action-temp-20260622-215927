@@ -40,7 +40,6 @@ export default definePipr((pipr) => {
     entrypoints: {
       changeRequest: ["opened", "updated", "reopened", "ready"],
       command: { pattern: "@pipr describe", permission: "read" },
-      local: "describe",
     },
   });
 });

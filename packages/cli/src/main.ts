@@ -10,7 +10,7 @@ import {
   runDryRunCommand,
   runInitCommand,
   runInspectCommand,
-  runLocalTaskCommand,
+  runLocalReviewCommand,
   runValidateCommand,
   supportedOfficialInitAdapters,
   supportedOfficialInitRecipes,
@@ -31,6 +31,7 @@ type CliOptions = {
   base?: string;
   head?: string;
   piExecutable?: string;
+  json?: boolean;
 };
 
 async function main(): Promise<void> {
@@ -82,28 +83,19 @@ function createProgram(): Command {
 
   program
     .command("inspect")
-    .description("Print models, agents, tasks, commands, locals, and tools")
+    .description("Print models, agents, tasks, commands, and tools")
     .option("--config-dir <dir>", "Config directory", ".pipr")
     .action(runInspect);
 
   program
     .command("review")
-    .description("Run local review entrypoint without publishing")
+    .description("Run configured change-request review tasks locally without publishing")
     .option("--base <sha>", "Base commit SHA")
     .option("--head <sha>", "Head commit SHA")
     .option("--config-dir <dir>", "Config directory", ".pipr")
     .option("--pi-executable <path>", "Pi executable path")
-    .action((options: CliOptions) => runLocalEntrypoint("review", options));
-
-  program
-    .command("run")
-    .description("Run a named local entrypoint without publishing")
-    .argument("<name>", "Local entrypoint name")
-    .option("--base <sha>", "Base commit SHA")
-    .option("--head <sha>", "Head commit SHA")
-    .option("--config-dir <dir>", "Config directory", ".pipr")
-    .option("--pi-executable <path>", "Pi executable path")
-    .action(runLocal);
+    .option("--json", "Print structured JSON output")
+    .action(runLocalReview);
 
   return program;
 }
@@ -332,34 +324,93 @@ async function runInspect(options: CliOptions): Promise<void> {
   console.log(inspect(result, { depth: 8, colors: false }));
 }
 
-async function runLocal(localName: string, options: CliOptions): Promise<void> {
-  await runLocalEntrypoint(localName, options);
-}
-
-async function runLocalEntrypoint(localName: string, options: CliOptions): Promise<void> {
+async function runLocalReview(options: CliOptions): Promise<void> {
   if (!options.base) {
-    throw new Error(`pipr ${localName} requires --base <sha>`);
+    throw new Error("pipr review requires --base <sha>");
   }
-  const result = await runLocalTaskCommand({
+  const result = await runLocalReviewCommand({
     rootDir: process.cwd(),
     configDir: options.configDir,
     env: process.env,
-    localName,
     baseSha: options.base,
     headSha: options.head,
     piExecutable: options.piExecutable,
+    taskLog: options.json === true ? stderrTaskLog : undefined,
   });
-  writeLocalTaskResult(result);
+  writeLocalReviewResult(result, options.json === true);
 }
 
-type LocalTaskResult = Awaited<ReturnType<typeof runLocalTaskCommand>>;
+type LocalReviewResult = Awaited<ReturnType<typeof runLocalReviewCommand>>;
 
-function writeLocalTaskResult(result: LocalTaskResult): void {
+const stderrTaskLog = {
+  info(message: string) {
+    console.error(message);
+  },
+  warn(message: string) {
+    console.error(message);
+  },
+  error(message: string) {
+    console.error(message);
+  },
+};
+
+function writeLocalReviewResult(result: LocalReviewResult, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(localReviewJson(result), null, 2));
+    return;
+  }
   if (result.kind === "skipped") {
     console.log(`skipped: ${result.skipReason ?? "no task matched"}`);
     return;
   }
-  console.log(result.mainComment);
+  console.log(formatLocalReview(result));
+}
+
+function formatLocalReview(result: Extract<LocalReviewResult, { kind: "review" }>): string {
+  const inlineFindings = result.inlineCommentDrafts.map((draft, index) => {
+    const range =
+      draft.startLine === draft.endLine
+        ? `${draft.path}:${draft.startLine}`
+        : `${draft.path}:${draft.startLine}-${draft.endLine}`;
+    return [`${index + 1}. ${range}`, `Range: ${draft.finding.rangeId}`, draft.finding.body].join(
+      "\n",
+    );
+  });
+  return inlineFindings.length === 0
+    ? result.mainComment
+    : [
+        result.mainComment.trimEnd(),
+        "",
+        "## Inline Findings",
+        "",
+        inlineFindings.join("\n\n"),
+      ].join("\n");
+}
+
+function localReviewJson(result: LocalReviewResult) {
+  if (result.kind === "skipped") {
+    return {
+      kind: result.kind,
+      skipReason: result.skipReason,
+      mainComment: result.mainComment,
+      inlineFindings: result.inlineCommentDrafts,
+      droppedFindings: result.validated.droppedFindings,
+      taskChecks: result.taskChecks,
+      provider: result.provider,
+      providerModels: result.publicationPlan.metadata.providerModels ?? [result.provider.model],
+      repairAttempted: result.repairAttempted,
+    };
+  }
+  return {
+    kind: result.kind,
+    mainComment: result.mainComment,
+    inlineFindings: result.inlineCommentDrafts,
+    droppedFindings: result.validated.droppedFindings,
+    taskChecks: result.taskChecks,
+    provider: result.provider,
+    providerModels: result.publicationPlan.metadata.providerModels ?? [result.provider.model],
+    repairAttempted: result.repairAttempted,
+  };
 }
 
 async function runDryRun(options: CliOptions): Promise<void> {

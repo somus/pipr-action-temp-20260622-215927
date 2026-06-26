@@ -22,7 +22,7 @@ Every config must default-export a synchronous factory:
 
 ```ts
 export default definePipr((pipr) => {
-  // register models, reviewers, tasks, commands, locals, limits, tools
+  // register models, reviewers, tasks, commands, limits, tools
 });
 ```
 
@@ -47,7 +47,7 @@ Use `id` only when you configure the same provider and model with different API 
 
 ## Review recipe
 
-`pipr.reviewer(...)` creates the default structured pull request reviewer. `pipr.review(...)` wires that reviewer into change request, command, and local entrypoints.
+`pipr.reviewer(...)` creates the default structured pull request reviewer. `pipr.review(...)` wires that reviewer into change request and command entrypoints.
 
 ```ts
 const reviewer = pipr.reviewer({
@@ -72,7 +72,6 @@ pipr.review({
       permission: "write",
       description: "Run the default pipr review.",
     },
-    local: "review",
   },
   inlineComments: { max: 5 },
 });
@@ -104,7 +103,6 @@ pipr.review({
   reviewer,
   entrypoints: {
     command: false,
-    local: false,
   },
 });
 ```
@@ -236,7 +234,20 @@ const task = pipr.task({
 
 pipr.on.changeRequest({ actions: ["opened", "updated"], task });
 pipr.command({ pattern: "@pipr security", permission: "write", task });
-pipr.local({ name: "security", task });
+```
+
+Local review uses tasks registered through `pipr.on.changeRequest(...)`. Set `local: false` on a task when it should be skipped by `pipr review` but still run in CI:
+
+```ts
+const ciOnlyTask = pipr.task({
+  name: "ci-only",
+  local: false,
+  async run(ctx) {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const result = await ctx.pi.run(security, { manifest });
+    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  },
+});
 ```
 
 <auto-type-table path="packages/sdk/src/index.ts" name="TaskDefinition" />

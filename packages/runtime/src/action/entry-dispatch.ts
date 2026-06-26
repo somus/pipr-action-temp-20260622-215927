@@ -65,16 +65,11 @@ export type RuntimeEntryDispatch =
       tasks: Task<unknown>[];
       taskName?: string;
     }
-  | {
-      kind: "local";
-      local: RuntimePlan["locals"][number] | undefined;
-    }
   | PlanCommandResolution;
 
 export function dispatchRuntimeEntry(
   options:
     | { kind: "change-request"; plan: RuntimePlan; event: { action?: string }; taskName?: string }
-    | { kind: "local"; plan: RuntimePlan; localName: string }
     | { kind: "command"; plan: RuntimePlan; line: string | undefined },
 ): RuntimeEntryDispatch {
   if (options.kind === "change-request") {
@@ -86,12 +81,6 @@ export function dispatchRuntimeEntry(
         taskName: options.taskName,
       }),
       taskName: options.taskName,
-    };
-  }
-  if (options.kind === "local") {
-    return {
-      kind: "local",
-      local: options.plan.locals.find((entry) => entry.name === options.localName),
     };
   }
   return resolvePlanCommand(options.plan, options.line);
@@ -106,6 +95,13 @@ export function selectRuntimeTasks(options: {
     return options.plan.tasks.filter((task) => task.name === options.taskName);
   }
   return selectChangeRequestTasks(options.plan, options.event);
+}
+
+export function selectLocalReviewTasks(plan: RuntimePlan): Task<unknown>[] {
+  return uniqBy(
+    plan.changeRequestTriggers.map((trigger) => trigger.task),
+    (task) => task.name,
+  ).filter((task) => task.local !== false);
 }
 
 function selectChangeRequestTasks(plan: RuntimePlan, event: { action?: string }): Task<unknown>[] {

@@ -80,7 +80,6 @@ export default definePipr((pipr) => {
 
   pipr.on.changeRequest({ actions: ["opened", "updated"], task });
   pipr.command({ pattern: "@pipr dependency-risk", permission: "write", task });
-  pipr.local({ name: "dependency-risk", task });
 });
 `,
 } as const satisfies OfficialInitRecipe;

@@ -33,6 +33,7 @@ import {
   parsePlanCommandInputs,
   permissionDeniedHelp,
   resolvePlanCommand,
+  selectLocalReviewTasks,
 } from "./entry-dispatch.js";
 import { loadRuntimeProjectFromGitCommit } from "./git-project.js";
 import { runTrustedReviewAndPublish } from "./review-publishing.js";
@@ -44,8 +45,8 @@ import type {
   DryRunCommandResult,
   InitCommandOptions,
   InspectCommandResult,
-  LocalTaskCommandOptions,
-  LocalTaskCommandResult,
+  LocalReviewCommandOptions,
+  LocalReviewCommandResult,
   RuntimeCommandOptions,
   TrustedReviewAndPublishResult,
   TrustedRuntimeProject,
@@ -60,8 +61,8 @@ export type {
   DryRunCommandResult,
   InitCommandOptions,
   InspectCommandResult,
-  LocalTaskCommandOptions,
-  LocalTaskCommandResult,
+  LocalReviewCommandOptions,
+  LocalReviewCommandResult,
   RuntimeCommandOptions,
 } from "./types.js";
 
@@ -120,23 +121,15 @@ export async function runDryRunCommand(
   };
 }
 
-/** Runs a named local task against the configured Git base and head revisions. */
-export async function runLocalTaskCommand(
-  options: LocalTaskCommandOptions,
-): Promise<LocalTaskCommandResult> {
+/** Runs configured change-request tasks against local Git base and head revisions. */
+export async function runLocalReviewCommand(
+  options: LocalReviewCommandOptions,
+): Promise<LocalReviewCommandResult> {
   const runtime = await loadRuntimeProject({
     ...options,
     requireProviderEnv: true,
   });
-  const localDispatch = dispatchRuntimeEntry({
-    kind: "local",
-    plan: runtime.plan,
-    localName: options.localName,
-  });
-  const local = localDispatch.kind === "local" ? localDispatch.local : undefined;
-  if (!local) {
-    throw new Error(`Local entry '${options.localName}' was not registered`);
-  }
+  const selectedTasks = selectLocalReviewTasks(runtime.plan);
   const headSha = options.headSha ?? runGitCommand(["rev-parse", "HEAD"], options.rootDir).trim();
   const event = parseChangeRequestEventContext({
     ...createLocalChangeRequestEvent({
@@ -151,13 +144,15 @@ export async function runLocalTaskCommand(
     event,
     env: options.env,
     plan: runtime.plan,
-    taskName: local.task.name,
+    selectedTasks,
+    emptyTasksReason: "No change-request tasks are configured for local review",
     piExecutable: options.piExecutable,
+    taskLog: options.taskLog,
   });
   if (result.kind === "command-response") {
     throw new Error("command response result is only supported for issue_comment commands");
   }
-  return result as LocalTaskCommandResult;
+  return result as LocalReviewCommandResult;
 }
 
 /** Runs the GitHub Action workflow for pull request and issue-comment events. */

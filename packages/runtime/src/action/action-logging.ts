@@ -48,7 +48,6 @@ export function logTrustedRuntime(log: RuntimeActionLog, runtime: TrustedRuntime
       .join(","),
     tasks: runtime.plan.tasks.length,
     commands: runtime.plan.commands.length,
-    locals: runtime.plan.locals.length,
   });
 }
 

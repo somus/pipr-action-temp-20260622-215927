@@ -1,9 +1,9 @@
 ---
 title: "Entrypoints"
-description: "Configure change request triggers, `@pipr` commands, local runs, and permissions."
+description: "Configure change request triggers, `@pipr` commands, local review, and permissions."
 ---
 
-Entrypoints decide how a Review Task starts. A task can be selected by a change request event, an `@pipr` command comment, or a local CLI command.
+Entrypoints decide how a Review Task starts. A task can be selected by a change request event or an `@pipr` command comment. Local review runs the configured change-request tasks without publishing.
 
 ## `pipr.review` entrypoints
 
@@ -14,12 +14,11 @@ The quickest setup uses `pipr.review(...)`:
 pipr.review({
   id: "review",
   reviewer,
-  entrypoints: {
-    changeRequest: ["opened", "updated", "reopened", "ready"],
-    command: { pattern: "@pipr review", permission: "write" },
-    local: "review",
-  },
-  inlineComments: { max: 5 },
+    entrypoints: {
+      changeRequest: ["opened", "updated", "reopened", "ready"],
+      command: { pattern: "@pipr review", permission: "write" },
+    },
+    inlineComments: { max: 5 },
 });
 ```
 
@@ -33,7 +32,6 @@ pipr.review({
   entrypoints: {
     changeRequest: ["opened", "updated"],
     command: false,
-    local: "review",
   },
 });
 ```
@@ -136,25 +134,39 @@ pipr.command({
 });
 ```
 
-## Local entrypoints
+## Local review
 
-Local entrypoints run without GitHub publication:
+Local review runs without GitHub publication:
 
 ```ts twoslash
 // @include: pipr-security-task
-pipr.local({ name: "security", task: securityTask });
+pipr.on.changeRequest({
+  actions: ["opened", "updated"],
+  task: securityTask,
+});
 ```
 
-Run them with:
-
-```bash
-pipr run security --base origin/main
-```
-
-The default review shorthand runs the local entrypoint named `review`:
+Run it with:
 
 ```bash
 pipr review --base origin/main
+```
+
+`pipr review` runs every unique task registered through `pipr.on.changeRequest(...)`. It ignores configured action filters because there is no local pull request event action.
+
+Set `local: false` on tasks that should not run locally:
+
+```ts twoslash
+// @include: pipr-security-agent
+const securityTask = pipr.task({
+  name: "security",
+  local: false,
+  async run(ctx) {
+    const manifest = await ctx.change.diffManifest({ compressed: true });
+    const result = await ctx.pi.run(securityAgent, { manifest });
+    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+  },
+});
 ```
 
 See [Local Runs](/docs/guide/local-runs) for base/head behavior.
@@ -166,5 +178,5 @@ See [Local Runs](/docs/guide/local-runs) for base/head behavior.
 | Automatic review on pull request updates | `changeRequest: ["opened", "updated"]` |
 | Manual reviewer rerun | `command: { pattern: "@pipr review" }` |
 | Free-form maintainer question | `pipr.command({ pattern: "@pipr ask <question...>" })` |
-| Local preflight before pushing | `local: "review"` or `pipr.local(...)` |
-| No automatic comments | Disable change request entrypoint and use command or local only |
+| Local preflight before pushing | Register change-request tasks and run `pipr review` |
+| No automatic comments | Disable change request entrypoints and use commands only |

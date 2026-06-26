@@ -30,9 +30,7 @@ repo/
 │   ├── config.ts              # repository-local TypeScript config
 │   ├── tsconfig.json          # optional local editor settings
 │   └── types/
-│       ├── pipr-sdk/          # generated Pipr SDK declarations
-│       ├── bun/               # generated Bun type entrypoint
-│       └── bun-types/         # generated Bun runtime declarations
+│       └── pipr-sdk.d.ts      # generated Pipr SDK declarations
 └── .github/
     └── workflows/
         └── pipr.yml           # GitHub Action delivery target
@@ -45,7 +43,7 @@ Use `pipr init --recipe <id>` to start from a focused config recipe. See
 Use `pipr init --no-types` to skip local type support and `pipr init --types-only`
 to add it later.
 
-The config is the only public runtime authoring surface. The local type files are for editors; `pipr check` can synthesize them when they are missing, and the GitHub Action does not require them. Do not put runtime settings in `.pi`; Pipr creates any Pi home it needs inside the Action image.
+The config is the only public runtime authoring surface. The local Pipr SDK type files are for editors; `pipr check` can synthesize them when they are missing, and the GitHub Action does not require them. Do not put runtime settings in `.pi`; Pipr creates any Pi home it needs inside the Action image.
 
 ## Minimal config
 
@@ -75,7 +73,6 @@ export default definePipr((pipr) => {
     entrypoints: {
       changeRequest: ["opened", "updated", "reopened", "ready"],
       command: { pattern: "@pipr review", permission: "write" },
-      local: "review",
     },
     inlineComments: { max: 5 },
     timeout: "5m",

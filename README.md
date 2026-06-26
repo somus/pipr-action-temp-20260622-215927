@@ -89,7 +89,6 @@ export default definePipr((pipr) => {
     entrypoints: {
       changeRequest: ["opened", "updated", "reopened", "ready"],
       command: { pattern: "@pipr review", permission: "write" },
-      local: "review",
     },
     inlineComments: { max: 5 },
     timeout: "5m",
@@ -97,7 +96,7 @@ export default definePipr((pipr) => {
 });
 ```
 
-The SDK also supports custom agents, tasks, `@pipr` commands, local entrypoints, model fallback, and retry settings. See [Configuration](apps/docs/content/docs/guide/configuration.mdx).
+The SDK also supports custom agents, tasks, `@pipr` commands, model fallback, local-disabled tasks, and retry settings. See [Configuration](apps/docs/content/docs/guide/configuration.mdx).
 
 ## Docs
 

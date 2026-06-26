@@ -69,8 +69,7 @@ function officialMinimalFilePaths(adapters: readonly OfficialInitAdapter[]): str
   const files = [
     path.join(".pipr", "config.ts"),
     path.join(".pipr", "tsconfig.json"),
-    path.join(".pipr", "types", "pipr-sdk", "index.d.ts"),
-    path.join(".pipr", "types", "bun", "index.d.ts"),
+    path.join(".pipr", "types", "pipr-sdk.d.ts"),
   ];
   if (adapters.includes("github")) {
     files.push(path.join(".github", "workflows", "pipr.yml"));

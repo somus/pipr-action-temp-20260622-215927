@@ -16,7 +16,6 @@ pipr.review({
   entrypoints: {
     changeRequest: ["opened", "updated"],
     command: { pattern: "@pipr review", permission: "write" },
-    local: "review",
   },
 });
 ```
@@ -100,14 +99,13 @@ GitHub-specific setup stays in [GitHub Action](/docs/guide/github-action).
 The local adapter handles local CLI runs:
 
 - synthesizes provider-neutral repository and change metadata from local git state
-- supports local review task execution
+- supports local change-request review task execution
 - never publishes comments
 
 Use it through:
 
 ```bash
 pipr review --base origin/main
-pipr run <name> --base origin/main --head HEAD
 ```
 
 ## Coming soon

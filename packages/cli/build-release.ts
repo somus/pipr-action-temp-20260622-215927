@@ -2,7 +2,6 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { generatedTypeSupportFiles } from "../runtime/src/config/type-support.js";
 import {
   embeddedSdkDeclaration,
   readSdkDeclarationModules,
@@ -77,15 +76,13 @@ function releaseOutfile(item: ReleaseTarget): string {
 }
 
 async function embeddedSdkDefines(): Promise<Record<string, string>> {
-  const [moduleSource, declarationSource, typeSupport] = await Promise.all([
+  const [moduleSource, declarationSource] = await Promise.all([
     bundledSdkModule(),
     bundledSdkDeclaration(),
-    bundledConfigTypeSupport(),
   ]);
   return {
     PIPR_EMBEDDED_SDK_MODULE: JSON.stringify(moduleSource),
     PIPR_EMBEDDED_SDK_DECLARATION: JSON.stringify(declarationSource),
-    PIPR_EMBEDDED_CONFIG_TYPE_SUPPORT: JSON.stringify(JSON.stringify(typeSupport)),
   };
 }
 
@@ -126,23 +123,6 @@ async function bundledSdkModule(): Promise<string> {
 
 async function bundledSdkDeclaration(): Promise<string> {
   return embeddedSdkDeclaration(await readSdkDeclarationModules(sourceRoot));
-}
-
-async function bundledConfigTypeSupport(): Promise<Record<string, string>> {
-  const entries = (await generatedTypeSupportFiles("", { tsconfig: false }))
-    .filter((file) => file.relativePath.startsWith(`types${path.sep}`))
-    .map(
-      (file) =>
-        [file.relativePath.split(path.sep).slice(1).join("/"), file.contents] satisfies [
-          string,
-          string,
-        ],
-    )
-    .filter(
-      ([relativePath]) =>
-        !relativePath.startsWith("pipr-sdk/") && relativePath !== "bun/index.d.ts",
-    );
-  return Object.fromEntries(entries);
 }
 
 async function buildTarget(item: ReleaseTarget, define: Record<string, string>): Promise<void> {

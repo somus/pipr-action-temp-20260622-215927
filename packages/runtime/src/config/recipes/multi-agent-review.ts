@@ -99,7 +99,6 @@ export default definePipr((pipr) => {
 
   pipr.on.changeRequest({ actions: ["opened", "updated", "reopened", "ready"], task });
   pipr.command({ pattern: "@pipr multi", permission: "write", task });
-  pipr.local({ name: "multi", task });
 });
 `,
 } as const satisfies OfficialInitRecipe;

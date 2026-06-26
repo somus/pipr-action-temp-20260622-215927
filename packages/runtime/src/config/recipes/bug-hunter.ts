@@ -51,7 +51,6 @@ export default definePipr((pipr) => {
         permission: "write",
         description: "Run a defect-focused review.",
       },
-      local: "bugs",
     },
   });
 });

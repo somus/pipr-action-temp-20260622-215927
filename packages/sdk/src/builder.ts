@@ -69,7 +69,6 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
   const tasks: Task<unknown>[] = [];
   const changeRequestTriggers: RuntimePlan["changeRequestTriggers"] = [];
   const commands: RuntimePlan["commands"] = [];
-  const locals: RuntimePlan["locals"] = [];
   const tools: AgentTool[] = [];
   const publication: RuntimePlan["publication"] = {};
   let checks: ChecksOptions | undefined;
@@ -138,6 +137,7 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         kind: "pipr.task" as const,
         name: definition.name,
         check: definition.check,
+        ...(definition.local === false ? { local: false as const } : {}),
         handler: definition.run,
       };
       tasks.push(task as Task<unknown>);
@@ -178,12 +178,6 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         parse: options.parse as ((arguments_: Record<string, string>) => unknown) | undefined,
         task: options.task as Task<unknown>,
       });
-    },
-    local(options) {
-      if (!options.name || !options.task) {
-        throw new Error("pipr.local requires { name, task }");
-      }
-      locals.push({ name: options.name, task: options.task as Task<unknown> });
     },
     checks(options) {
       checks = mergeConfigField("checks", checks, options);
@@ -261,10 +255,6 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         commands.map((command) => command.pattern),
         "command",
       );
-      assertUnique(
-        locals.map((local) => local.name),
-        "local",
-      );
       assertModelIdentity(models);
       return {
         models,
@@ -272,7 +262,6 @@ function createBuilder(): { api: PiprBuilder; plan(): RuntimePlan } {
         tasks,
         changeRequestTriggers,
         commands,
-        locals,
         tools,
         publication,
         checks,
@@ -312,10 +301,24 @@ const reviewRecipeOptionKeys = new Set([
   "tools",
 ]);
 
+const reviewRecipeEntrypointKeys = new Set(["changeRequest", "command"]);
+
 function assertKnownReviewRecipeOptions(options: ReviewRecipeOptions): void {
   const unknownKeys = Object.keys(options).filter((key) => !reviewRecipeOptionKeys.has(key));
   if (unknownKeys.length > 0) {
     throw new Error(`pipr.review received unsupported option fields: ${unknownKeys.join(", ")}.`);
+  }
+
+  const entrypoints = options.entrypoints;
+  if (entrypoints && typeof entrypoints === "object") {
+    const unknownEntrypointKeys = Object.keys(entrypoints).filter(
+      (key) => !reviewRecipeEntrypointKeys.has(key),
+    );
+    if (unknownEntrypointKeys.length > 0) {
+      throw new Error(
+        `pipr.review entrypoints received unsupported fields: ${unknownEntrypointKeys.join(", ")}.`,
+      );
+    }
   }
 }
 
@@ -421,10 +424,6 @@ function registerReviewRecipeEntrypoints(
   if (command) {
     api.command({ pattern: command.pattern, ...command.options, task });
   }
-  const local = reviewLocalEntrypoint(options);
-  if (local) {
-    api.local({ name: local, task });
-  }
 }
 
 function reviewChangeRequestEntrypoint(
@@ -469,11 +468,6 @@ function reviewStringCommandEntrypoint(entrypoint: string | undefined) {
     pattern: entrypoint ?? "@pipr review",
     options: { permission: "write" as const },
   };
-}
-
-function reviewLocalEntrypoint(options: ReviewRecipeOptions): string | undefined {
-  const entrypoint = options.entrypoints?.local;
-  return entrypoint === false ? undefined : (entrypoint ?? "review");
 }
 
 function updateReviewRecipePublication(

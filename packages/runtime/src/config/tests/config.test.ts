@@ -294,7 +294,6 @@ export default definePipr((pipr) => {
   });
   pipr.on.changeRequest({ actions: ["opened"], task });
   pipr.command({ pattern: "@pipr review", permission: "write", task });
-  pipr.local({ name: "review", task });
   pipr.review({
     id: "default-review",
     model,
@@ -302,7 +301,6 @@ export default definePipr((pipr) => {
     entrypoints: {
       changeRequest: false,
       command: false,
-      local: false,
     },
   });
 });

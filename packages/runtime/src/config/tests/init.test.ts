@@ -14,11 +14,7 @@ const configCoreInitFiles = [path.join(".pipr", "config.ts")];
 
 const typeSupportKeyFiles = [
   path.join(".pipr", "tsconfig.json"),
-  path.join(".pipr", "types", "pipr-sdk", "index.d.ts"),
-  path.join(".pipr", "types", "bun", "index.d.ts"),
-  path.join(".pipr", "types", "bun-types", "s3.d.ts"),
-  path.join(".pipr", "types", "node", "index.d.ts"),
-  path.join(".pipr", "types", "undici-types", "index.d.ts"),
+  path.join(".pipr", "types", "pipr-sdk.d.ts"),
 ];
 
 describe("initOfficialMinimalProject", () => {
@@ -37,9 +33,7 @@ describe("initOfficialMinimalProject", () => {
     expect(await Bun.file(path.join(rootDir, ".pipr", "tsconfig.json")).text()).toContain(
       "moduleResolution",
     );
-    const sdkTypes = await Bun.file(
-      path.join(rootDir, ".pipr", "types", "pipr-sdk", "index.d.ts"),
-    ).text();
+    const sdkTypes = await Bun.file(path.join(rootDir, ".pipr", "types", "pipr-sdk.d.ts")).text();
     expect(sdkTypes).toContain('declare module "@pipr/sdk"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/review"');
     expect(sdkTypes).toContain('declare module "@pipr/sdk/tools"');
@@ -56,10 +50,6 @@ describe("initOfficialMinimalProject", () => {
     expect(sdkTypes).toContain("jsonSchema<T>");
     expect(sdkTypes).not.toContain('from "zod"');
     expect(sdkTypes).not.toContain("z.ZodType");
-    const bunTypes = await Bun.file(
-      path.join(rootDir, ".pipr", "types", "bun-types", "s3.d.ts"),
-    ).text();
-    expect(bunTypes).toContain("class S3Client");
     const workflow = await Bun.file(path.join(rootDir, ".github", "workflows", "pipr.yml")).text();
     expect(workflow).toContain("uses: somus/pipr@main");
     expect(workflow).toContain("checks: write");
@@ -78,17 +68,11 @@ describe("initOfficialMinimalProject", () => {
         ".github/workflows/pipr.yml",
         ".pipr/config.ts",
         ".pipr/tsconfig.json",
-        ".pipr/types/pipr-sdk/index.d.ts",
-        ".pipr/types/bun-types/s3.d.ts",
+        ".pipr/types/pipr-sdk.d.ts",
       ]),
     );
     expect(await listFiles(path.join(rootDir, ".pipr"))).toEqual(
-      expect.arrayContaining([
-        "config.ts",
-        "tsconfig.json",
-        "types/pipr-sdk/index.d.ts",
-        "types/bun-types/s3.d.ts",
-      ]),
+      expect.arrayContaining(["config.ts", "tsconfig.json", "types/pipr-sdk.d.ts"]),
     );
     expect(validation.kind).toBe("typescript");
     expect(validation.settings.config.defaultProvider).toBe("deepseek/deepseek-v4-pro");
@@ -100,7 +84,7 @@ describe("initOfficialMinimalProject", () => {
 
     expectConfigOnlyInitResult(result);
     expect(await listFiles(rootDir)).toEqual(
-      expect.arrayContaining([".pipr/config.ts", ".pipr/types/pipr-sdk/index.d.ts"]),
+      expect.arrayContaining([".pipr/config.ts", ".pipr/types/pipr-sdk.d.ts"]),
     );
     expect(await fileExists(path.join(rootDir, ".github", "workflows", "pipr.yml"))).toBe(false);
     expect(validation.kind).toBe("typescript");
@@ -166,13 +150,13 @@ describe("initOfficialMinimalProject", () => {
       }
       expect(result.overwritten).toEqual([]);
       expect(validation.kind).toBe("typescript");
-      expect(await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text()).toContain(
-        "definePipr",
-      );
+      const configTs = await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text();
+      expect(configTs).toContain("definePipr");
+      expect(configTs).not.toContain("pipr.local");
     }
   });
 
-  it("initializes advanced recipes with inspectable agents, tools, commands, and locals", async () => {
+  it("initializes advanced recipes with inspectable agents, tools, and commands", async () => {
     const multiAgentRootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-multi-agent-"));
     const pluginRootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-plugin-tool-"));
     const commandRootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-init-command-"));
@@ -378,9 +362,7 @@ export default definePipr((pipr) => {
     await expect(initOfficialMinimalProject({ rootDir, force: true })).rejects.toThrow(
       "symbolic links are not supported",
     );
-    await expect(
-      Bun.file(path.join(outsideDir, "pipr-sdk", "index.d.ts")).text(),
-    ).rejects.toThrow();
+    await expect(Bun.file(path.join(outsideDir, "pipr-sdk.d.ts")).text()).rejects.toThrow();
   });
 
   it("rejects configDir paths outside the repo root", async () => {

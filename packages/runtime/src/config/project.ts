@@ -27,7 +27,6 @@ export type InspectRuntimePlan = {
   tasks: string[];
   events: Array<{ task: string; actions: string[] }>;
   commands: Array<{ pattern: string; task: string; permission: string }>;
-  locals: Array<{ name: string; task: string }>;
   tools: string[];
   schemas: string[];
 };
@@ -74,7 +73,6 @@ export function inspectRuntimePlan(plan: RuntimePlan, source: string): InspectRu
       task: command.task.name,
       permission: command.permission,
     })),
-    locals: plan.locals.map((local) => ({ name: local.name, task: local.task.name })),
     tools: plan.tools.map((tool) => tool.name),
     schemas: ["core/pr-review", "core/summary"],
   };

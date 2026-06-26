@@ -6,8 +6,8 @@ export type {
   DryRunCommandResult,
   InitCommandOptions,
   InspectCommandResult,
-  LocalTaskCommandOptions,
-  LocalTaskCommandResult,
+  LocalReviewCommandOptions,
+  LocalReviewCommandResult,
   RuntimeCommandOptions,
 } from "./action/commands.js";
 export {
@@ -15,7 +15,7 @@ export {
   runDryRunCommand,
   runInitCommand,
   runInspectCommand,
-  runLocalTaskCommand,
+  runLocalReviewCommand,
   runValidateCommand,
 } from "./action/commands.js";
 export type { InitTypeSupportMode, OfficialInitAdapter } from "./config/init.js";
