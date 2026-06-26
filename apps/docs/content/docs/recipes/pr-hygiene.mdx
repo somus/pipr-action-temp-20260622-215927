@@ -110,16 +110,12 @@ jobs:
 
 Use `pipr init --recipe pr-hygiene --adapters none` when you only want the `.pipr` config files.
 
-## Local type support
+## Recipe notes
 
-`pipr init` also writes `.pipr/tsconfig.json` and `.pipr/types/**` for editor IntelliSense. These files are optional for CI and the GitHub Action; `pipr check` can synthesize the same type support when they are missing. Use `pipr init --recipe pr-hygiene --no-types` to skip them, then run `pipr init --types-only` later to add local types.
+PR Hygiene reviews the shape of the pull request: tests, docs, lockfiles, generated files, and size. It reads both `changedFiles` and the Diff Manifest so it can reason about file-level signals and changed code.
 
-Pipr config and plugin files execute in Bun, so `.pipr/*.ts` files can use the Bun API directly, including imports such as `import { S3Client } from "bun"`.
+- Customize the instructions with your repository's release-note, migration, generated-code, and test expectations.
+- Keep the check non-required until maintainers agree which hygiene findings should block merge.
+- Add explicit allowlists for common mechanical changes, such as formatter-only PRs or dependency lockfile refreshes.
 
-
-## Tuning
-
-- Change the model provider and `apiKey` secret name before committing the config.
-- Adjust reviewer instructions before changing runtime limits.
-- Run `pipr inspect` after edits to confirm the loaded runtime plan.
-- Use a local run before opening a pull request when the recipe adds custom commands or tasks.
+Shared setup, local type support, and provider tuning notes live on the [Recipes](/docs/recipes#common-setup) page.

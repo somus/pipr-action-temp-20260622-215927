@@ -115,16 +115,12 @@ jobs:
 
 Use `pipr init --recipe bug-hunter --adapters none` when you only want the `.pipr` config files.
 
-## Local type support
+## Recipe notes
 
-`pipr init` also writes `.pipr/tsconfig.json` and `.pipr/types/**` for editor IntelliSense. These files are optional for CI and the GitHub Action; `pipr check` can synthesize the same type support when they are missing. Use `pipr init --recipe bug-hunter --no-types` to skip them, then run `pipr init --types-only` later to add local types.
+Bug Hunter narrows review to likely defects and excludes Markdown/docs paths by default. It also declares a fallback model profile so transient or invalid output failures can retry without changing the task.
 
-Pipr config and plugin files execute in Bun, so `.pipr/*.ts` files can use the Bun API directly, including imports such as `import { S3Client } from "bun"`.
+- Expand `paths.exclude` for generated files, snapshots, vendored code, or fixtures that produce noisy findings.
+- Keep the command entrypoint `@pipr bugs` for manual reruns on risky PRs that did not need a full review.
+- Tune the reviewer instructions around the bug classes your project actually sees: data loss, race conditions, migrations, API compatibility, or missed tests.
 
-
-## Tuning
-
-- Change the model provider and `apiKey` secret name before committing the config.
-- Adjust reviewer instructions before changing runtime limits.
-- Run `pipr inspect` after edits to confirm the loaded runtime plan.
-- Use a local run before opening a pull request when the recipe adds custom commands or tasks.
+Shared setup, local type support, and provider tuning notes live on the [Recipes](/docs/recipes#common-setup) page.

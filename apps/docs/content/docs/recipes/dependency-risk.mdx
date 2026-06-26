@@ -142,16 +142,12 @@ jobs:
 
 Use `pipr init --recipe dependency-risk --adapters none` when you only want the `.pipr` config files.
 
-## Local type support
+## Recipe notes
 
-`pipr init` also writes `.pipr/tsconfig.json` and `.pipr/types/**` for editor IntelliSense. These files are optional for CI and the GitHub Action; `pipr check` can synthesize the same type support when they are missing. Use `pipr init --recipe dependency-risk --no-types` to skip them, then run `pipr init --types-only` later to add local types.
+Dependency Risk scopes the Diff Manifest to package manifests and lockfiles before running the model. If no dependency files changed, the task exits with a short main comment instead of spending model time.
 
-Pipr config and plugin files execute in Bun, so `.pipr/*.ts` files can use the Bun API directly, including imports such as `import { S3Client } from "bun"`.
+- Extend the include list for ecosystem-specific files, such as Helm charts, Docker base images, or Terraform provider locks.
+- Ask for migration notes when your project frequently upgrades frameworks or runtime major versions.
+- Do not rely on this recipe for live vulnerability lookup; the default prompt only claims risks visible in the diff.
 
-
-## Tuning
-
-- Change the model provider and `apiKey` secret name before committing the config.
-- Adjust reviewer instructions before changing runtime limits.
-- Run `pipr inspect` after edits to confirm the loaded runtime plan.
-- Use a local run before opening a pull request when the recipe adds custom commands or tasks.
+Shared setup, local type support, and provider tuning notes live on the [Recipes](/docs/recipes#common-setup) page.

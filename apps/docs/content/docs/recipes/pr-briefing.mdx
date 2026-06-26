@@ -104,16 +104,12 @@ jobs:
 
 Use `pipr init --recipe pr-briefing --adapters none` when you only want the `.pipr` config files.
 
-## Local type support
+## Recipe notes
 
-`pipr init` also writes `.pipr/tsconfig.json` and `.pipr/types/**` for editor IntelliSense. These files are optional for CI and the GitHub Action; `pipr check` can synthesize the same type support when they are missing. Use `pipr init --recipe pr-briefing --no-types` to skip them, then run `pipr init --types-only` later to add local types.
+PR Briefing is intentionally not a defect hunt. It disables inline comments and publishes a main-comment overview with change summary, risk framing, and a small walkthrough.
 
-Pipr config and plugin files execute in Bun, so `.pipr/*.ts` files can use the Bun API directly, including imports such as `import { S3Client } from "bun"`.
+- Use this for repositories where reviewers first need orientation, not another blocking check.
+- Keep the command permission at `read` when the briefing does not expose extra private systems.
+- Replace the sample Mermaid block with repository-specific sections if maintainers prefer checklists, rollout notes, or ownership hints.
 
-
-## Tuning
-
-- Change the model provider and `apiKey` secret name before committing the config.
-- Adjust reviewer instructions before changing runtime limits.
-- Run `pipr inspect` after edits to confirm the loaded runtime plan.
-- Use a local run before opening a pull request when the recipe adds custom commands or tasks.
+Shared setup, local type support, and provider tuning notes live on the [Recipes](/docs/recipes#common-setup) page.

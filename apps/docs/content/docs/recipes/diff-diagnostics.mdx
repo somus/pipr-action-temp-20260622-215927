@@ -130,16 +130,12 @@ jobs:
 
 Use `pipr init --recipe diff-diagnostics --adapters none` when you only want the `.pipr` config files.
 
-## Local type support
+## Recipe notes
 
-`pipr init` also writes `.pipr/tsconfig.json` and `.pipr/types/**` for editor IntelliSense. These files are optional for CI and the GitHub Action; `pipr check` can synthesize the same type support when they are missing. Use `pipr init --recipe diff-diagnostics --no-types` to skip them, then run `pipr init --types-only` later to add local types.
+Diff Diagnostics models reviewdog-style output: the agent emits diagnostics, then the task maps each diagnostic into a Pipr `ReviewFinding`. This is useful when you want a custom intermediate schema but still need normal inline review comments.
 
-Pipr config and plugin files execute in Bun, so `.pipr/*.ts` files can use the Bun API directly, including imports such as `import { S3Client } from "bun"`.
+- Keep the diagnostic schema small and deterministic so invalid-output repair stays cheap.
+- Use `suggestedFix` only when the replacement is exact for the selected range.
+- Add path filters to `ctx.change.diffManifest(...)` when diagnostics should apply to only one language or subsystem.
 
-
-## Tuning
-
-- Change the model provider and `apiKey` secret name before committing the config.
-- Adjust reviewer instructions before changing runtime limits.
-- Run `pipr inspect` after edits to confirm the loaded runtime plan.
-- Use a local run before opening a pull request when the recipe adds custom commands or tasks.
+Shared setup, local type support, and provider tuning notes live on the [Recipes](/docs/recipes#common-setup) page.
