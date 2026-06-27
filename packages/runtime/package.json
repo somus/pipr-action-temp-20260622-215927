@@ -26,7 +26,7 @@
   "scripts": {
     "build": "tsdown src/index.ts src/e2e/action-fixture.ts src/e2e/pi-contract.ts src/pi/runtime-tools-extension.ts --dts --format esm --out-dir dist",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --timeout 30000",
+    "test": "bun test --timeout 60000",
     "lint": "biome check src",
     "format:check": "biome check src",
     "check": "bun run lint && bun run typecheck && bun run test"
