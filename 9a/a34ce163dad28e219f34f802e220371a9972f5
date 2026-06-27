@@ -1,0 +1,19 @@
+packages/runtime/package.json
+  s_3a9769e34fbdcc::t_734e301d142f03 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "9aa34ce163dad28e219f34f802e220371a9972f5",
+  "prompts": {},
+  "sessions": {
+    "s_3a9769e34fbdcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0357-2a1e-78b0-8eb1-3c03781a3330",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
