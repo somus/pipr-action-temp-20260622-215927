@@ -1,0 +1,66 @@
+apps/docs/content/docs/guide/local-runs.mdx
+  s_3a9769e34fbdcc::t_6477714be6dc7e 46-47,98-106,125-130,133,140-143,174
+  s_3a9769e34fbdcc::t_767236d96a5f4e 16-18,61-72,144,170
+  s_3a9769e34fbdcc::t_1f4c518e85ebc2 145
+packages/runtime/src/config/recipes/default-review.ts
+  s_3a9769e34fbdcc::t_0f2598f6c69d50 28-44
+packages/runtime/src/action/commands.ts
+  s_3a9769e34fbdcc::t_0f77af9eb60ff5 150,166,178-180
+packages/cli/src/tests/main.test.ts
+  s_3a9769e34fbdcc::t_b2945d14355f10 57-61,106,108-109,117
+  s_3a9769e34fbdcc::t_9a9a8dbd6fda49 68-82,434,455,464
+  s_3a9769e34fbdcc::t_9c91d5b10a15b1 62-67
+apps/docs/scripts/sync-recipes.ts
+  s_3a9769e34fbdcc::t_00d4ef1fda0ac4 114
+packages/runtime/src/review/tests/task-runtime.test.ts
+  s_3a9769e34fbdcc::t_b95e975ba22937 1002-1007
+packages/cli/src/main.ts
+  s_3a9769e34fbdcc::t_b72867b056ea56 348,351,354,476-480
+  s_3a9769e34fbdcc::t_be0b7ff6d845d3 409-410
+  s_3a9769e34fbdcc::t_cb39997f7652ac 422,426,435
+  s_3a9769e34fbdcc::t_2c8521fabbc40d 94
+  s_3a9769e34fbdcc::t_4e7ac236df2668 395-397,425,428,433-434
+  s_3a9769e34fbdcc::t_959bfd330a4f43 484
+  s_3a9769e34fbdcc::t_b8b9d2208fae69 453
+  s_3a9769e34fbdcc::t_a6656e03c88656 383
+  s_3a9769e34fbdcc::t_2360bbd80c7e0c 429-432
+  s_3a9769e34fbdcc::t_ce7c2cf50e61a0 385
+  s_3a9769e34fbdcc::t_72fbb25e7f7746 411-419,437-452,454
+  s_3a9769e34fbdcc::t_b1138b79a477c0 381-382,398-408,427,436
+  s_3a9769e34fbdcc::t_a2bf1dece30cb9 360,363,366,369,372,379-380,384,455-456,470,483,485-492
+  s_3a9769e34fbdcc::t_a601e029fd4ee4 386-394,420-421,423-424
+apps/docs/content/docs/reference/cli.mdx
+  s_3a9769e34fbdcc::t_1ad77eaa405699 126
+packages/runtime/src/pi/runner.ts
+  s_3a9769e34fbdcc::t_a87d3f2020a6e9 58-59
+packages/runtime/src/pi/tests/pi.test.ts
+  s_3a9769e34fbdcc::t_37c43e28ca94e2 136-137
+apps/docs/content/docs/recipes/default-review.mdx
+  s_3a9769e34fbdcc::t_9dd5e16d8c20c2 49-65,113
+packages/runtime/src/review/agent/agent-prompt.ts
+  s_3a9769e34fbdcc::t_d1db8f04469bcf 120-124
+.pipr/config.ts
+  s_3a9769e34fbdcc::t_2fa1b0d39f4df7 67-83
+apps/docs/content/docs/reference/sdk-reference.mdx
+  s_3a9769e34fbdcc::t_ee65619ae09384 253-254,262
+packages/runtime/src/diff/diff.ts
+  s_3a9769e34fbdcc::t_afbf9d5a1ee8b6 44,91-95
+  s_3a9769e34fbdcc::t_1655713be12329 32,37,39,42,96,128,131,143-144
+  s_3a9769e34fbdcc::t_552b5098061366 145-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "0b39ded1f43928e7e624d2631a184f6acf82cb05",
+  "prompts": {},
+  "sessions": {
+    "s_3a9769e34fbdcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0357-2a1e-78b0-8eb1-3c03781a3330",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
