@@ -54,9 +54,32 @@ describe("pipr CLI", () => {
       expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
       expect(result.stdout).toContain("# pipr Review");
       expect(result.stdout).toContain("No findings.");
-      expect(result.stderr).toContain("local review start");
-      expect(result.stderr).toContain("task runtime start");
-      expect(result.stderr).toContain("local review complete");
+      expect(result.stdout).not.toContain("<!-- pipr:main-comment ");
+      expect(result.stderr).toContain("pipr local review start");
+      expect(result.stderr).toContain("pipr task runtime start");
+      expect(result.stderr).toContain("pipr local review complete");
+      expect(result.stderr).not.toContain('{"level":');
+      expect(await countLines(path.join(workspace.rootDir, "pi-called"))).toBe(1);
+    } finally {
+      await removeWorkspace(workspace.rootDir);
+    }
+  });
+
+  it("reviews unstaged working tree changes when local head is omitted", async () => {
+    const workspace = await createLocalReviewWorkspace();
+    try {
+      await Bun.write(path.join(workspace.rootDir, "src/a.ts"), "export const value = 3;\n");
+
+      const result = await runCli(
+        ["review", "--base", workspace.headSha, "--pi-executable", workspace.piExecutable],
+        { DEEPSEEK_API_KEY: "provider-key" },
+        workspace.rootDir,
+      );
+
+      expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(result.stderr).toContain("diffTarget=working-tree");
+      expect(result.stderr).toContain("pipr diff manifest");
+      expect(result.stderr).toContain("files=1");
       expect(await countLines(path.join(workspace.rootDir, "pi-called"))).toBe(1);
     } finally {
       await removeWorkspace(workspace.rootDir);
@@ -80,9 +103,10 @@ describe("pipr CLI", () => {
       );
 
       expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-      expect(result.stderr).toContain("local review start");
+      expect(result.stderr).toContain("pipr local review start");
       expect(result.stderr).toContain("running local review");
-      expect(result.stderr).toContain("local review complete");
+      expect(result.stderr).toContain("pipr local review complete");
+      expect(result.stderr).not.toContain('{"level":');
       const json = JSON.parse(result.stdout) as {
         kind: string;
         mainComment: string;
@@ -90,6 +114,7 @@ describe("pipr CLI", () => {
         taskChecks: unknown[];
       };
       expect(json.kind).toBe("review");
+      expect(json.mainComment).toContain("<!-- pipr:main-comment ");
       expect(json.mainComment).toContain("No findings.");
       expect(json.inlineFindings).toEqual([]);
       expect(json.taskChecks).toEqual([{ taskName: "review", conclusion: "success" }]);
@@ -406,6 +431,7 @@ async function runActionWithGitWorkspace(options: {
 async function createLocalReviewWorkspace(options: { taskLog?: boolean } = {}): Promise<{
   rootDir: string;
   baseSha: string;
+  headSha: string;
   piExecutable: string;
 }> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-cli-"));
@@ -426,6 +452,7 @@ async function createLocalReviewWorkspace(options: { taskLog?: boolean } = {}): 
   await Bun.write(path.join(rootDir, "src/a.ts"), "export const value = 2;\n");
   await runCommand("git", ["add", "."], rootDir);
   await runCommand("git", ["commit", "--no-verify", "-m", "head"], rootDir);
+  const headSha = (await runCommand("git", ["rev-parse", "HEAD"], rootDir)).trim();
   const piExecutable = path.join(rootDir, "fake-pi.sh");
   await Bun.write(
     piExecutable,
@@ -434,7 +461,7 @@ async function createLocalReviewWorkspace(options: { taskLog?: boolean } = {}): 
     ),
   );
   await chmod(piExecutable, 0o755);
-  return { rootDir, baseSha, piExecutable };
+  return { rootDir, baseSha, headSha, piExecutable };
 }
 
 function localReviewConfigWithTaskLog(): string {

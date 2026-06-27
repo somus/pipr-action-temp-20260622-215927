@@ -147,6 +147,7 @@ export async function runLocalReviewCommand(
     commands: runtime.plan.commands.length,
   });
   const selectedTasks = selectLocalReviewTasks(runtime.plan);
+  const includeWorkingTree = options.headSha === undefined;
   const headSha = options.headSha ?? runGitCommand(["rev-parse", "HEAD"], options.rootDir).trim();
   const event = parseChangeRequestEventContext({
     ...createLocalChangeRequestEvent({
@@ -162,6 +163,7 @@ export async function runLocalReviewCommand(
       skippedLocalTasks: runtime.plan.tasks
         .filter((task) => task.local === false)
         .map((task) => task.name),
+      diffTarget: includeWorkingTree ? "working-tree" : "head-ref",
     });
   }
   const result = await runTaskRuntime({
@@ -173,6 +175,9 @@ export async function runLocalReviewCommand(
     selectedTasks,
     emptyTasksReason: "No change-request tasks are configured for local review",
     piExecutable: options.piExecutable,
+    diffManifestBuilder: includeWorkingTree
+      ? (diffOptions) => buildDiffManifest({ ...diffOptions, includeWorkingTree: true })
+      : undefined,
     log,
     taskLog: options.taskLog,
   });

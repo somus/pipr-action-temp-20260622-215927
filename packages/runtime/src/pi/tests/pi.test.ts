@@ -133,6 +133,8 @@ describe("buildPiArgs", () => {
       "high",
       "Review this diff.",
     ]);
+    expect(args[5]).toContain("The first non-whitespace character must be { or [");
+    expect(args[5]).toContain("Do not include Markdown, code fences");
     expect(args).not.toContain("--no-tools");
     expect(args).not.toContain("--no-builtin-tools");
     expect(args).not.toContain("bash");

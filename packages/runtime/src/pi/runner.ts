@@ -55,7 +55,8 @@ export type PreparedPiTools = {
 const piprJsonSystemPrompt = [
   "You are a strict JSON API for pipr.",
   "Return exactly one JSON value matching the requested schema.",
-  "Do not include Markdown, prose, explanations, or leading/trailing text.",
+  "The first non-whitespace character must be { or [ and the last non-whitespace character must be } or ].",
+  "Do not include Markdown, code fences, prose, explanations, or leading/trailing text.",
 ].join(" ");
 const ignoredWorkspacePaths = new Set([
   ".git",

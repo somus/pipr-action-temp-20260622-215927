@@ -46,6 +46,23 @@ export default definePipr((pipr) => {
     `,
     inlineComments: { max: 5 },
     timeout: "5m",
+    comment: (result, context) => ({
+      main:
+        context.platform.id === "local"
+          ? [
+              "## Summary",
+              "",
+              result.summary.body,
+              "",
+              "## Inline Findings",
+              "",
+              result.inlineFindings.length === 0
+                ? "No inline findings."
+                : result.inlineFindings.map((finding) => `- ${finding.body}`).join("\n"),
+            ].join("\n")
+          : result.summary.body,
+      inlineFindings: result.inlineFindings,
+    }),
   });
 });
 ```
@@ -93,6 +110,7 @@ This is the baseline setup for repositories that want one trusted review path be
 
 - Keep `inlineComments.max` low until the repository has enough review history to judge signal quality.
 - Put repository-specific review policy in `instructions`, not in ad hoc task code.
+- Use `context.platform.id === "local"` for text that should appear only during local review.
 - Add path filters only after you know which files should never receive inline findings.
 
 Shared setup, local type support, and provider tuning notes live on the [Recipes](/docs/recipes#common-setup) page.

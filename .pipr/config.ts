@@ -64,6 +64,23 @@ export default definePipr((pipr) => {
     },
     inlineComments: { max: 5 },
     timeout: "5m",
+    comment: (result, context) => ({
+      main:
+        context.platform.id === "local"
+          ? [
+              "## Summary",
+              "",
+              result.summary.body,
+              "",
+              "## Inline Findings",
+              "",
+              result.inlineFindings.length === 0
+                ? "No inline findings."
+                : result.inlineFindings.map((finding) => `- ${finding.body}`).join("\n"),
+            ].join("\n")
+          : result.summary.body,
+      inlineFindings: result.inlineFindings,
+    }),
   });
 
   pipr.command({

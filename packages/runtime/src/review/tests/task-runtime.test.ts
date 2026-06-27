@@ -1000,6 +1000,12 @@ describe("runTaskRuntime", () => {
       "`suggestedFix` is exact replacement code for the selected range.",
     );
     expect(observedPrompt).toContain(
+      "The first non-whitespace character must be { or [ and the last non-whitespace character must be } or ].",
+    );
+    expect(observedPrompt).toContain(
+      "For inlineFindings, use only fields shown in the schema and only exact Diff Manifest commentable ranges.",
+    );
+    expect(observedPrompt).toContain(
       "Diff Manifest:\nUse this as the authoritative changed-code context",
     );
     expect(observedPrompt).toContain(

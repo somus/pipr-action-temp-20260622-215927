@@ -29,20 +29,19 @@ export type BuildDiffManifestOptions = {
   cwd: string;
   baseSha: string;
   headSha: string;
+  includeWorkingTree?: boolean;
 };
 
 export function buildDiffManifest(options: BuildDiffManifestOptions): DiffManifest {
   const mergeBaseSha = runGit(["merge-base", options.baseSha, options.headSha], options.cwd).trim();
+  const diffHead = options.includeWorkingTree ? undefined : options.headSha;
   const nameStatus = runGit(
-    ["diff", "--name-status", "--find-renames", mergeBaseSha, options.headSha],
+    buildDiffArgs(["--name-status", "--find-renames"], mergeBaseSha, diffHead),
     options.cwd,
   );
-  const diffStats = getDiffStats(options.cwd, mergeBaseSha, options.headSha);
+  const diffStats = getDiffStats(options.cwd, mergeBaseSha, diffHead);
   const preExcludedFiles = getPreExcludedFiles(diffStats);
-  const diff = runGit(
-    buildUnifiedDiffArgs(mergeBaseSha, options.headSha, preExcludedFiles),
-    options.cwd,
-  );
+  const diff = runGit(buildUnifiedDiffArgs(mergeBaseSha, diffHead, preExcludedFiles), options.cwd);
 
   const files = parseNameStatus(nameStatus);
   const parsedDiff = parseUnifiedDiff(diff);
@@ -89,8 +88,12 @@ export function parseUnifiedDiff(diff: string): Map<string, ParsedUnifiedDiffFil
   return state.filesByPath;
 }
 
-function getDiffStats(cwd: string, baseSha: string, headSha: string): Map<string, DiffStat> {
-  const output = runGit(["diff", "--numstat", "--find-renames", baseSha, headSha], cwd);
+function getDiffStats(
+  cwd: string,
+  baseSha: string,
+  headSha: string | undefined,
+): Map<string, DiffStat> {
+  const output = runGit(buildDiffArgs(["--numstat", "--find-renames"], baseSha, headSha), cwd);
   const stats = new Map<string, DiffStat>();
   for (const line of output.split("\n").filter(Boolean)) {
     const stat = parseNumstatLine(line);
@@ -122,10 +125,10 @@ function getPreExcludedFiles(stats: Map<string, DiffStat>): Map<string, string> 
 
 function buildUnifiedDiffArgs(
   baseSha: string,
-  headSha: string,
+  headSha: string | undefined,
   excludedFiles: Map<string, string>,
 ): string[] {
-  const args = ["diff", "--unified=80", "--find-renames", baseSha, headSha];
+  const args = buildDiffArgs(["--unified=80", "--find-renames"], baseSha, headSha);
   if (excludedFiles.size === 0) {
     return args;
   }
@@ -135,6 +138,10 @@ function buildUnifiedDiffArgs(
     ".",
     ...[...excludedFiles.keys()].map((filePath) => `:(exclude,literal)${filePath}`),
   ];
+}
+
+function buildDiffArgs(options: string[], baseSha: string, headSha: string | undefined): string[] {
+  return headSha ? ["diff", ...options, baseSha, headSha] : ["diff", ...options, baseSha];
 }
 
 function parseNumstatLine(

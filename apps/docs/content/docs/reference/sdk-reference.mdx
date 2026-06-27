@@ -250,6 +250,8 @@ const ciOnlyTask = pipr.task({
 });
 ```
 
+Use `ctx.platform.id === "local"` inside a task when the task should run in both environments but render different output. Keep `local: false` for tasks that should not run locally at all.
+
 <auto-type-table path="packages/sdk/src/index.ts" name="TaskDefinition" />
 
 ## Task context
@@ -257,7 +259,7 @@ const ciOnlyTask = pipr.task({
 | Property | Purpose |
 | --- | --- |
 | `ctx.run.id` | Stable id for the current runtime execution. |
-| `ctx.platform.id` | Code host id, such as `github` or `local`. |
+| `ctx.platform.id` | Code host id, such as `github` or `local`; use this for local-aware task behavior. |
 | `ctx.repository` | Provider-neutral repository metadata. |
 | `ctx.change` | Provider-neutral change request metadata plus diff helpers. |
 | `ctx.pi.run(agent, input, options?)` | Execute a Pi-backed agent and validate structured output. |

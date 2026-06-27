@@ -13,7 +13,9 @@ Run the configured change-request review tasks:
 pipr review --base origin/main
 ```
 
-Set an explicit head when reviewing something other than `HEAD`:
+When `--head` is omitted, Pipr reviews the working tree. That includes committed changes after the merge base plus staged and unstaged edits to tracked files.
+
+Set an explicit head when reviewing a committed ref instead of the working tree:
 
 ```bash
 pipr review --base origin/main --head HEAD~1
@@ -41,7 +43,8 @@ Local runs:
 - execute every unique task registered with `pipr.on.changeRequest(...)`
 - skip tasks declared with `local: false`
 - run Pi through `ctx.pi.run(...)`
-- print the rendered final output, or structured output with `--json`
+- stream readable progress logs to stderr
+- print the rendered final output to stdout, or structured output with `--json`
 
 Local runs do not publish Main Review Comments, Inline Review Comments, command response comments, or Check Runs.
 
@@ -55,7 +58,18 @@ pipr review --base main
 pipr review --base 2a4f6c9
 ```
 
-`--head` defaults to `HEAD`. Set it explicitly when testing generated commits, release branches, or worktrees.
+When `--head` is omitted, Pipr compares `--base` to the current working tree. This is the usual local workflow when you want to review uncommitted edits on a synced branch:
+
+```bash
+pipr review --base main
+```
+
+Set `--head` explicitly when you want a strict ref-to-ref comparison:
+
+```bash
+pipr review --base origin/main --head HEAD
+pipr review --base origin/main --head feature-branch
+```
 
 ## Local task selection
 
@@ -81,7 +95,15 @@ const task = pipr.task({
   async run(ctx) {
     const manifest = await ctx.change.diffManifest({ compressed: true });
     const result = await ctx.pi.run(securityAgent, { manifest });
-    await ctx.comment({ main: result.summary.body, inlineFindings: result.inlineFindings });
+    const local = ctx.platform.id === "local";
+    await ctx.comment({
+      main: local
+        ? `${result.summary.body}\n\n## Inline Findings\n\n${result.inlineFindings
+            .map((finding) => `- ${finding.path}: ${finding.body}`)
+            .join("\n")}`
+        : result.summary.body,
+      inlineFindings: result.inlineFindings,
+    });
   },
 });
 
@@ -100,13 +122,25 @@ const expensive = pipr.task({
 });
 ```
 
+Use `ctx.platform.id === "local"` when a task should still run locally but render different text. Use `local: false` when the task should not run locally at all.
+
+## Output
+
+During local review, Pipr writes progress logs to stderr and the final review output to stdout. The default stdout format is Markdown without Pipr's internal comment marker, followed by any local inline finding drafts. `--json` keeps the full structured result, including review metadata, inline drafts, dropped findings, task checks, provider models, and repair metadata.
+
 ## Environment
 
-Local runs read provider secrets from the process environment. Because the CLI runs on Bun, `.env`, `.env.local`, and Bun-supported env files in the working directory are loaded automatically:
+Local runs read provider secrets from the process environment. Because the CLI runs on Bun, standard Bun env files in the working directory are loaded automatically:
 
 ```bash
 DEEPSEEK_API_KEY=...
 pipr review --base origin/main
+```
+
+When running the CLI from source, pass explicit env files with Bun:
+
+```bash
+bun --env-file=.pipr/.env packages/cli/src/main.ts review --base origin/main
 ```
 
 Unlike GitHub Action pull request runs, local review loads `.pipr/config.ts` from the current workspace. Run it only on branches whose config and task code you trust, because those tasks can access exported env vars and Bun-loaded `.env` values through `ctx.secret(...)`.
@@ -133,10 +167,11 @@ pipr check --require-env
 | Behavior | Local run | GitHub Action run |
 | --- | --- | --- |
 | Config source | Local workspace | Base commit for pull request events |
-| Diff source | Local git refs | Checked-out pull request head and base |
+| Diff source | Working tree by default, or local git refs with `--head` | Checked-out pull request head and base |
 | Comments | Disabled | Enabled when publication succeeds |
 | Commands | Not dispatched | Run from `issue_comment.created` |
 | Provider secrets | Exported env vars or Bun-loaded `.env` files | GitHub Actions secrets |
+| Logs | Human-readable stderr | Structured Action logs |
 | Best use | Config iteration and prompt debugging | Production pull request review |
 
 Use [GitHub Action](/docs/guide/github-action) for production event behavior.

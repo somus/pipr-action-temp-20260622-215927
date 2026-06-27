@@ -91,7 +91,7 @@ function createProgram(): Command {
     .command("review")
     .description("Run configured change-request review tasks locally without publishing")
     .option("--base <sha>", "Base commit SHA")
-    .option("--head <sha>", "Head commit SHA")
+    .option("--head <sha>", "Head commit SHA or ref; omitted reviews the working tree")
     .option("--config-dir <dir>", "Config directory", ".pipr")
     .option("--pi-executable <path>", "Pi executable path")
     .option("--json", "Print structured JSON output")
@@ -345,36 +345,114 @@ type LocalReviewResult = Awaited<ReturnType<typeof runLocalReviewCommand>>;
 
 const stderrTaskLog = {
   info(message: string) {
-    console.error(message);
+    console.error(`[info] ${message}`);
   },
   warn(message: string) {
-    console.error(message);
+    console.error(`[warn] ${message}`);
   },
   error(message: string) {
-    console.error(message);
+    console.error(`[error] ${message}`);
   },
 };
 
 const localConsoleLogSink: ActionLogSink = {
   info(message) {
-    console.error(message);
+    console.error(formatLocalLogMessage(message));
   },
   notice(message) {
-    console.error(message);
+    console.error(formatLocalLogMessage(message));
   },
   warning(message) {
-    console.error(message);
+    console.error(formatLocalLogMessage(message));
   },
   error(message) {
-    console.error(message);
+    console.error(formatLocalLogMessage(message));
   },
   debug(message) {
-    console.error(message);
+    console.error(formatLocalLogMessage(message));
   },
   async group(_name, run) {
     return await run();
   },
 };
+
+function formatLocalLogMessage(message: string): string {
+  const [firstLine, ...rest] = message.split("\n");
+  const data = parseLocalLogLine(firstLine);
+  if (!data) {
+    return message;
+  }
+
+  const fields = Object.entries(data)
+    .map(([key, value]) => formatLocalLogField(key, value))
+    .filter((field): field is string => field !== undefined);
+  const prefix = formatLocalLogPrefix(data);
+  const formatted = [...prefix, ...fields].join(" ");
+  return rest.length === 0 ? formatted : [formatted, ...rest].join("\n");
+}
+
+function formatLocalLogPrefix(data: Record<string, unknown>): string[] {
+  const level = typeof data.level === "string" ? data.level : "";
+  const event = typeof data.event === "string" ? data.event : "";
+  return ["pipr", localLogPlainLevels.has(level) ? "" : level, event].filter(Boolean);
+}
+
+function parseLocalLogLine(line: string | undefined): Record<string, unknown> | undefined {
+  if (!line?.startsWith("{")) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+const localLogNumberFields: Record<string, (value: number) => string> = {
+  additions: (value) => `+${value}`,
+  deletions: (value) => `-${value}`,
+  durationMs: (value) =>
+    `duration=${value < 1000 ? `${value}ms` : `${(value / 1000).toFixed(1)}s`}`,
+  promptBytes: (value) => `prompt=${value}B`,
+  stderrBytes: (value) => `stderr=${value}B`,
+  stdoutBytes: (value) => `stdout=${value}B`,
+};
+
+const localLogHiddenFields = new Set(["level", "event"]);
+const localLogPlainLevels = new Set(["info", "notice"]);
+
+function formatLocalLogField(key: string, value: unknown): string | undefined {
+  if (localLogHiddenFields.has(key) || value == null) {
+    return undefined;
+  }
+
+  return formatLocalLogFieldValue(key, value);
+}
+
+function formatLocalLogFieldValue(key: string, value: unknown): string {
+  const formattedNumber =
+    typeof value === "number" ? localLogNumberFields[key]?.(value) : undefined;
+  return formattedNumber ?? `${key}=${formatLocalLogValue(value)}`;
+}
+
+const localLogValueFormatters: Record<string, (value: unknown) => string> = {
+  boolean: String,
+  number: String,
+  object: (value) =>
+    Array.isArray(value)
+      ? value.length === 0
+        ? "-"
+        : value.map(formatLocalLogValue).join(",")
+      : JSON.stringify(value),
+  string: (value) => {
+    const text = String(value);
+    return /\s/.test(text) ? JSON.stringify(text) : text;
+  },
+};
+
+function formatLocalLogValue(value: unknown): string {
+  return (localLogValueFormatters[typeof value] ?? JSON.stringify)(value);
+}
 
 function writeLocalReviewResult(result: LocalReviewResult, json: boolean): void {
   if (json) {
@@ -389,24 +467,29 @@ function writeLocalReviewResult(result: LocalReviewResult, json: boolean): void 
 }
 
 function formatLocalReview(result: Extract<LocalReviewResult, { kind: "review" }>): string {
+  const mainComment = stripMainCommentMarker(result.mainComment);
   const inlineFindings = result.inlineCommentDrafts.map((draft, index) => {
     const range =
       draft.startLine === draft.endLine
         ? `${draft.path}:${draft.startLine}`
         : `${draft.path}:${draft.startLine}-${draft.endLine}`;
-    return [`${index + 1}. ${range}`, `Range: ${draft.finding.rangeId}`, draft.finding.body].join(
-      "\n",
-    );
+    return [
+      `${index + 1}. ${range}`,
+      `Range: ${draft.finding.rangeId ?? "-"}`,
+      draft.finding.body,
+    ].join("\n");
   });
   return inlineFindings.length === 0
-    ? result.mainComment
-    : [
-        result.mainComment.trimEnd(),
-        "",
-        "## Inline Findings",
-        "",
-        inlineFindings.join("\n\n"),
-      ].join("\n");
+    ? mainComment
+    : [mainComment.trimEnd(), "", "## Inline Findings", "", inlineFindings.join("\n\n")].join("\n");
+}
+
+function stripMainCommentMarker(comment: string): string {
+  return comment
+    .split("\n")
+    .filter((line) => !line.startsWith("<!-- pipr:main-comment "))
+    .join("\n")
+    .trimStart();
 }
 
 function localReviewJson(result: LocalReviewResult) {

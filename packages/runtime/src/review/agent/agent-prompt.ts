@@ -117,7 +117,11 @@ function outputPrompt(schema: Schema<unknown>): string {
       ? "`suggestedFix` is exact replacement code for the selected range. Do not include Markdown fences, prose, or labels in `suggestedFix`."
       : undefined,
     "Return exactly one JSON value matching the schema.",
-    "Do not include Markdown, prose, explanations, or leading/trailing text.",
+    "The first non-whitespace character must be { or [ and the last non-whitespace character must be } or ].",
+    "Do not include Markdown, code fences, prose, explanations, or leading/trailing text.",
+    schema.id === prReviewSchemaId
+      ? "For inlineFindings, use only fields shown in the schema and only exact Diff Manifest commentable ranges. If no exact range applies, omit the finding."
+      : undefined,
   ]).join("\n\n");
 }
 
