@@ -54,6 +54,9 @@ describe("pipr CLI", () => {
       expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
       expect(result.stdout).toContain("# pipr Review");
       expect(result.stdout).toContain("No findings.");
+      expect(result.stderr).toContain("local review start");
+      expect(result.stderr).toContain("task runtime start");
+      expect(result.stderr).toContain("local review complete");
       expect(await countLines(path.join(workspace.rootDir, "pi-called"))).toBe(1);
     } finally {
       await removeWorkspace(workspace.rootDir);
@@ -77,7 +80,9 @@ describe("pipr CLI", () => {
       );
 
       expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(result.stderr).toContain("local review start");
       expect(result.stderr).toContain("running local review");
+      expect(result.stderr).toContain("local review complete");
       const json = JSON.parse(result.stdout) as {
         kind: string;
         mainComment: string;

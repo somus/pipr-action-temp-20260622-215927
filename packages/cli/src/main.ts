@@ -335,7 +335,8 @@ async function runLocalReview(options: CliOptions): Promise<void> {
     baseSha: options.base,
     headSha: options.head,
     piExecutable: options.piExecutable,
-    taskLog: options.json === true ? stderrTaskLog : undefined,
+    logSink: localConsoleLogSink,
+    taskLog: stderrTaskLog,
   });
   writeLocalReviewResult(result, options.json === true);
 }
@@ -351,6 +352,27 @@ const stderrTaskLog = {
   },
   error(message: string) {
     console.error(message);
+  },
+};
+
+const localConsoleLogSink: ActionLogSink = {
+  info(message) {
+    console.error(message);
+  },
+  notice(message) {
+    console.error(message);
+  },
+  warning(message) {
+    console.error(message);
+  },
+  error(message) {
+    console.error(message);
+  },
+  debug(message) {
+    console.error(message);
+  },
+  async group(_name, run) {
+    return await run();
   },
 };
 

@@ -125,9 +125,26 @@ export async function runDryRunCommand(
 export async function runLocalReviewCommand(
   options: LocalReviewCommandOptions,
 ): Promise<LocalReviewCommandResult> {
+  const log = options.logSink
+    ? createRuntimeActionLog({ logSink: options.logSink, env: options.env })
+    : undefined;
+  log?.notice("local review start", {
+    root: options.rootDir,
+    configDir: options.configDir,
+    base: options.baseSha.slice(0, 12),
+    head: options.headSha?.slice(0, 12),
+  });
   const runtime = await loadRuntimeProject({
     ...options,
     requireProviderEnv: true,
+  });
+  log?.notice("local config loaded", {
+    source: runtime.settings.source,
+    providers: runtime.settings.config.providers
+      .map((provider) => `${provider.id}:${provider.model}`)
+      .join(","),
+    tasks: runtime.plan.tasks.length,
+    commands: runtime.plan.commands.length,
   });
   const selectedTasks = selectLocalReviewTasks(runtime.plan);
   const headSha = options.headSha ?? runGitCommand(["rev-parse", "HEAD"], options.rootDir).trim();
@@ -138,6 +155,15 @@ export async function runLocalReviewCommand(
       headSha,
     }),
   });
+  if (log) {
+    logEventContext(log, event);
+    log.notice("local dispatch", {
+      selectedTasks: selectedTasks.map((task) => task.name),
+      skippedLocalTasks: runtime.plan.tasks
+        .filter((task) => task.local === false)
+        .map((task) => task.name),
+    });
+  }
   const result = await runTaskRuntime({
     workspace: options.rootDir,
     config: runtime.settings.config,
@@ -147,11 +173,19 @@ export async function runLocalReviewCommand(
     selectedTasks,
     emptyTasksReason: "No change-request tasks are configured for local review",
     piExecutable: options.piExecutable,
+    log,
     taskLog: options.taskLog,
   });
   if (result.kind === "command-response") {
     throw new Error("command response result is only supported for issue_comment commands");
   }
+  log?.notice("local review complete", {
+    kind: result.kind,
+    taskChecks: result.taskChecks.length,
+    validFindings: result.kind === "review" ? result.validated.validFindings.length : undefined,
+    droppedFindings: result.kind === "review" ? result.validated.droppedFindings.length : undefined,
+    inlineDrafts: result.kind === "review" ? result.inlineCommentDrafts.length : undefined,
+  });
   return result as LocalReviewCommandResult;
 }
 
