@@ -1,0 +1,89 @@
+packages/runtime/src/review/tests/manifest-payload.test.ts
+  s_3a9769e34fbdcc::t_2abb31ffe2d989 105
+  s_3a9769e34fbdcc::t_91b2d437adaffe 7,9,96-104,106-169
+packages/sdk/src/builder.ts
+  s_3a9769e34fbdcc::t_b5a67e26bf748d 24
+packages/runtime/src/config/recipes/changelog-draft.ts
+  s_3a9769e34fbdcc::t_bb1fbf8a161e6e 35
+apps/docs/content/docs/recipes/security-sast.mdx
+  s_3a9769e34fbdcc::t_8bf9e8f08e0654 105
+package.json
+  s_3a9769e34fbdcc::t_3e52589f64fc16 45
+packages/cli/src/release/sdk-declaration.ts
+  s_3a9769e34fbdcc::t_8d4c65b4e73058 6
+apps/docs/content/docs/reference/sdk-reference.mdx
+  s_3a9769e34fbdcc::t_db3f3e8137e1e8 168-169
+apps/docs/content/docs/recipes/diff-diagnostics.mdx
+  s_3a9769e34fbdcc::t_8bf9e8f08e0654 64
+apps/docs/content/docs/recipes/changelog-draft.mdx
+  s_3a9769e34fbdcc::t_8bf9e8f08e0654 56
+apps/docs/content/docs/guide/runtime.mdx
+  s_3a9769e34fbdcc::t_6038bd3e2896a0 126-128
+packages/sdk/src/internal.ts
+  s_3a9769e34fbdcc::t_8d4c65b4e73058 8-13
+  s_3a9769e34fbdcc::t_b5a67e26bf748d 1,7
+packages/sdk/package.json
+  s_3a9769e34fbdcc::t_c4dc448651263d 46
+packages/runtime/src/config/recipes/dependency-risk.ts
+  s_3a9769e34fbdcc::t_bb1fbf8a161e6e 36
+packages/cli/package.json
+  s_3a9769e34fbdcc::t_8d4c65b4e73058 20
+packages/sdk/src/prompt-render.ts
+  s_3a9769e34fbdcc::t_b5a67e26bf748d 1-18
+apps/docs/content/docs/recipes/dependency-risk.mdx
+  s_3a9769e34fbdcc::t_8bf9e8f08e0654 57
+packages/runtime/src/review/agent/review-run.ts
+  s_3a9769e34fbdcc::t_00d2f2648cdae9 11,20,74-79,303
+packages/runtime/src/review/tests/task-runtime.test.ts
+  s_3a9769e34fbdcc::t_db9dd9576d2904 1013-1014
+  s_3a9769e34fbdcc::t_c4dc448651263d 978-1012,1015-1016
+packages/runtime/src/config/tests/init.test.ts
+  s_3a9769e34fbdcc::t_91b2d437adaffe 156-158
+packages/runtime/src/config/type-support.ts
+  s_3a9769e34fbdcc::t_8d4c65b4e73058 8-9
+apps/docs/content/docs/guide/custom-tasks.mdx
+  s_3a9769e34fbdcc::t_db3f3e8137e1e8 88,105-106
+packages/runtime/src/config/recipes/security-sast.ts
+  s_3a9769e34fbdcc::t_bb1fbf8a161e6e 84
+packages/runtime/src/config/recipes/diff-diagnostics.ts
+  s_3a9769e34fbdcc::t_bb1fbf8a161e6e 43
+packages/runtime/src/review/agent/diff-manifest-context.ts
+  s_3a9769e34fbdcc::t_1f7ca8460461a1 1-3,5-8,14-44,46-69,72-90,92-101
+  s_3a9769e34fbdcc::t_7de819b9e8bf0f 45,71,91
+  s_3a9769e34fbdcc::t_40d4aebf075b6d 4,70
+  s_3a9769e34fbdcc::t_d8b8f919601444 9-13
+packages/runtime/src/review/agent/agent-prompt.ts
+  s_3a9769e34fbdcc::t_64175e9bcb1cad 66
+  s_3a9769e34fbdcc::t_24a601853ac1f6 7,39,59,62,84,93
+packages/sdk/src/tests/index.test.ts
+  s_3a9769e34fbdcc::t_db9dd9576d2904 1,810
+  s_3a9769e34fbdcc::t_b5a67e26bf748d 2,741-750
+  s_3a9769e34fbdcc::t_bab7a654d49931 3-4,7-11,740,751-800
+  s_244160aac0e74b::t_e956f25ddf6eee 801-802
+bun.lock
+  s_3a9769e34fbdcc::t_794a8622c581a1 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ff94e4a84b3ad50a877d9c118480096452571ec5",
+  "prompts": {},
+  "sessions": {
+    "s_244160aac0e74b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f14f8-9a9a-7c11-ae99-96554b6ee62b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    },
+    "s_3a9769e34fbdcc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0357-2a1e-78b0-8eb1-3c03781a3330",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
