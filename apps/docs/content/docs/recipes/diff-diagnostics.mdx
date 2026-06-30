@@ -61,9 +61,7 @@ export default definePipr((pipr) => {
       Include suggestedFix only when there is an exact replacement for the selected range.
     `,
     output: diagnosticOutput,
-    prompt: (input: { manifest: unknown }) => pipr.prompt`
-      ${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
-    `,
+    prompt: () => "Summarize the diff-scoped diagnostics for this change.",
   });
 
   const task = pipr.task({

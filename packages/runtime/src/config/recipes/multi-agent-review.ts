@@ -26,7 +26,6 @@ export default definePipr((pipr) => {
 
   const specialistPrompt = (input: { manifest: unknown; focus: string }) => pipr.prompt\`
     \${pipr.section("Focus", input.focus)}
-    \${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
   \`;
 
   const security = pipr.agent({

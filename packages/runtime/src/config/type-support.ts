@@ -1,12 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { embeddedSdkAssets } from "./sdk-assets.js";
 import {
   embeddedSdkDeclaration,
   readSdkDeclarationSourceWithChunk,
   type SdkDeclarationModule,
-} from "./sdk-declaration.js";
+} from "@pipr/sdk/internal";
+import { embeddedSdkAssets } from "./sdk-assets.js";
 
 export type ConfigTypeSupportFile = {
   relativePath: string;

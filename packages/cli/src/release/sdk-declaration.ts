@@ -3,7 +3,7 @@ import {
   embeddedSdkDeclaration,
   readSdkDeclarationSourceWithChunk,
   type SdkDeclarationModule,
-} from "@pipr/runtime";
+} from "@pipr/sdk/internal";
 
 export type { SdkDeclarationModule };
 export { embeddedSdkDeclaration };

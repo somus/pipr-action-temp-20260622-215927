@@ -1,8 +1,15 @@
-import type { AgentTool, PromptText, PromptValue } from "./index.js";
+import type { AgentTool } from "./index.js";
 
 export type { RuntimePlan } from "./runtime-contract.js";
 
 import type { RuntimePlan } from "./runtime-contract.js";
+
+export { renderPromptValue } from "./prompt-render.js";
+export type { SdkDeclarationModule } from "./standalone-declaration.js";
+export {
+  embeddedSdkDeclaration,
+  readSdkDeclarationSourceWithChunk,
+} from "./standalone-declaration.js";
 
 /** Stable identifier for pipr's built-in pull request review output schema. */
 export const reviewOutputSchemaId = "core/pr-review";
@@ -44,21 +51,4 @@ export function buildPiprPlan(factory: unknown): RuntimePlan {
 
 function isInternalPiprConfigFactory(value: unknown): value is InternalPiprConfigFactory {
   return isPiprConfigFactory(value) && typeof Reflect.get(value, "build") === "function";
-}
-
-/** Renders a prompt source/value into plain text for Pi prompts. */
-export function renderPromptValue(value: PromptValue): string {
-  if (value === undefined || value === null) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  if (typeof value === "object" && value !== null && Reflect.get(value, "kind") === "pipr.prompt") {
-    return (value as PromptText).value;
-  }
-  return JSON.stringify(value, null, 2);
 }

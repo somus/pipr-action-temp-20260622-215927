@@ -54,9 +54,7 @@ export default definePipr((pipr) => {
       Do not claim live CVEs unless they are visible in the diff.
     `,
     output: dependencyOutput,
-    prompt: (input: { manifest: unknown }) => pipr.prompt`
-      ${pipr.section("Dependency diff", pipr.json(input.manifest, { maxCharacters: 60000 }))}
-    `,
+    prompt: () => "Review the dependency-related changes in this pull request.",
   });
 
   const task = pipr.task({

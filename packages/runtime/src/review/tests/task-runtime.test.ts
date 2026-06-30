@@ -975,6 +975,45 @@ describe("runTaskRuntime", () => {
     expect(observedPrompt).not.toContain("Diff Manifest:");
   });
 
+  it("does not inject Diff Manifest context when manifest input is absent", async () => {
+    let observedPrompt = "";
+    const plan = testPlan((pipr) => {
+      const model = deepseekModel(pipr);
+      const agent = pipr.agent<{ changedFiles: string[] }, { ok: boolean }>({
+        name: "summary",
+        model,
+        instructions: "Summarize files.",
+        output: {
+          kind: "pipr.schema",
+          id: "test/summary",
+          parse(value) {
+            return value as { ok: boolean };
+          },
+          safeParse(value) {
+            return { success: true, data: value as { ok: boolean } };
+          },
+        },
+        prompt: () => "Summarize.",
+      });
+      const task = pipr.task({
+        name: "summary",
+        async run(ctx) {
+          const result = await ctx.pi.run(agent, { changedFiles: ["src/a.ts"] });
+          await ctx.comment(JSON.stringify(result));
+        },
+      });
+      pipr.on.changeRequest({ actions: ["opened"], task });
+    });
+
+    await runCustomOkPlan(plan, (prompt) => {
+      observedPrompt = prompt;
+    });
+
+    expect(observedPrompt).not.toContain("Diff Manifest:");
+    expect(observedPrompt).not.toContain("Use this as the authoritative changed-code context");
+    expect(observedPrompt).toContain("Summarize files.");
+  });
+
   it("renders one full-mode agent prompt contract with authoritative manifest wording", async () => {
     let observedPrompt = "";
 

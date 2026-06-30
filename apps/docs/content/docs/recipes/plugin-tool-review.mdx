@@ -63,8 +63,6 @@ export default definePipr((pipr) => {
       Return only actionable review findings with validated diff ranges.
     `,
     prompt: (input: { manifest: unknown; prior: unknown }) => pipr.prompt`
-      ${pipr.section("Diff Manifest", input.manifest)}
-
       ${pipr.section("Prior Pipr review", pipr.json(input.prior, { maxCharacters: 20000 }))}
     `,
   });

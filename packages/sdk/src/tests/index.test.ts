@@ -1,7 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { ModelProfile, PiprBuilder, Reviewer, TaskContext } from "../index.js";
 import { definePipr, definePlugin, jsonSchema, schema, schemas, z } from "../index.js";
-import { buildPiprPlan } from "../internal.js";
+import {
+  buildPiprPlan,
+  embeddedSdkDeclaration,
+  readSdkDeclarationSourceWithChunk,
+} from "../internal.js";
 import {
   parseReviewFinding,
   parseReviewResult,
@@ -730,6 +737,69 @@ describe("definePipr", () => {
   });
 });
 
+describe("standalone SDK declarations", () => {
+  it("keeps declaration utilities out of the public SDK root implementation", async () => {
+    const builderSource = await readFile(
+      path.join(import.meta.dirname, "..", "builder.ts"),
+      "utf8",
+    );
+
+    expect(builderSource).not.toContain('from "./internal.js"');
+    expect(builderSource).toContain('from "./prompt-render.js"');
+  });
+
+  it("embeds declarations with the local Zod shim", () => {
+    const declaration = embeddedSdkDeclaration([
+      {
+        moduleName: "@pipr/sdk",
+        source: [
+          'import { z } from "zod";',
+          "export type Schema = z.ZodType<string>;",
+          'export type FromRoot = import("./index.mjs").Schema;',
+          "//# sourceMappingURL=index.d.mts.map",
+        ].join("\n"),
+      },
+      {
+        moduleName: "@pipr/sdk/review",
+        source: "export type { ReviewFinding };\nexport { parseReviewFinding };",
+      },
+    ]);
+
+    expect(declaration).toContain('declare module "@pipr/sdk"');
+    expect(declaration).toContain("type ZodType<T = unknown");
+    expect(declaration).toContain("export type Schema = ZodType<string>;");
+    expect(declaration).toContain('export type { ReviewFinding } from "@pipr/sdk";');
+    expect(declaration).not.toContain('from "zod"');
+    expect(declaration).not.toContain("z.ZodType");
+    expect(declaration).not.toContain("sourceMappingURL");
+  });
+
+  it("stitches bundled declaration chunks into the SDK root declaration", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "pipr-sdk-declarations-"));
+    const declarationPath = path.join(rootDir, "index.d.mts");
+    await writeFile(
+      declarationPath,
+      [
+        'export { RuntimePlan } from "./index-abc_123.mjs";',
+        'export type { ReviewFinding } from "./review.mjs";',
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(rootDir, "index-abc_123.d.mts"),
+      "export type RuntimePlan = { tasks: string[] };\nexport { RuntimePlan };",
+    );
+
+    const source = await readSdkDeclarationSourceWithChunk(
+      { moduleName: "@pipr/sdk" },
+      declarationPath,
+    );
+
+    expect(source).toContain("export type RuntimePlan = { tasks: string[] };");
+    expect(source).toContain('export { RuntimePlan } from "./index-abc_123.mjs";');
+    expect(source).not.toContain("export { RuntimePlan };\n");
+  });
+});
+
 describe("review schema exports", () => {
   it("parse valid and invalid review contracts", () => {
     const summary = { body: "Looks good." };
@@ -737,7 +807,7 @@ describe("review schema exports", () => {
       body: "Issue.",
       path: "src/example.ts",
       rangeId: "rng_1",
-      side: "RIGHT",
+      side: "RIGHT" as const,
       startLine: 1,
       endLine: 1,
     };

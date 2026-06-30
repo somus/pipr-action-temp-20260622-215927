@@ -153,6 +153,9 @@ describe("initOfficialMinimalProject", () => {
       const configTs = await Bun.file(path.join(rootDir, ".pipr", "config.ts")).text();
       expect(configTs).toContain("definePipr");
       expect(configTs).not.toContain("pipr.local");
+      expect(configTs).not.toContain('section("Diff Manifest"');
+      expect(configTs).not.toContain("json(input.manifest");
+      expect(configTs).not.toContain("input.manifest");
     }
   });
 

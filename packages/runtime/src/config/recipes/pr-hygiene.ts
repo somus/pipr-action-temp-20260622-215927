@@ -26,7 +26,6 @@ export default definePipr((pipr) => {
     output: pipr.schemas.review,
     prompt: (input: { manifest: unknown; changedFiles: unknown }) => pipr.prompt\`
       \${pipr.section("Changed files", pipr.json(input.changedFiles, { maxCharacters: 20000 }))}
-      \${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
     \`,
   });
 

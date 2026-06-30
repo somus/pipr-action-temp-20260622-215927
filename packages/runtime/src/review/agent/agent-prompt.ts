@@ -1,12 +1,10 @@
 import type { Agent, AgentTool, PathFilter, Schema } from "@pipr/sdk";
 import { renderPromptValue } from "@pipr/sdk/internal";
 import { compact } from "lodash-es";
-import type { PreparedDiffManifestPrompt } from "../../diff/manifest-projection.js";
 import { piReadOnlyToolNames } from "../../pi/contract.js";
-import { piRuntimeReadToolNames } from "../../pi/runtime-tools.js";
-import type { DiffManifest } from "../../types.js";
 import type { PriorReviewState } from "../prior-state.js";
 import { prReviewSchemaId, reviewSchemaExample } from "../review.js";
+import type { PreparedDiffManifestContext } from "./diff-manifest-context.js";
 
 export type AgentToolResolution = {
   customTools: AgentTool[];
@@ -38,8 +36,7 @@ export type AgentRunContext = {
 export type PreparedAgentContext = {
   agentTools: AgentToolResolution;
   agentRunContext: AgentRunContext;
-  manifest?: DiffManifest;
-  manifestPrompt?: PreparedDiffManifestPrompt;
+  diffManifest?: PreparedDiffManifestContext;
 };
 
 export async function renderAgentPrompt(
@@ -59,16 +56,14 @@ export async function renderAgentPrompt(
   const prompt = await options.agent.definition.prompt(options.input as never, {
     ...options.agentRunContext.prompt,
   });
+  const toolMode = options.toolMode ?? "read-only";
   return compact([
     promptSection("Role", "You are pipr's read-only change request agent."),
-    promptSection("Tools", toolsPrompt(options.manifestPrompt, options.toolMode ?? "read-only")),
+    promptSection("Tools", toolsPrompt(options.diffManifest, toolMode)),
     customToolPrompt(options.agentTools),
     pathScopePrompt(options.runOptions?.paths),
     promptSection("Output", outputPrompt(options.agent.definition.output)),
-    promptSection(
-      "Diff Manifest",
-      diffManifestPrompt(options.manifestPrompt, options.toolMode ?? "read-only"),
-    ),
+    promptSection("Diff Manifest", options.diffManifest?.body),
     promptSection("Instructions", renderPromptValue(options.agent.definition.instructions)),
     options.runOptions?.instructions
       ? promptSection("Run Instructions", renderPromptValue(options.runOptions.instructions))
@@ -86,7 +81,7 @@ function promptSection(title: string, body: string | undefined): string | undefi
 }
 
 function toolsPrompt(
-  manifestPrompt: PreparedDiffManifestPrompt | undefined,
+  diffManifest: PreparedDiffManifestContext | undefined,
   toolMode: "read-only" | "none",
 ): string {
   if (toolMode === "none") {
@@ -95,10 +90,7 @@ function toolsPrompt(
       "Use only the prompt context. Do not request repository, filesystem, network, platform, or shell access.",
     ].join("\n");
   }
-  const toolNames =
-    manifestPrompt?.mode === "condensed"
-      ? [...piReadOnlyToolNames, ...piRuntimeReadToolNames]
-      : [...piReadOnlyToolNames];
+  const toolNames = [...piReadOnlyToolNames, ...(diffManifest?.runtimeToolNames ?? [])];
   return [
     `Available tools: ${toolNames.join(", ")}.`,
     "Use tools only to inspect repository content and pipr-provided review context.",
@@ -173,46 +165,5 @@ function customToolPrompt(agentTools: AgentToolResolution): string | undefined {
     ...agentTools.customTools.map(
       (tool) => `${tool.name}: ${tool.description ?? "No description."}`,
     ),
-  ].join("\n");
-}
-
-function diffManifestPrompt(
-  manifestPrompt: PreparedDiffManifestPrompt | undefined,
-  toolMode: "read-only" | "none",
-): string | undefined {
-  if (!manifestPrompt) {
-    return undefined;
-  }
-  return compact([
-    "Use this as the authoritative changed-code context for this run.",
-    "If your output includes publishable inline findings, each finding's path, rangeId, side, startLine, and endLine must come from a Diff Manifest commentable range.",
-    "Do not invent publishable inline locations outside the Diff Manifest.",
-    "",
-    "Payload:",
-    JSON.stringify(
-      {
-        mode: manifestPrompt.mode,
-        metrics: manifestPrompt.metrics,
-        limits: manifestPrompt.limits,
-      },
-      null,
-      2,
-    ),
-    "",
-    "Manifest:",
-    JSON.stringify(manifestPrompt.manifest, null, 2),
-    manifestPrompt.mode === "condensed" && toolMode === "read-only"
-      ? condensedManifestToolsPrompt()
-      : undefined,
-  ]).join("\n");
-}
-
-function condensedManifestToolsPrompt(): string {
-  return [
-    "",
-    "Condensed manifest helper tools:",
-    "pipr_read_diff(path?, rangeId?) returns bounded full Diff Manifest slices.",
-    "pipr_read_at_ref(path, ref, rangeId?) reads bounded base or head file content.",
-    "Use these tools only when the condensed manifest lacks enough detail.",
   ].join("\n");
 }

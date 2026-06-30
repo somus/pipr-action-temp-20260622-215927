@@ -27,7 +27,6 @@ export default definePipr((pipr) => {
     prompt: (input: { log: string; manifest: unknown; prior: unknown }) => pipr.prompt\`
       \${pipr.section("CI log excerpt", input.log)}
       \${pipr.section("Prior pipr review", pipr.json(input.prior, { maxCharacters: 20000 }))}
-      \${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
     \`,
   });
 

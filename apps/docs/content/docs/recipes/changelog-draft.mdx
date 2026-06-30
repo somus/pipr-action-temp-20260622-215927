@@ -53,9 +53,7 @@ export default definePipr((pipr) => {
       Say "internal" when the change is not user-facing.
     `,
     output: changelogOutput,
-    prompt: (input: { manifest: unknown }) => pipr.prompt`
-      ${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
-    `,
+    prompt: () => "Draft the changelog entry for this change.",
   });
 
   const task = pipr.task({

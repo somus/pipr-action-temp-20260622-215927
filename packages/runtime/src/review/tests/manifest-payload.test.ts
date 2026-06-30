@@ -4,7 +4,9 @@ import {
   measureDiffManifestPrompt,
   prepareDiffManifestPrompt,
 } from "../../diff/manifest-projection.js";
+import { piRuntimeReadToolNames } from "../../pi/runtime-tools.js";
 import { reviewTestManifest } from "../../tests/helpers/review-test-manifest.js";
+import { prepareDiffManifestContext } from "../agent/diff-manifest-context.js";
 
 describe("Diff Manifest prompt payload", () => {
   it("keeps small manifests full and unchanged", () => {
@@ -90,6 +92,80 @@ describe("Diff Manifest prompt payload", () => {
 
     expect(manifest.files[0]?.commentableRanges[0]?.preview).toContain("large preview");
     expect(manifest.files[0]?.signals).toEqual(["large signal"]);
+  });
+
+  it("prepares full prompt context without runtime tools", () => {
+    const manifest = reviewTestManifest();
+
+    const context = prepareDiffManifestContext({
+      input: { manifest },
+      toolMode: "read-only",
+    });
+
+    expect(context?.manifest).toEqual(manifest);
+    expect(context?.mode).toBe("full");
+    expect(context?.runtimeToolNames).toEqual([]);
+    expect(context?.runtimeToolRequest).toBeUndefined();
+    expect(context?.body).toContain('"mode": "full"');
+    expect(context?.body).not.toContain("pipr_read_diff");
+  });
+
+  it("prepares condensed prompt context with runtime read tools", () => {
+    const manifest = largeContextManifest();
+
+    const context = prepareDiffManifestContext({
+      input: { manifest },
+      limits: {
+        fullMaxBytes: 128,
+        fullMaxEstimatedTokens: 100_000,
+        condensedMaxBytes: 100_000,
+        condensedMaxEstimatedTokens: 100_000,
+        toolResponseMaxBytes: 4096,
+      },
+      toolMode: "read-only",
+    });
+
+    expect(context?.mode).toBe("condensed");
+    expect(context?.runtimeToolNames).toEqual([...piRuntimeReadToolNames]);
+    expect(context?.runtimeToolRequest).toEqual({
+      manifest,
+      toolResponseMaxBytes: 4096,
+    });
+    expect(context?.body).toContain('"mode": "condensed"');
+    expect(context?.body).toContain("pipr_read_diff");
+  });
+
+  it("does not attach runtime read tools when tool mode is none", () => {
+    const context = prepareDiffManifestContext({
+      input: { manifest: largeContextManifest() },
+      limits: {
+        fullMaxBytes: 128,
+        fullMaxEstimatedTokens: 100_000,
+        condensedMaxBytes: 100_000,
+        condensedMaxEstimatedTokens: 100_000,
+      },
+      toolMode: "none",
+    });
+
+    expect(context?.mode).toBe("condensed");
+    expect(context?.runtimeToolNames).toEqual([]);
+    expect(context?.runtimeToolRequest).toBeUndefined();
+    expect(context?.body).not.toContain("pipr_read_diff");
+  });
+
+  it("only prepares context for the reserved manifest input key", () => {
+    expect(
+      prepareDiffManifestContext({
+        input: {},
+        toolMode: "read-only",
+      }),
+    ).toBeUndefined();
+    expect(
+      prepareDiffManifestContext({
+        input: { manifest: "release-notes" },
+        toolMode: "read-only",
+      }),
+    ).toBeUndefined();
   });
 });
 

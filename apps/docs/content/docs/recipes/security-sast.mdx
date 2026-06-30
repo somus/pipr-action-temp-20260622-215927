@@ -102,9 +102,8 @@ export default definePipr((pipr) => {
     output: securityOutput,
     tools: pipr.tools.readOnly,
     retry: { invalidOutput: 1, transientFailure: 1 },
-    prompt: (input: { manifest: unknown }) => pipr.prompt`
+    prompt: () => pipr.prompt`
       ${pipr.section("Security review policy", "Return only risks with a concrete attack path.")}
-      ${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
     `,
   });
 

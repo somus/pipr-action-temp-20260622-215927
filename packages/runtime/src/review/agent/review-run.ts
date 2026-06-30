@@ -4,21 +4,11 @@ import type { RuntimePlan } from "@pipr/sdk/internal";
 import { isBuiltinReadOnlyTool } from "@pipr/sdk/internal";
 import { uniqBy } from "lodash-es";
 import { z } from "zod";
-import {
-  type PreparedDiffManifestPrompt,
-  prepareDiffManifestPrompt,
-} from "../../diff/manifest-projection.js";
 import { type PiReadOnlyToolName, piReadOnlyToolNames } from "../../pi/contract.js";
 import type { PiCustomToolDefinition } from "../../pi/custom-tools.js";
 import { type PiRunOptions, type PiRunResult, runPi } from "../../pi/runner.js";
 import { boundedLogSnippet, type RuntimeActionLog } from "../../shared/logging.js";
-import type {
-  ChangeRequestEventContext,
-  DiffManifest,
-  PiprConfig,
-  ProviderConfig,
-} from "../../types.js";
-import { parseDiffManifest } from "../../types.js";
+import type { ChangeRequestEventContext, PiprConfig, ProviderConfig } from "../../types.js";
 import type { PriorReviewState } from "../prior-state.js";
 import { parsePrReview, prReviewSchemaId } from "../review.js";
 import {
@@ -27,6 +17,7 @@ import {
   type PreparedAgentContext,
   renderAgentPrompt,
 } from "./agent-prompt.js";
+import { prepareDiffManifestContext } from "./diff-manifest-context.js";
 
 export type PiRunner = (options: PiRunOptions) => Promise<PiRunResult>;
 
@@ -80,11 +71,12 @@ export async function runReviewAgent(
 ): Promise<RunReviewAgentResult> {
   const agentTools = resolveAgentTools(options.agent, options.runtime.plan);
   const agentRunContext = createAgentRunContext(options.runtime);
-  const manifest = readInputManifest(options.input);
-  const manifestPrompt = manifest
-    ? prepareDiffManifestPrompt(manifest, options.runtime.config.limits?.diffManifest)
-    : undefined;
-  const prepared: PreparedAgentContext = { agentTools, agentRunContext, manifest, manifestPrompt };
+  const diffManifest = prepareDiffManifestContext({
+    input: options.input,
+    limits: options.runtime.config.limits?.diffManifest,
+    toolMode: options.toolMode ?? "read-only",
+  });
+  const prepared: PreparedAgentContext = { agentTools, agentRunContext, diffManifest };
   const prompt = await renderAgentPrompt({ ...options, ...prepared });
   const providers = selectProviders(options.runtime, options.agent, options.runOptions);
   const retry = retrySettings(options.agent);
@@ -308,9 +300,7 @@ async function runPiForPrompt(
 function runtimeToolsForRun(
   options: RunReviewAgentOptions & PreparedAgentContext,
 ): Parameters<typeof runPi>[0]["runtimeTools"] {
-  return options.toolMode === "none"
-    ? undefined
-    : runtimeToolsForPrompt(options.manifest, options.manifestPrompt);
+  return options.diffManifest?.runtimeToolRequest;
 }
 
 function customToolsForRun(
@@ -423,19 +413,6 @@ function parseDurationSeconds(value: DurationInput): number {
   return amount;
 }
 
-function runtimeToolsForPrompt(
-  manifest: DiffManifest | undefined,
-  manifestPrompt: PreparedDiffManifestPrompt | undefined,
-): Parameters<typeof runPi>[0]["runtimeTools"] {
-  if (!manifest || manifestPrompt?.mode !== "condensed") {
-    return undefined;
-  }
-  return {
-    manifest,
-    toolResponseMaxBytes: manifestPrompt.limits.toolResponseMaxBytes,
-  };
-}
-
 function assertSuccessfulPiResult(result: PiRunResult, log: RuntimeActionLog | undefined): void {
   if (result.exitCode === 0) {
     return;
@@ -452,17 +429,6 @@ function assertSuccessfulPiResult(result: PiRunResult, log: RuntimeActionLog | u
     throw new Error(`Pi agent failed with exit ${result.exitCode}:\n${detail}`);
   }
   throw new Error(`Pi agent failed with exit ${result.exitCode}`);
-}
-
-function readInputManifest(input: unknown): DiffManifest | undefined {
-  if (typeof input !== "object" || input === null || !("manifest" in input)) {
-    return undefined;
-  }
-  try {
-    return parseDiffManifest((input as { manifest: unknown }).manifest);
-  } catch {
-    return undefined;
-  }
 }
 
 function parseAgentOutput(output: string, agent: Agent): ParseAgentResult {

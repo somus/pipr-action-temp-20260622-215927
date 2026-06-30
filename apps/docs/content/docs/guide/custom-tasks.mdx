@@ -85,7 +85,7 @@ const manifest = await ctx.change.diffManifest({
 });
 ```
 
-Pass the manifest into Pi. Pipr injects full or condensed manifest content into the prompt and attaches bounded Diff Read Tools when the manifest is condensed.
+Pass the manifest into Pi with the reserved `manifest` input key. Pipr injects full or condensed manifest content into the prompt and attaches bounded Diff Read Tools when the manifest is condensed. Do not also interpolate the manifest in the agent prompt. Omit `manifest` for aggregator or log-only agents that do not need changed-code context.
 
 Keep stable agent behavior in `instructions`. Put the data and request for one `ctx.pi.run(...)` call in the agent `prompt`.
 
@@ -102,10 +102,8 @@ const securityAgent = pipr.agent({
   model,
   instructions: "Review the pull request for security issues only.",
   output: pipr.schemas.review,
-  prompt: ({ manifest }) => pipr.prompt`
-    Review this Diff Manifest.
-
-    ${pipr.json(manifest)}
+  prompt: () => pipr.prompt`
+    Review this pull request for security issues only.
   `,
 });
 ```

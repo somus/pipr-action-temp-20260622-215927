@@ -165,6 +165,8 @@ const strictSecurity = security.extend({
 
 Use one task when multiple agents should produce one published review:
 
+Pass `{ manifest }` to specialists that need changed-code context. Pipr injects the authoritative Diff Manifest section from that reserved key. Omit `manifest` for aggregators that only merge specialist results.
+
 ```ts
 const base = pipr.agent({
   name: "base-specialist",
@@ -173,7 +175,6 @@ const base = pipr.agent({
   output: pipr.schemas.review,
   prompt: (input: { manifest: unknown; focus: string }) => pipr.prompt`
     ${pipr.section("Focus", input.focus)}
-    ${pipr.section("Diff Manifest", pipr.json(input.manifest, { maxCharacters: 60000 }))}
   `,
 });
 
@@ -556,7 +557,6 @@ const reviewer = pipr.agent({
   tools: pipr.tools.readOnly,
   instructions: "Review with the precomputed owner policy context.",
   prompt: (input: { manifest: unknown; ownerPolicies: unknown }) => pipr.prompt`
-    ${pipr.section("Diff Manifest", input.manifest)}
     ${pipr.section("Owner Policies", pipr.json(input.ownerPolicies))}
   `,
 });

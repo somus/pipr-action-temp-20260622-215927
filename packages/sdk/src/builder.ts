@@ -20,8 +20,8 @@ import type {
   Task,
   ToolRunOptions,
 } from "./index.js";
-import { renderPromptValue } from "./internal.js";
 import { stripCommonIndent } from "./prompt.js";
+import { renderPromptValue } from "./prompt-render.js";
 import type { ReviewResult } from "./review-contract.js";
 import type { RuntimePlan } from "./runtime-contract.js";
 import { jsonSchema, schema, schemas } from "./schema.js";

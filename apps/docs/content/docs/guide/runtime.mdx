@@ -123,7 +123,9 @@ const finding: ReviewFinding = {
 
 `suggestedFix` is optional exact replacement code for that range. Pipr renders it as a GitHub suggested change, so do not include Markdown fences, prose, or labels.
 
-When the full manifest is too large, Pipr sends a condensed manifest and attaches bounded Diff Read Tools. The model can ask for more range-scoped context without receiving shell or arbitrary filesystem access.
+Diff Manifest prompt injection is reserved opt-in. When `ctx.pi.run(...)` receives a parseable Diff Manifest in the `manifest` input field, Pipr injects the authoritative Diff Manifest section exactly once. If `manifest` is omitted, no Diff Manifest section is injected. If `manifest` is present but not a parseable Diff Manifest, it stays ordinary user input.
+
+When the full manifest is too large, Pipr sends a condensed manifest and attaches bounded Diff Read Tools. The model can ask for more range-scoped context without receiving shell or arbitrary filesystem access. If an agent runs with `toolMode: "none"`, Pipr still injects manifest prompt context when `manifest` is passed, but it does not attach Diff Read Tools.
 
 `paths` filters Diff Manifest files by include and exclude globs. For renamed files, current and previous paths are considered. Path scope also drops publishable findings outside the filter, but it does not restrict Pi read-only access to the rest of the repository.
 
