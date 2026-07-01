@@ -93,19 +93,18 @@ PIPR_ACTION_IMAGE=pipr-action:e2e bun run --cwd packages/e2e check:container
 The checked-in Action metadata uses the published image directly:
 
 ```text
-docker://ghcr.io/somus/pipr-action:latest
+docker://ghcr.io/somus/pipr-action:v0.1.0 # x-release-please-version
 ```
 
 Local `act` fixtures rewrite that metadata to the `PIPR_ACTION_IMAGE` value so Action checks still exercise the freshly built local image.
 
-The Docker image can be published by the main-branch Docker image workflow, the release workflow, or the manual Docker image workflow:
+The Docker image is published only by the release workflow:
 
 ```text
 .github/workflows/release.yml
-.github/workflows/docker-image.yml
 ```
 
-All publish paths build a local `pipr-action:e2e` image and run `check:container` before publishing to GHCR. The manual workflow publishes only when the `push` input is `true`.
+CI and the manual Docker workflow build local `pipr-action:e2e` images for verification only. They do not push to GHCR.
 
 The GHCR image name is:
 
@@ -115,31 +114,33 @@ ghcr.io/somus/pipr-action
 
 Publishing uses the tags:
 
-- release version, such as `0.1.0`
-- `sha-${{ github.sha }}`
-- `main`
+- release tag, such as `v0.1.0` # x-release-please-version
+- release version, such as `0.1.0` # x-release-please-version
+- `latest`
 
 ## npm and binary release
 
 GitHub Releases publish two artifacts:
 
 - compiled `pipr` CLI binaries attached to the release
-- `@pipr/sdk` published to npm
+- `@pipr/sdk`, `@pipr/runtime`, and `@pipr/cli` published to npm
 
 Required release setup:
 
 - npm `@pipr` scope access
-- `@pipr/sdk` package already created on npm
-- npm trusted publisher configured for `somus/pipr`, workflow `release.yml`, allowed action `npm publish`
+- `@pipr/sdk`, `@pipr/runtime`, and `@pipr/cli` packages already created on npm
+- npm trusted publishers configured for `somus/pipr`, workflow `release.yml`, allowed action `npm publish`
 - GHCR package write access through `GITHUB_TOKEN`
+- `PIPR_RELEASE_PLEASE_TOKEN` configured with permission to create release pull requests and releases
 
-The release workflow runs on `release.published`. The release tag must look like `v0.1.0`, and both root `package.json` and `packages/sdk/package.json` must match the tag without the leading `v`. The workflow grants `id-token: write` and uses npm trusted publishing, so it does not need an `NPM_TOKEN` secret.
+The Release Please workflow opens changelog and version pull requests from Conventional Commits on `main`. The publish workflow runs on `release.published`. The release tag must look like `v0.1.0`, and root, SDK, runtime, and CLI package versions must match the tag without the leading `v`. The workflow grants `id-token: write` and uses npm trusted publishing, so it does not need an `NPM_TOKEN` secret.
 
 Configure trusted publishing through npm package settings, or with npm 11.15.0 or newer after the package exists:
 
 ```bash
-cd packages/sdk
-npm trust github @pipr/sdk --repo somus/pipr --file release.yml --allow-publish
+npm trust github @pipr/sdk --repo somus/pipr --file .github/workflows/release.yml --allow-publish
+npm trust github @pipr/runtime --repo somus/pipr --file .github/workflows/release.yml --allow-publish
+npm trust github @pipr/cli --repo somus/pipr --file .github/workflows/release.yml --allow-publish
 ```
 
 Build release binaries locally:
@@ -154,12 +155,12 @@ Build only the host binary:
 bun run build:release:cli --host --outfile /tmp/pipr
 ```
 
-Check the SDK package before publishing:
+Check packages before publishing:
 
 ```bash
-bun run --cwd packages/sdk build
-cd packages/sdk
-npm pack --dry-run --json
+NPM_CONFIG_CACHE=/private/tmp/pipr-npm-cache npm pack --dry-run --json --workspace @pipr/sdk
+NPM_CONFIG_CACHE=/private/tmp/pipr-npm-cache npm pack --dry-run --json --workspace @pipr/runtime
+NPM_CONFIG_CACHE=/private/tmp/pipr-npm-cache npm pack --dry-run --json --workspace @pipr/cli
 ```
 
 ## GitHub push checklist

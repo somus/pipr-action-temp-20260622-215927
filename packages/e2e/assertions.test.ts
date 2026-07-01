@@ -103,7 +103,7 @@ async function assertActionMetadataRendering(): Promise<void> {
   const image = "pipr-action:test";
   const rendered = renderActActionMetadata(source, image);
   const expected = source.replace(
-    /^(\s*)image:\s*docker:\/\/\S+\s*$/m,
+    /^(\s*)image:\s*docker:\/\/\S+(?:\s+#.*)?\s*$/m,
     `$1image: docker://${image}`,
   );
   const fixtureRendered = renderActActionMetadata(source, image, {

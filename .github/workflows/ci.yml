@@ -5,8 +5,29 @@ on:
   push:
     branches:
       - main
+      - "release-please--**"
 
 jobs:
+  conventional-commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: jdx/mise-action@v4
+      - name: Check PR title
+        run: bun scripts/check-conventional-commit.ts --title "$PIPR_PR_TITLE"
+        env:
+          PIPR_PR_TITLE: ${{ github.event.pull_request.title }}
+      - name: Check commit subjects
+        run: bun scripts/check-conventional-commit.ts --range "$PIPR_BASE_SHA..$PIPR_HEAD_SHA"
+        env:
+          PIPR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PIPR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
   check:
     runs-on: ubuntu-latest
     steps:

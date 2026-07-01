@@ -940,32 +940,12 @@ describe("runTaskRuntime", () => {
 
   it("does not treat arbitrary agent input manifest fields as Diff Manifests", async () => {
     let observedPrompt = "";
-    const plan = testPlan((pipr) => {
-      const model = deepseekModel(pipr);
-      const agent = pipr.agent<{ manifest: string }, { ok: boolean }>({
-        name: "release-notes",
-        model,
-        instructions: "Summarize release notes.",
-        output: {
-          kind: "pipr.schema",
-          id: "test/release-notes",
-          parse(value) {
-            return value as { ok: boolean };
-          },
-          safeParse(value) {
-            return { success: true, data: value as { ok: boolean } };
-          },
-        },
-        prompt: () => "Summarize.",
-      });
-      const task = pipr.task({
-        name: "notes",
-        async run(ctx) {
-          const result = await ctx.pi.run(agent, { manifest: "release-notes" });
-          await ctx.comment(JSON.stringify(result));
-        },
-      });
-      pipr.on.changeRequest({ actions: ["opened"], task });
+    const plan = customOkTaskPlan<{ manifest: string }>({
+      taskName: "notes",
+      agentName: "release-notes",
+      instructions: "Summarize release notes.",
+      outputId: "test/release-notes",
+      input: { manifest: "release-notes" },
     });
 
     await runCustomOkPlan(plan, (prompt) => {
@@ -977,32 +957,12 @@ describe("runTaskRuntime", () => {
 
   it("does not inject Diff Manifest context when manifest input is absent", async () => {
     let observedPrompt = "";
-    const plan = testPlan((pipr) => {
-      const model = deepseekModel(pipr);
-      const agent = pipr.agent<{ changedFiles: string[] }, { ok: boolean }>({
-        name: "summary",
-        model,
-        instructions: "Summarize files.",
-        output: {
-          kind: "pipr.schema",
-          id: "test/summary",
-          parse(value) {
-            return value as { ok: boolean };
-          },
-          safeParse(value) {
-            return { success: true, data: value as { ok: boolean } };
-          },
-        },
-        prompt: () => "Summarize.",
-      });
-      const task = pipr.task({
-        name: "summary",
-        async run(ctx) {
-          const result = await ctx.pi.run(agent, { changedFiles: ["src/a.ts"] });
-          await ctx.comment(JSON.stringify(result));
-        },
-      });
-      pipr.on.changeRequest({ actions: ["opened"], task });
+    const plan = customOkTaskPlan<{ changedFiles: string[] }>({
+      taskName: "summary",
+      agentName: "summary",
+      instructions: "Summarize files.",
+      outputId: "test/summary",
+      input: { changedFiles: ["src/a.ts"] },
     });
 
     await runCustomOkPlan(plan, (prompt) => {
@@ -1623,6 +1583,58 @@ function defaultReviewAgent(pipr: PiprApi, options: Partial<Parameters<PiprApi["
     prompt: () => "Review.",
     ...options,
   }) as ReviewAgent;
+}
+
+function customOkAgent<Input>(
+  pipr: PiprApi,
+  options: {
+    name: string;
+    instructions: string;
+    outputId: string;
+    prompt: () => string;
+  },
+) {
+  return pipr.agent<Input, { ok: boolean }>({
+    name: options.name,
+    model: deepseekModel(pipr),
+    instructions: options.instructions,
+    output: {
+      kind: "pipr.schema",
+      id: options.outputId,
+      parse(value) {
+        return value as { ok: boolean };
+      },
+      safeParse(value) {
+        return { success: true, data: value as { ok: boolean } };
+      },
+    },
+    prompt: options.prompt,
+  });
+}
+
+function customOkTaskPlan<Input>(options: {
+  taskName: string;
+  agentName: string;
+  instructions: string;
+  outputId: string;
+  input: Input;
+}) {
+  return testPlan((pipr) => {
+    const agent = customOkAgent<Input>(pipr, {
+      name: options.agentName,
+      instructions: options.instructions,
+      outputId: options.outputId,
+      prompt: () => "Summarize.",
+    });
+    const task = pipr.task({
+      name: options.taskName,
+      async run(ctx) {
+        const result = await ctx.pi.run(agent, options.input);
+        await ctx.comment(JSON.stringify(result));
+      },
+    });
+    pipr.on.changeRequest({ actions: ["opened"], task });
+  });
 }
 
 function defaultReviewPlan() {

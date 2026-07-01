@@ -50,6 +50,6 @@
     "check": "bun run lint && bun run typecheck && bun run test"
   },
   "dependencies": {
-    "zod": "catalog:"
+    "zod": "4.4.3"
   }
 }

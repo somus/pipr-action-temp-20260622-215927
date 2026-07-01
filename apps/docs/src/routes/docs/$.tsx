@@ -13,7 +13,6 @@ import {
   ViewOptionsPopover,
 } from "fumadocs-ui/layouts/docs/page";
 import { Suspense } from "react";
-import { Feedback } from "@/components/feedback/client";
 import { getMDXComponents } from "@/components/mdx";
 import { baseOptions } from "@/lib/layout.shared";
 import { appName, gitConfig } from "@/lib/shared";
@@ -121,7 +120,6 @@ const clientLoader = browserCollections.docs.createClientLoader({
         <DocsBody>
           <MDX components={getMDXComponents()} />
         </DocsBody>
-        <Feedback pageTitle={frontmatter.title} />
       </DocsPage>
     );
   },

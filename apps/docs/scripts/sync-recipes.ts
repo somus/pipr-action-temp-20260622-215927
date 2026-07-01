@@ -7,6 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const docsDir = path.resolve(here, "../content/docs/recipes");
 const publicDir = path.resolve(here, "../public");
 const mode = process.argv.includes("--check") ? "check" : "sync";
+const defaultWorkflowActionRef = "somus/pipr@v0.1.0"; // x-release-please-version
 
 function starterWorkflow(recipe: (typeof recipes)[number]): string {
   const lines = [
@@ -32,7 +33,7 @@ function starterWorkflow(recipe: (typeof recipes)[number]): string {
     "      - uses: actions/checkout@v6",
     "        with:",
     "          fetch-depth: 0",
-    "      - uses: somus/pipr@main",
+    `      - uses: ${defaultWorkflowActionRef} # x-release-please-version`,
     "        env:",
     `          DEEPSEEK_API_KEY: ${githubExpression("secrets.DEEPSEEK_API_KEY")}`,
     `          GITHUB_TOKEN: ${githubExpression("github.token")}`,

@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: somus/pipr@main
+      - uses: somus/pipr@v0.1.0 # x-release-please-version
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -119,7 +119,7 @@ The SDK also supports custom agents, tasks, `@pipr` commands, model fallback, lo
 
 ## Status
 
-Pipr is early. CLI binaries ship through GitHub Releases, the config SDK ships as `@pipr/sdk` on npm, and the Docker Action image ships through GHCR.
+Pipr is early. CLI binaries ship through GitHub Releases, `@pipr/sdk`, `@pipr/runtime`, and `@pipr/cli` ship through npm, and the Docker Action image ships through GHCR.
 
 ## Privacy
 

@@ -32,7 +32,12 @@
     "format:check": "biome check .",
     "fallow": "fallow --fail-on-issues --format compact",
     "build:release:cli": "bun packages/cli/build-release.ts",
-    "check": "turbo run lint typecheck test build //#format:check //#fallow",
+    "sync:release-lockfile": "bun scripts/sync-release-lockfile.ts",
+    "hooks-install": "hk install --mise",
+    "check:release-metadata": "bun scripts/check-release-metadata.ts",
+    "check:conventional-commit": "bun scripts/check-conventional-commit.ts --message \"chore: validate conventional commit check\"",
+    "check:scripts": "bun test scripts/tests",
+    "check": "bun run check:release-metadata && bun run check:conventional-commit && bun run check:scripts && turbo run lint typecheck test build //#format:check //#fallow",
     "check:actions": "bun run --cwd packages/e2e check:actions"
   },
   "devDependencies": {

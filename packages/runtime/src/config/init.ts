@@ -35,6 +35,8 @@ type StarterFile = {
   contents: string;
 };
 
+const defaultWorkflowActionRef = "somus/pipr@v0.1.0"; // x-release-please-version
+
 export function listOfficialMinimalFiles(adapters?: readonly string[]): string[] {
   return officialMinimalFilePaths(resolveOfficialInitAdapters(adapters));
 }
@@ -261,7 +263,7 @@ function starterWorkflow(relativeConfigDir: string, recipe?: string): string {
     "      - uses: actions/checkout@v6",
     "        with:",
     "          fetch-depth: 0",
-    "      - uses: somus/pipr@main",
+    `      - uses: ${defaultWorkflowActionRef}`,
     "        env:",
     `          DEEPSEEK_API_KEY: $${["{{ ", "secrets.DEEPSEEK_API_KEY", " }}"].join("")}`,
     `          GITHUB_TOKEN: $${["{{ ", "github.token", " }}"].join("")}`,

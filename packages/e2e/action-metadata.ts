@@ -1,5 +1,5 @@
 const defaultImage = "pipr-action:act";
-const dockerImagePattern = /^(\s*)image:\s*docker:\/\/\S+\s*$/m;
+const dockerImagePattern = /^(\s*)image:\s*docker:\/\/\S+(?:\s+#.*)?\s*$/m;
 const actArgsPattern = /^(\s*)args:\s*$/m;
 
 export function renderActActionMetadata(

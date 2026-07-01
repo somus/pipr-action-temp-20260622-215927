@@ -344,26 +344,36 @@ function HeroRunRail() {
 function HeroReviewOutput() {
   return (
     <div className="p-4">
-      <div className="rounded-lg border border-fd-border bg-fd-background p-4 dark:border-pipr-lime/20 dark:bg-pipr-ink/45">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium text-fd-primary dark:text-pipr-lime">
-              Published output
-            </p>
-            <p className="mt-1 text-sm font-medium text-fd-foreground dark:text-pipr-cream">
-              Main Review Comment
-            </p>
-          </div>
-          <span className="rounded-md border border-fd-border px-2 py-1 text-xs text-fd-muted-foreground dark:border-pipr-lime/20 dark:text-pipr-cream/62">
-            14 files
-          </span>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <ReviewMetric tone="amber" label="Blocking" value="1" />
-          <ReviewMetric tone="cyan" label="Mapped" value="2" />
-          <ReviewMetric tone="red" label="Dropped" value="1" />
-        </div>
+      <ReviewOutputCard />
+    </div>
+  );
+}
+
+function ReviewOutputCard() {
+  return (
+    <div className="rounded-lg border border-fd-border bg-fd-background p-4 dark:border-pipr-lime/20 dark:bg-pipr-ink/45">
+      <ReviewOutputHeader />
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <ReviewMetric tone="amber" label="Blocking" value="1" />
+        <ReviewMetric tone="cyan" label="Mapped" value="2" />
+        <ReviewMetric tone="red" label="Dropped" value="1" />
       </div>
+    </div>
+  );
+}
+
+function ReviewOutputHeader() {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-xs font-medium text-fd-primary dark:text-pipr-lime">Published output</p>
+        <p className="mt-1 text-sm font-medium text-fd-foreground dark:text-pipr-cream">
+          Main Review Comment
+        </p>
+      </div>
+      <span className="rounded-md border border-fd-border px-2 py-1 text-xs text-fd-muted-foreground dark:border-pipr-lime/20 dark:text-pipr-cream/62">
+        14 files
+      </span>
     </div>
   );
 }
