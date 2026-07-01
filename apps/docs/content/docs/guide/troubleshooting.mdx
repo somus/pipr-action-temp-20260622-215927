@@ -3,7 +3,7 @@ title: "Troubleshooting"
 description: "Common Pipr setup, config, Action, model, and publication failures."
 ---
 
-Start with the narrowest command that can reproduce the failure.
+Start with the narrowest command that can reproduce the failure. Fix local config errors before debugging GitHub publication.
 
 ```bash
 pipr check
@@ -13,9 +13,24 @@ pipr review --base origin/main
 
 For GitHub Action behavior, set `PIPR_DRY_RUN=1` or use `pipr dry-run --event <path>`.
 
+## Choose the diagnostic
+
+Use the symptom to pick the first diagnostic command.
+
+| Symptom | Start with |
+| --- | --- |
+| Config does not load | `pipr check` |
+| Runtime plan looks wrong | `pipr inspect` |
+| Local review cannot find a base | `pipr review --base <ref>` |
+| GitHub Action does not publish | GitHub Action logs and workflow permissions |
+| Command comment is ignored | Event type, command pattern, and commenter permission |
+| Findings are dropped | Action `dropped-findings` output |
+| Pi output is invalid | Task logs and model output repair metadata |
+| Publication stopped after a new commit | Current pull request head SHA |
+
 ## Config does not load
 
-Run:
+Run `pipr check` from the repository root:
 
 ```bash
 pipr check
@@ -33,9 +48,11 @@ Common causes:
 Use `pipr inspect` after `pipr check` passes to confirm the runtime plan matches the config you expected.
 Run `pipr init --types-only` if your editor is missing local Pipr SDK types.
 
+Expected result: `pipr check` exits successfully before you try a model run.
+
 ## Provider env var is missing
 
-GitHub Action runs require configured provider env vars before Pi execution. Add the secret to GitHub Actions and pass it through the workflow `env` block:
+GitHub Action runs require configured provider env vars before Pi execution. Check the env var name in `.pipr/config.ts`, then add the matching GitHub Actions secret and pass it through the workflow:
 
 ```yaml
 env:
@@ -46,7 +63,7 @@ Locally, export the same env var or run `pipr check` without `--require-env` whe
 
 ## Local review cannot find a base
 
-`pipr review` requires an explicit base:
+`pipr review` requires an explicit base because Pipr needs a comparison point for the Diff Manifest.
 
 ```bash
 pipr review --base origin/main
@@ -62,7 +79,7 @@ Use `--head` only when reviewing something other than `HEAD`.
 
 ## GitHub Action does not publish
 
-Check the workflow:
+Check the workflow before changing task code.
 
 - `actions/checkout` uses `fetch-depth: 0`.
 - `GITHUB_TOKEN` is present in the Action environment.
@@ -73,9 +90,11 @@ Check the workflow:
 
 If `PIPR_DRY_RUN=1` is set, Pipr stops before model execution and publication by design.
 
+Expected result: the Action reaches the publication step and records `publication` metadata.
+
 ## Command comment is ignored
 
-Command comments are parsed only from `issue_comment.created` events on pull requests.
+Command comments are parsed only from `issue_comment.created` events on pull requests. Edited comments do not trigger command parsing.
 
 Common causes:
 
@@ -89,7 +108,9 @@ Use [Entrypoints](/docs/guide/entrypoints) for command grammar and permission de
 
 ## Findings are dropped
 
-Pipr drops invalid findings and continues the review. Common reasons:
+Pipr drops invalid findings and continues the review. Read the Action `dropped-findings` output first.
+
+Common reasons:
 
 - `path` does not match a changed file in the Diff Manifest.
 - `rangeId` does not exist for that path.
@@ -100,9 +121,13 @@ Pipr drops invalid findings and continues the review. Common reasons:
 
 Dropped findings are exposed in the Action `dropped-findings` output and in publication metadata.
 
+Fix the agent prompt or output mapping so findings use the exact Diff Manifest path, range id, side, and line numbers. See [Comments and Findings](/docs/guide/comments#dropped-findings).
+
 ## Pi output is invalid
 
-Review agents must return structured JSON matching their declared output schema. For review comments, use `pipr.schemas.review`. Invalid output can receive one repair attempt when retry settings allow it.
+Review agents must return structured JSON matching their declared output schema. For review comments, use `pipr.schemas.review`.
+
+Invalid output can receive one repair attempt when retry settings allow it.
 
 If invalid output persists:
 
@@ -114,8 +139,20 @@ If invalid output persists:
 
 ## Stale head before publication
 
-Pipr checks the current pull request head before writing comments. If the head changed after review execution, publication stops before writes. Rerun the workflow on the latest commit.
+Pipr checks the current pull request head before writing comments. If the head changed after review execution, publication stops before writes.
+
+Rerun the workflow on the latest commit. This prevents Pipr from publishing comments for an older diff.
 
 ## Verifier cannot resolve a thread
 
-The verifier can reply to Pipr-owned Inline Review Comments and resolve GitHub review threads when permissions allow. If the API call fails, Pipr records the error in `publication.metadata.inlineResolutionErrors` and keeps the review run successful.
+The verifier can reply to Pipr-owned Inline Review Comments and resolve GitHub review threads when permissions allow.
+
+If the API call fails, Pipr records the error in `publication.metadata.inlineResolutionErrors` and keeps the review run successful. Check that the workflow grants `contents: write` and `pull-requests: write`.
+
+## Next steps
+
+Use these pages when the first diagnostic identifies the failing area.
+
+- [GitHub Action](/docs/guide/github-action) covers workflow events, permissions, outputs, dry runs, and forks.
+- [Comments and Findings](/docs/guide/comments) covers dropped findings, inline caps, dedupe, and verifier replies.
+- [Local Runs](/docs/guide/local-runs) covers `--base`, `--head`, local secrets, and local output.

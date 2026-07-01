@@ -1,10 +1,11 @@
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listOfficialInitRecipes } from "../../../packages/runtime/src/config/recipes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const docsDir = path.resolve(here, "../content/docs/recipes");
+const publicDir = path.resolve(here, "../public");
 const mode = process.argv.includes("--check") ? "check" : "sync";
 
 function starterWorkflow(recipe: (typeof recipes)[number]): string {
@@ -102,6 +103,83 @@ const recipeDescriptions = new Map([
   ],
 ] satisfies Array<[string, string]>);
 
+const recipeExpectedOutputs = new Map([
+  [
+    "default-review",
+    "Pipr publishes one Main Review Comment and up to the configured number of Inline Review Comments. The same Review Task also runs from `@pipr review` and local `pipr review`.",
+  ],
+  [
+    "bug-hunter",
+    "Pipr publishes bug-focused review output with bounded inline comments. Use the command entrypoint when maintainers want to rerun the bug review on a risky pull request.",
+  ],
+  [
+    "multi-agent-review",
+    "Pipr runs specialist agents, asks the aggregator to dedupe their output, then publishes one review with one Main Review Comment and bounded Inline Review Comments.",
+  ],
+  [
+    "pr-briefing",
+    "Pipr publishes a Main Review Comment that orients reviewers with summary, risk framing, and walkthrough notes. It does not publish Inline Review Comments by default.",
+  ],
+  [
+    "security-sast",
+    "Pipr publishes security findings on valid diff ranges and fails the configured check for high or critical risks with a plausible attack path.",
+  ],
+  [
+    "quality-gate",
+    "Pipr publishes review output and a required quality check. The check is the merge signal when blocking findings are present.",
+  ],
+  [
+    "diff-diagnostics",
+    "Pipr maps structured diagnostics into validated Inline Review Comments and publishes dropped-finding metadata when a diagnostic cannot anchor to the diff.",
+  ],
+  [
+    "pr-hygiene",
+    "Pipr publishes pull-request hygiene feedback for tests, docs, lockfiles, generated files, and change size. Keep the check non-required until the policy is tuned.",
+  ],
+  [
+    "dependency-risk",
+    "Pipr reviews dependency manifests and lockfiles. If no matching dependency files changed, the task exits with a short Main Review Comment instead of spending model time.",
+  ],
+  [
+    "ci-triage-command",
+    "Pipr replies to the source command comment with CI triage. It does not publish normal review comments for this command-only workflow.",
+  ],
+  [
+    "interactive-ask",
+    "Pipr replies to the source command comment with an answer grounded in the current diff, prior Pipr review state, and bounded runtime context.",
+  ],
+  [
+    "plugin-tool-review",
+    "Pipr lets reviewer agents use the generated plugin tools during review, then publishes the normal review output from the task.",
+  ],
+  [
+    "changelog-draft",
+    "Pipr replies to the source command comment with a changelog draft. It does not edit changelog files.",
+  ],
+] satisfies Array<[string, string]>);
+
+const recipeSampleOutputs = new Map(
+  [
+    "default-review",
+    "bug-hunter",
+    "security-sast",
+    "quality-gate",
+    "diff-diagnostics",
+    "pr-hygiene",
+    "dependency-risk",
+    "multi-agent-review",
+    "pr-briefing",
+    "interactive-ask",
+    "changelog-draft",
+    "plugin-tool-review",
+  ].map((recipeId) => [
+    recipeId,
+    {
+      image: `/images/pipr/recipes/${recipeId}.png`,
+    },
+  ]),
+);
+
 const recipeNotes = new Map([
   [
     "default-review",
@@ -111,8 +189,8 @@ This is the baseline setup for repositories that want one trusted review path be
 
 - Keep \`inlineComments.max\` low until the repository has enough review history to judge signal quality.
 - Put repository-specific review policy in \`instructions\`, not in ad hoc task code.
-- Use \`context.platform.id === "local"\` for text that should appear only during local review.
-- Add path filters only after you know which files should never receive inline findings.
+- Use \`context.platform.id === "local"\` for text that appears only during local review.
+- Add path filters only after you know which files must not receive inline findings.
 `,
   ],
   [
@@ -123,7 +201,7 @@ Bug Hunter narrows review to likely defects and excludes Markdown/docs paths by 
 
 - Expand \`paths.exclude\` for generated files, snapshots, vendored code, or fixtures that produce noisy findings.
 - Keep the command entrypoint \`@pipr bugs\` for manual reruns on risky PRs that did not need a full review.
-- Tune the reviewer instructions around the bug classes your project actually sees: data loss, race conditions, migrations, API compatibility, or missed tests.
+- Tune the reviewer instructions around the bug classes your project sees: data loss, race conditions, migrations, API compatibility, or missed tests.
 `,
   ],
   [
@@ -156,7 +234,7 @@ Diff Diagnostics models reviewdog-style output: the agent emits diagnostics, the
 
 - Keep the diagnostic schema small and deterministic so invalid-output repair stays cheap.
 - Use \`suggestedFix\` only when the replacement is exact for the selected range.
-- Add path filters to \`ctx.change.diffManifest(...)\` when diagnostics should apply to only one language or subsystem.
+- Add path filters to \`ctx.change.diffManifest(...)\` when diagnostics must apply to only one language or subsystem.
 `,
   ],
   [
@@ -166,7 +244,7 @@ Diff Diagnostics models reviewdog-style output: the agent emits diagnostics, the
 PR Hygiene reviews the shape of the pull request: tests, docs, lockfiles, generated files, and size. It reads both \`changedFiles\` and the Diff Manifest so it can reason about file-level signals and changed code.
 
 - Customize the instructions with your repository's release-note, migration, generated-code, and test expectations.
-- Keep the check non-required until maintainers agree which hygiene findings should block merge.
+- Keep the check non-required until maintainers agree which hygiene findings must block merge.
 - Add explicit allowlists for common mechanical changes, such as formatter-only PRs or dependency lockfile refreshes.
 `,
   ],
@@ -211,7 +289,7 @@ Plugin Tool Review demonstrates a typed Pipr plugin with R2-backed memory tools.
 
 - Start with search-only reviewer behavior; add store calls only for curated, non-sensitive project knowledge.
 - Keep the R2 bucket shared only when repository-scoped prefixes are acceptable for your organization.
-- Add more plugin tools when the agent needs stable project context that should not be copied into every prompt.
+- Add more plugin tools when the agent needs stable project context that must not be copied into every prompt.
 `,
   ],
   [
@@ -229,7 +307,7 @@ PR Briefing is intentionally not a defect hunt. It disables inline comments and 
     "interactive-ask",
     `## Recipe notes
 
-Interactive Ask is a read-permission command for maintainer questions. It answers from the current diff, prior Pipr review state, and bounded runtime context, and it should say when the answer needs external systems.
+Interactive Ask is a read-permission command for maintainer questions. It answers from the current diff, prior Pipr review state, and bounded runtime context, and it must say when the answer needs external systems.
 
 - Keep this separate from normal review so maintainers can ask follow-up questions without triggering new inline comments.
 - Tighten the prompt if your team wants answers in a fixed format, such as risks, tests to run, or files to inspect.
@@ -291,6 +369,20 @@ for (const file of existing) {
   }
 }
 
+for (const sample of recipeSampleOutputs.values()) {
+  const target = path.join(publicDir, sample.image.replace(/^\//, ""));
+  try {
+    await access(target);
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
+      throw error;
+    }
+
+    console.error(`Missing recipe sample image: ${path.relative(process.cwd(), target)}`);
+    hasDrift = true;
+  }
+}
+
 if (hasDrift) {
   console.error("Run `bun run --cwd apps/docs recipes:sync`.");
   process.exitCode = 1;
@@ -313,7 +405,7 @@ description: "Canonical starter configs generated by \`pipr init --recipe\`."
 
 {/* This file is generated by apps/docs/scripts/sync-recipes.ts. */}
 
-Recipes are checked-in starter configs for common review workflows. They are generated from Pipr's official runtime recipe registry, so the code shown here matches what \`pipr init\` writes.
+Recipes are checked-in starter configs for common review workflows. The code shown here is generated from Pipr's official runtime recipe registry, so it matches what \`pipr init\` writes.
 
 \`\`\`bash
 pipr init --recipe security-sast
@@ -323,6 +415,8 @@ pipr check
 Use \`pipr init\` without \`--recipe\` for the default review setup.
 
 ## Common setup
+
+Every recipe follows the same setup path.
 
 \`pipr init\` also writes \`.pipr/tsconfig.json\` and \`.pipr/types/**\` with generated Pipr SDK declarations for editor IntelliSense. These files are optional for CI and the GitHub Action; \`pipr check\` can synthesize the same SDK type support when they are missing.
 
@@ -335,13 +429,17 @@ Pipr config and plugin files execute in Bun, so \`.pipr/*.ts\` files can use the
 
 ## Common tuning
 
+Tune generated recipes in the config before changing runtime code.
+
 - Change the model provider and \`apiKey\` secret name before committing the config.
 - Run \`pipr inspect\` after edits to confirm models, tasks, commands, and tools.
 - Use \`--adapters none\` when you want only the \`.pipr\` config files.
 - Use a local run before opening a pull request when the recipe adds custom commands or tasks.
-- Tune instructions first, then limits. Runtime limits are guardrails; prompts decide what the reviewer considers actionable.
+- Tune instructions first, then limits. Runtime limits are guardrails; prompts define what the reviewer treats as actionable.
 
 ## Recipe catalog
+
+Choose the smallest recipe that matches the review workflow you want to try.
 
 <Cards>
 ${cards}
@@ -355,9 +453,11 @@ function renderRecipe(recipe: (typeof recipes)[number]): string {
   const fileTree = files.map((file) => ({ path: file.path }));
   const filePanes = files.map(renderRecipeFilePane).join("\n");
   const description = recipeDescription(recipe);
+  const useCase = `${description.charAt(0).toLocaleLowerCase()}${description.slice(1)}`;
   const details = recipe.docsDetailsMdx ?? "";
   const notes = recipeNotes.get(recipe.id) ?? "";
-  const extraSections = [details, notes]
+  const sampleOutput = recipeSampleOutput(recipe);
+  const extraSections = [sampleOutput, details, notes]
     .map((section) => section.trim())
     .filter(Boolean)
     .join("\n\n");
@@ -369,7 +469,15 @@ description: "${escapeFrontmatter(description)}"
 
 {/* This file is generated by apps/docs/scripts/sync-recipes.ts. */}
 
+This page shows the generated config for ${recipe.title}. The code matches what \`${command}\` writes.
+
+## Use when
+
+Use this recipe to ${useCase}
+
 ## Install
+
+Install Pipr, generate the recipe, then validate the config:
 
 \`\`\`bash
 curl -fsSL https://raw.githubusercontent.com/somus/pipr/main/install.sh | sh
@@ -377,13 +485,19 @@ ${command}
 pipr check
 \`\`\`
 
-## Files
+## Generated files
+
+The recipe writes the config, any supporting \`.pipr\` files, and the GitHub workflow:
 
 <RecipeFileExplorer files={${JSON.stringify(fileTree, null, 2)}}>
 ${filePanes}
 </RecipeFileExplorer>
 
 Use \`${command} --adapters none\` when you only want the \`.pipr\` config files.
+
+## Expected output
+
+${recipeExpectedOutput(recipe)}
 
 ${extraSections}
 
@@ -393,6 +507,27 @@ Shared setup, local type support, and provider tuning notes live on the [Recipes
 
 function recipeDescription(recipe: (typeof recipes)[number]): string {
   return recipeDescriptions.get(recipe.id) ?? recipe.description;
+}
+
+function recipeExpectedOutput(recipe: (typeof recipes)[number]): string {
+  return (
+    recipeExpectedOutputs.get(recipe.id) ??
+    "Pipr publishes the review output configured by the generated `.pipr/config.ts`."
+  );
+}
+
+function recipeSampleOutput(recipe: (typeof recipes)[number]): string {
+  const sample = recipeSampleOutputs.get(recipe.id);
+  if (!sample) {
+    return "";
+  }
+
+  return `## Sample output
+
+<img
+  alt="${recipe.title} sample Pipr pull request output from github-actions bot"
+  src="${sample.image}"
+/>`;
 }
 
 function renderRecipeFilePane(file: { code: string; lang: string; path: string }): string {

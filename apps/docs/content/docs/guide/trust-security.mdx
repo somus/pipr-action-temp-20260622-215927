@@ -5,6 +5,19 @@ description: "Trusted base config, secret handling, read-only Pi execution, and 
 
 Pipr is designed around the assumption that pull request code can be untrusted. Runtime policy comes from trusted config, not from the pull request head.
 
+## Run mode boundaries
+
+Each run mode uses a different source for config, diff data, secrets, and writes.
+
+| Boundary | Local review | GitHub Action pull request run | GitHub command run |
+| --- | --- | --- | --- |
+| Config source | Current local workspace | Pull request base commit | Pull request base commit |
+| Diff source | Local git refs or working tree | Checked-out pull request head and base | Current pull request head and base |
+| Secret source | Exported env vars or Bun-loaded env files | GitHub Actions secrets available to the workflow | GitHub Actions secrets available to the workflow |
+| Model-visible code context | Diff Manifest plus read-only local workspace access through Pi | Diff Manifest plus read-only Action workspace access through Pi | Diff Manifest plus read-only Action workspace access through Pi |
+| Code host writes | Disabled | Main Review Comment, Inline Review Comments, and Check Runs when configured | Command response comments or configured review output |
+| Best use | Prompt and config iteration before pushing | Production pull request review | Maintainer-triggered follow-up tasks |
+
 ## Trusted base config
 
 For GitHub Action pull request runs:

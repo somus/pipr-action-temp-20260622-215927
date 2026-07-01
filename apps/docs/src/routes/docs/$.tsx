@@ -13,19 +13,67 @@ import {
   ViewOptionsPopover,
 } from "fumadocs-ui/layouts/docs/page";
 import { Suspense } from "react";
+import { Feedback } from "@/components/feedback/client";
 import { getMDXComponents } from "@/components/mdx";
 import { baseOptions } from "@/lib/layout.shared";
-import { gitConfig } from "@/lib/shared";
-import { slugsToMarkdownPath, source } from "@/lib/source";
+import { appName, gitConfig } from "@/lib/shared";
+import { getPageImage, slugsToMarkdownPath, source } from "@/lib/source";
 
 export const Route = createFileRoute("/docs/$")({
-  component: Page,
   loader: async ({ params }) => {
     const slugs = params._splat?.split("/") ?? [];
     const data = await loader({ data: slugs });
     await clientLoader.preload(data.path);
     return data;
   },
+  head: ({ loaderData }) => {
+    if (!loaderData) return {};
+
+    return {
+      meta: [
+        {
+          title: `${loaderData.title} | ${appName} Docs`,
+        },
+        {
+          name: "description",
+          content: loaderData.description,
+        },
+        {
+          property: "og:title",
+          content: `${loaderData.title} | ${appName} Docs`,
+        },
+        {
+          property: "og:description",
+          content: loaderData.description,
+        },
+        {
+          property: "og:image",
+          content: loaderData.imageUrl,
+        },
+        {
+          property: "og:type",
+          content: "article",
+        },
+        {
+          name: "twitter:card",
+          content: "summary_large_image",
+        },
+        {
+          name: "twitter:title",
+          content: `${loaderData.title} | ${appName} Docs`,
+        },
+        {
+          name: "twitter:description",
+          content: loaderData.description,
+        },
+        {
+          name: "twitter:image",
+          content: loaderData.imageUrl,
+        },
+      ],
+    };
+  },
+  component: Page,
 });
 
 const loader = createServerFn({
@@ -39,6 +87,9 @@ const loader = createServerFn({
 
     return {
       path: page.path,
+      title: page.data.title,
+      description: page.data.description,
+      imageUrl: getPageImage(page).url,
       markdownUrl: slugsToMarkdownPath(page.slugs).url,
       pageTree: await source.serializePageTree(source.getPageTree()),
     };
@@ -57,7 +108,7 @@ const clientLoader = browserCollections.docs.createClientLoader({
     },
   ) {
     return (
-      <DocsPage toc={toc}>
+      <DocsPage footer={{ className: "pipr-docs-footer" }} toc={toc}>
         <DocsTitle>{frontmatter.title}</DocsTitle>
         <DocsDescription>{frontmatter.description}</DocsDescription>
         <div className="flex flex-row gap-2 items-center border-b -mt-4 pb-6">
@@ -70,6 +121,7 @@ const clientLoader = browserCollections.docs.createClientLoader({
         <DocsBody>
           <MDX components={getMDXComponents()} />
         </DocsBody>
+        <Feedback pageTitle={frontmatter.title} />
       </DocsPage>
     );
   },

@@ -38,27 +38,27 @@ type LandingLink = {
 
 const proofPoints = [
   {
-    title: "Code-owned review policy",
+    title: "Review policy lives in code",
     description:
-      "Keep review instructions, models, commands, and limits in `.pipr/config.ts` with the rest of the repository.",
+      "Define reviewers, models, commands, limits, and publication policy in `.pipr/config.ts` so review changes go through pull requests.",
     icon: FileCode2,
+  },
+  {
+    title: "No hosted control plane",
+    description:
+      "Run Pipr in local development or your CI runner. You don't need a Pipr SaaS account to decide how reviews run.",
+    icon: Code2,
   },
   {
     title: "Trusted base config",
     description:
-      "Action runs load maintainer-approved config from the base commit, so pull requests cannot rewrite the current reviewer.",
+      "Action runs load maintainer-approved config from the base commit, so pull requests cannot rewrite the active reviewer.",
     icon: LockKeyhole,
   },
   {
-    title: "Local and CI parity",
+    title: "Validated comments",
     description:
-      "Use the same task graph locally and in GitHub Actions before comments are published to a pull request.",
-    icon: Terminal,
-  },
-  {
-    title: "Validated inline findings",
-    description:
-      "Pipr validates structured model output against commentable diff ranges before publishing review comments.",
+      "Pipr checks model output against commentable diff ranges before it publishes Main Review Comments or Inline Review Comments.",
     icon: BadgeCheck,
   },
 ];
@@ -67,7 +67,8 @@ const reviewSteps = [
   {
     label: "01",
     title: "Load config",
-    description: "Read trusted `.pipr/config.ts` and local imports from the base branch.",
+    description:
+      "Read maintainer-approved `.pipr/config.ts` and local imports from the base branch.",
     icon: GitBranch,
   },
   {
@@ -94,6 +95,14 @@ const reviewSteps = [
     description: "Write one Main Review Comment and capped Inline Review Comments through GitHub.",
     icon: MessageSquareText,
   },
+];
+
+const heroRunSteps = [
+  { title: "Config", icon: GitBranch },
+  { title: "Diff", icon: FileText },
+  { title: "Pi", icon: Bot },
+  { title: "Validate", icon: ShieldCheck },
+  { title: "Publish", icon: MessageSquareText },
 ];
 
 const recipeLinks = [
@@ -125,10 +134,10 @@ const recipeLinks = [
 
 const maintainerItems = [
   {
-    title: "No hosted Pipr control plane",
+    title: "Runs where you run it",
     description:
-      "Runs happen in local development or your CI runner. Pipr does not require a SaaS account to review a pull request.",
-    icon: Code2,
+      "Use the same review policy in local development and GitHub Actions before publishing comments to a pull request.",
+    icon: Terminal,
   },
   {
     title: "Secrets stay in env",
@@ -188,20 +197,20 @@ function Home() {
 
 function Hero() {
   return (
-    <section className="overflow-hidden border-b border-pipr-lime/20 bg-pipr-ink text-pipr-cream">
+    <section className="overflow-hidden border-b border-fd-border bg-fd-background text-fd-foreground dark:border-pipr-lime/20 dark:bg-pipr-ink dark:text-pipr-cream">
       <div className="mx-auto grid max-w-7xl gap-10 px-6 py-14 sm:py-20 lg:px-8 lg:py-24 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,0.72fr)] xl:items-center xl:gap-14">
         <div className="max-w-3xl">
-          <p className="mb-4 inline-flex items-center gap-2 rounded-md border border-pipr-lime/25 bg-pipr-panel/80 px-3 py-1 text-sm font-medium text-pipr-lime">
+          <p className="mb-4 inline-flex items-center gap-2 rounded-md border border-fd-border bg-fd-card px-3 py-1 text-sm font-medium text-fd-primary dark:border-pipr-lime/25 dark:bg-pipr-panel/80 dark:text-pipr-lime">
             <GitPullRequest className="size-4" aria-hidden="true" />
-            Pi-powered pull request reviews
+            Code-owned AI review
           </p>
-          <h1 className="max-w-4xl text-3xl font-semibold tracking-normal text-pipr-cream sm:text-5xl lg:text-6xl xl:text-[4rem] xl:leading-[1.05]">
-            Pipr brings code-owned AI review to every pull request.
+          <h1 className="max-w-4xl text-3xl font-semibold tracking-normal text-fd-foreground sm:text-5xl lg:text-6xl xl:text-[4rem] xl:leading-[1.05] dark:text-pipr-cream">
+            Review policy belongs in your repository.
           </h1>
-          <p className="mt-6 max-w-2xl text-base leading-7 text-pipr-cream/78 sm:text-lg">
-            Configure review tasks in TypeScript, run Pi against a deterministic Diff Manifest,
-            validate inline findings, and publish GitHub comments without a hosted Pipr control
-            plane.
+          <p className="mt-6 max-w-2xl text-base leading-7 text-fd-muted-foreground sm:text-lg dark:text-pipr-cream/78">
+            Pipr puts AI review policy in `.pipr/config.ts`, runs in local development or CI, and
+            publishes only validated GitHub comments. You own the policy, runtime, and publication
+            boundary without a hosted Pipr control plane.
           </p>
           <HeroActions />
           <HeroProofStrip />
@@ -220,14 +229,14 @@ function HeroActions() {
         className="inline-flex items-center gap-2 rounded-lg bg-pipr-lime px-4 py-2.5 text-sm font-medium text-pipr-ink transition-colors hover:bg-pipr-lime/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pipr-lime"
       >
         <Rocket className="size-4" aria-hidden="true" />
-        Start with Quickstart
+        Run the first review
         <ArrowRight className="size-4" aria-hidden="true" />
       </DocsLink>
       <DocsLink
         path="recipes"
-        className="inline-flex items-center gap-2 rounded-lg border border-pipr-lime/25 bg-pipr-panel/80 px-4 py-2.5 text-sm font-medium text-pipr-cream transition-colors hover:border-pipr-lime/45 hover:bg-pipr-lime/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pipr-lime"
+        className="inline-flex items-center gap-2 rounded-lg border border-fd-border bg-fd-background px-4 py-2.5 text-sm font-medium text-fd-foreground transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-ring dark:border-pipr-lime/25 dark:bg-pipr-panel/80 dark:text-pipr-cream dark:hover:border-pipr-lime/45 dark:hover:bg-pipr-lime/10 dark:focus-visible:outline-pipr-lime"
       >
-        <CookingPot className="size-4 text-pipr-lime" aria-hidden="true" />
+        <CookingPot className="size-4 text-fd-primary dark:text-pipr-lime" aria-hidden="true" />
         Browse recipes
       </DocsLink>
     </div>
@@ -236,18 +245,18 @@ function HeroActions() {
 
 function HeroProofStrip() {
   return (
-    <dl className="mt-10 hidden max-w-2xl gap-3 text-sm text-pipr-cream/72 sm:grid sm:grid-cols-3">
+    <dl className="mt-10 hidden max-w-2xl gap-3 text-sm text-fd-muted-foreground sm:grid sm:grid-cols-3 dark:text-pipr-cream/72">
       <div>
-        <dt className="font-medium text-pipr-cream">Config</dt>
-        <dd>TypeScript in repo</dd>
+        <dt className="font-medium text-fd-foreground dark:text-pipr-cream">Config</dt>
+        <dd>Policy in repo</dd>
       </div>
       <div>
-        <dt className="font-medium text-pipr-cream">Runtime</dt>
+        <dt className="font-medium text-fd-foreground dark:text-pipr-cream">Runtime</dt>
         <dd>Local or CI runner</dd>
       </div>
       <div>
-        <dt className="font-medium text-pipr-cream">Output</dt>
-        <dd>Validated PR comments</dd>
+        <dt className="font-medium text-fd-foreground dark:text-pipr-cream">Output</dt>
+        <dd>Validated comments</dd>
       </div>
     </dl>
   );
@@ -256,7 +265,7 @@ function HeroProofStrip() {
 function HeroReviewScene() {
   return (
     <div className="hidden xl:block" data-hero-review-scene aria-hidden="true">
-      <div className="rounded-lg border border-pipr-lime/20 bg-pipr-panel/90 shadow-2xl shadow-black/25">
+      <div className="rounded-lg border border-fd-border bg-fd-card shadow-xl shadow-black/10 dark:border-pipr-lime/20 dark:bg-pipr-panel/90 dark:shadow-2xl dark:shadow-black/25">
         <HeroConfigPreview />
         <HeroReviewPreview />
       </div>
@@ -267,24 +276,19 @@ function HeroReviewScene() {
 function HeroConfigPreview() {
   return (
     <>
-      <div className="flex items-center justify-between border-b border-pipr-lime/15 px-4 py-3 text-xs text-pipr-cream/62">
+      <div className="flex items-center justify-between border-b border-fd-border px-4 py-3 text-xs text-fd-muted-foreground dark:border-pipr-lime/15 dark:text-pipr-cream/62">
         <span className="inline-flex items-center gap-2">
-          <Code2 className="size-3.5 text-pipr-lime" />
+          <Code2 className="size-3.5 text-fd-primary dark:text-pipr-lime" />
           .pipr/config.ts
         </span>
-        <span>trusted base config</span>
+        <span>source of review policy</span>
       </div>
-      <pre className="overflow-hidden px-4 py-4 text-[0.76rem] leading-6 text-pipr-cream/82">
+      <pre className="overflow-hidden px-4 py-4 text-[0.76rem] leading-6 text-fd-foreground/80 dark:text-pipr-cream/82">
         <code>{`export default definePipr((pipr) => {
-  const reviewer = pipr.reviewer({
-    name: "reviewer",
-    instructions: "Return actionable findings only",
-  });
-
   pipr.review({
-    reviewer,
+    instructions: "Return actionable findings only",
     inlineComments: { max: 5 },
-    command: "@pipr review",
+    timeout: "5m",
   });
 });`}</code>
       </pre>
@@ -294,56 +298,99 @@ function HeroConfigPreview() {
 
 function HeroReviewPreview() {
   return (
-    <div className="border-t border-pipr-lime/15">
+    <div className="border-t border-fd-border dark:border-pipr-lime/15">
       <HeroReviewHeader />
       <HeroRunRail />
-      <div className="space-y-3 p-4 text-sm text-pipr-cream/76">
-        <p className="font-medium text-pipr-cream">Pipr reviewed 14 changed files.</p>
-        <div className="grid gap-2">
-          <FindingPreview tone="amber" label="Blocking test gap" />
-          <FindingPreview tone="cyan" label="Inline range mapped to src/runtime/review.ts" />
-          <FindingPreview tone="red" label="Dropped 1 invalid model finding" />
-        </div>
-      </div>
+      <HeroReviewOutput />
     </div>
   );
 }
 
 function HeroReviewHeader() {
   return (
-    <div className="flex items-center justify-between border-b border-pipr-lime/15 px-4 py-3">
-      <span className="inline-flex items-center gap-2 text-sm font-medium text-pipr-cream">
-        <MessageSquareText className="size-4 text-pipr-lime" />
-        Main Review Comment
+    <div className="flex items-center justify-between border-b border-fd-border px-4 py-3 dark:border-pipr-lime/15">
+      <span className="inline-flex items-center gap-2 text-sm font-medium text-fd-foreground dark:text-pipr-cream">
+        <MessageSquareText className="size-4 text-fd-primary dark:text-pipr-lime" />
+        Review run
       </span>
-      <span className="rounded-md bg-pipr-lime/12 px-2 py-1 text-xs text-pipr-lime">validated</span>
+      <span className="rounded-md bg-fd-primary/10 px-2 py-1 text-xs text-fd-primary dark:bg-pipr-lime/12 dark:text-pipr-lime">
+        validated
+      </span>
     </div>
   );
 }
 
 function HeroRunRail() {
   return (
-    <div className="grid grid-cols-5 border-b border-pipr-lime/15 px-4 py-3 text-[0.68rem] text-pipr-cream/62">
-      {reviewSteps.map((step) => (
-        <span key={step.label} className="inline-flex items-center gap-1.5">
-          <step.icon className="size-3 text-pipr-lime" aria-hidden="true" />
-          {step.title}
-        </span>
-      ))}
+    <div className="border-b border-fd-border px-4 py-3 dark:border-pipr-lime/15">
+      <div className="grid grid-cols-5 gap-1.5">
+        {heroRunSteps.map((step) => (
+          <span
+            key={step.title}
+            className="inline-flex min-w-0 items-center justify-center gap-1 rounded-md border border-fd-border bg-fd-background px-1.5 py-1 text-[0.68rem] font-medium text-fd-muted-foreground dark:border-pipr-lime/20 dark:bg-pipr-lime/5 dark:text-pipr-cream/70"
+          >
+            <step.icon
+              className="size-3 shrink-0 text-fd-primary dark:text-pipr-lime"
+              aria-hidden="true"
+            />
+            {step.title}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
-function FindingPreview({ tone, label }: { tone: "amber" | "cyan" | "red"; label: string }) {
+function HeroReviewOutput() {
+  return (
+    <div className="p-4">
+      <div className="rounded-lg border border-fd-border bg-fd-background p-4 dark:border-pipr-lime/20 dark:bg-pipr-ink/45">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium text-fd-primary dark:text-pipr-lime">
+              Published output
+            </p>
+            <p className="mt-1 text-sm font-medium text-fd-foreground dark:text-pipr-cream">
+              Main Review Comment
+            </p>
+          </div>
+          <span className="rounded-md border border-fd-border px-2 py-1 text-xs text-fd-muted-foreground dark:border-pipr-lime/20 dark:text-pipr-cream/62">
+            14 files
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <ReviewMetric tone="amber" label="Blocking" value="1" />
+          <ReviewMetric tone="cyan" label="Mapped" value="2" />
+          <ReviewMetric tone="red" label="Dropped" value="1" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewMetric({
+  tone,
+  label,
+  value,
+}: {
+  tone: "amber" | "cyan" | "red";
+  label: string;
+  value: string;
+}) {
   const toneClass = {
-    amber: "border-pipr-amber/30 bg-pipr-amber/10 text-pipr-amber",
-    cyan: "border-pipr-cyan/30 bg-pipr-cyan/10 text-pipr-cyan",
-    red: "border-pipr-red/30 bg-pipr-red/10 text-pipr-red",
+    amber: "border-pipr-amber/45 bg-pipr-amber/15",
+    cyan: "border-pipr-cyan/45 bg-pipr-cyan/15",
+    red: "border-pipr-red/45 bg-pipr-red/10",
   }[tone];
 
   return (
-    <div className={`rounded-md border px-3 py-2 text-xs ${toneClass}`}>
-      <span>{label}</span>
+    <div className={`rounded-md border p-2 ${toneClass}`}>
+      <span className="block text-[0.68rem] text-fd-muted-foreground dark:text-pipr-cream/58">
+        {label}
+      </span>
+      <span className="mt-0.5 block text-sm font-medium text-fd-foreground dark:text-pipr-cream">
+        {value}
+      </span>
     </div>
   );
 }
@@ -355,8 +402,8 @@ function WhyPipr() {
         <SectionHeader
           icon={ShieldCheck}
           eyebrow="Why Pipr"
-          title="Review automation maintainers can actually control."
-          description="Most AI review tools sell speed. Pipr starts with review ownership: config is code, execution is inspectable, and comments are validated before they hit a pull request."
+          title="AI review works when maintainers own the policy."
+          description="Opaque review bots ask you to trust policy you cannot version. Pipr keeps the review contract in code, runs where you run it, and validates comments before they reach a pull request."
         />
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {proofPoints.map((item) => (
@@ -399,8 +446,8 @@ function ReviewFlow() {
         <SectionHeader
           icon={ListChecks}
           eyebrow="How review runs work"
-          title="A predictable path from config to comment."
-          description="Pipr keeps diff modeling, Pi execution, validation, and code host publication separated so every review step has a clear owner."
+          title="From config to comment, every boundary is explicit."
+          description="Pipr separates policy loading, diff modeling, Pi execution, validation, and code host publication so maintainers can inspect the review path."
         />
         <div className="rounded-lg border bg-fd-background p-4">
           <ReviewTimeline />
@@ -541,8 +588,8 @@ function MaintainerTrust() {
         <SectionHeader
           icon={KeyRound}
           eyebrow="Built for maintainers"
-          title="Private by default, explicit at the boundary."
-          description="Pipr runs where you run it, reads provider keys from the environment, and leaves model-provider choice in repository-owned config."
+          title="No hosted Pipr control plane."
+          description="Pipr reads provider keys from your runner environment, keeps model choice in repository-owned config, and publishes through the code host adapter you run."
           dark
         />
         <div className="grid gap-4 md:grid-cols-3">
@@ -569,8 +616,8 @@ function DocsPath() {
         <SectionHeader
           icon={BookOpen}
           eyebrow="Docs path"
-          title="Go from first review to custom tasks."
-          description="Start with the happy path, then move into recipes, SDK APIs, and runtime details when the config needs more control."
+          title="Install it, then tune it like code."
+          description="Start with the first review, use recipes for common policies, and move into SDK APIs when the repository needs more control."
         />
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {docsPath.map((item) => (

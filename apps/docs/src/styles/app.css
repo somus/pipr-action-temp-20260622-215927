@@ -78,3 +78,13 @@ html > body[data-scroll-locked] {
   min-height: 380px;
   max-height: 560px;
 }
+
+@media (min-width: 768px) {
+  .pipr-docs-footer:has(> a:only-child) > a {
+    width: calc(50% - 0.5rem);
+  }
+
+  .pipr-docs-footer:has(> a:only-child) > a.text-end {
+    justify-self: end;
+  }
+}

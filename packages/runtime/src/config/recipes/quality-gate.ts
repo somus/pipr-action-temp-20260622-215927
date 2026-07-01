@@ -33,7 +33,7 @@ export default definePipr((pipr) => {
       autoResolve: {
         enabled: true,
         model,
-        instructions: "Resolve only when the changed code clearly addresses the finding.",
+        instructions: "Resolve only when the changed code addresses the finding directly.",
         synchronize: true,
         userReplies: { enabled: true, allowedActors: "write" },
       },
@@ -45,8 +45,8 @@ export default definePipr((pipr) => {
     model,
     instructions: \`
       Act as a merge quality gate. Report only blocking correctness,
-      security, reliability, or test coverage issues that should prevent merge.
-      If no blocking issue exists, say so clearly.
+      security, reliability, or test coverage issues that must prevent merge.
+      If no blocking issue exists, state that no blocking issue exists.
     \`,
     check: { enabled: true, name: "quality gate", required: true },
     inlineComments: { max: 6 },
