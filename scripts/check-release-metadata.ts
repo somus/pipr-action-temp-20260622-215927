@@ -118,6 +118,10 @@ assert(
   "Release Please workflow must not persist credentials into release PR branch steps",
 );
 assert(
+  releasePleaseWorkflow.includes("secrets.PIPR_RELEASE_PLEASE_TOKEN || github.token"),
+  "Release Please workflow must fall back to github.token when no release token secret is configured",
+);
+assert(
   releasePleaseWorkflow.includes("id: lockfile"),
   "Release Please workflow must expose lockfile sync outputs",
 );

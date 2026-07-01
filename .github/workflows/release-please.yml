@@ -17,7 +17,7 @@ jobs:
       - id: release
         uses: googleapis/release-please-action@v5
         with:
-          token: ${{ secrets.PIPR_RELEASE_PLEASE_TOKEN }}
+          token: ${{ secrets.PIPR_RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
       - uses: actions/checkout@v6
@@ -53,6 +53,6 @@ jobs:
       - name: Push release PR lockfile
         if: ${{ steps.lockfile.outputs.changed == 'true' }}
         env:
-          PIPR_RELEASE_PLEASE_TOKEN: ${{ secrets.PIPR_RELEASE_PLEASE_TOKEN }}
+          PIPR_RELEASE_PLEASE_TOKEN: ${{ secrets.PIPR_RELEASE_PLEASE_TOKEN || github.token }}
         run: |
           git -C "${{ steps.lockfile.outputs.worktree }}" -c core.hooksPath=/dev/null push "https://x-access-token:${PIPR_RELEASE_PLEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${{ steps.lockfile.outputs.branch }}"
