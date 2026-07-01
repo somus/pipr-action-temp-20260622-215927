@@ -1,0 +1,22 @@
+.github/workflows/release-please.yml
+  s_611e522ea23400::t_9022d3d9ba4edf 20,56
+scripts/check-release-metadata.ts
+  s_611e522ea23400::t_406870f3fca41a 121-123
+  s_611e522ea23400::t_32819bee80c7b3 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "3a81cecd4cc98af6e9004507837788c990351021",
+  "prompts": {},
+  "sessions": {
+    "s_611e522ea23400": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef836-1781-7052-a770-eac8bfbc3291",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Somasundaram Ayyappan <1802828+somus@users.noreply.github.com>"
+    }
+  }
+}
